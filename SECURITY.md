@@ -41,6 +41,9 @@ latest published version.
   command. Anyone who can write the micro-apps folder can offer a command, but it
   does not run until you approve it; anyone who can write the approvals file and
   the folder can run commands as you.
+- The parameter values of the last started run of each micro-app are stored as
+  plain text in `~/Library/Application Support/Ting/micro-values.json`, unless
+  the file says `remember: false`. Esc in the parameter panel saves nothing.
 - Ting has no accounts, analytics or project servers. Its only network access is
   Sparkle's update check against the public feed
   `https://github.com/bobuk-io/ting/releases/latest/download/appcast.xml` and the

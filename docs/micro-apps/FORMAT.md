@@ -98,6 +98,14 @@ output:                          # required
 | `choices` | for `type: choice` | A non-empty list of different values, such as `[A, AAAA, MX]`. Not allowed for `text`. |
 | `prompt` | no | One line shown when Ting asks for the value. If absent, the name is shown. |
 
+Ting asks for the parameters in one parameter panel, in file order, with the
+`prompt` as label. Required parameters are always shown; optional ones are behind
+`⌘O`, filled with their `default`. A required `text` must not be empty; an
+optional `text` made empty gives the empty value. A `choice` gives the marked
+option. A file with one `choice` parameter and nothing else opens as a list. With
+`remember: true` the values of the last started run come back next time; they are
+stored as plain text, so do not use a remembered parameter for a secret.
+
 ### `output`
 
 | Key | Required | Value |

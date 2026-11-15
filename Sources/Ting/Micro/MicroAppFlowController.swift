@@ -1,13 +1,13 @@
-// One micro-app start: approval panel → working state → result (panel, clipboard or both).
+// One micro-app start: approval panel → parameter panel → working state → result (panel, clipboard or both).
 // Only one flow is open at a time; a new start closes the open one and stops its command.
 import AppKit
 import SwiftUI
 import TingCore
 
 /// The flow window: a non-activating panel that takes keyboard focus, like launcha.
-/// ↩, ⌘↩ and Esc go to the flow; other keys go to the panel's views (the result text).
+/// ↩, ⌘↩, ⌘O and Esc go to the flow; other keys go to the panel's views (the fields, the result text).
 final class MicroAppFlowPanel: NSPanel {
-    enum Key { case enter, commandEnter, escape }
+    enum Key { case enter, commandEnter, escape, toggleOptional }
     var onKey: ((Key) -> Void)?
 
     init() {
@@ -29,7 +29,8 @@ final class MicroAppFlowPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown {
+        // While an input method composes in a field, ↩ and Esc belong to it.
+        if event.type == .keyDown, (firstResponder as? NSTextView)?.hasMarkedText() != true {
             let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
             switch event.keyCode {
             case 53:
@@ -46,15 +47,20 @@ final class MicroAppFlowPanel: NSPanel {
         super.sendEvent(event)
     }
 
-    /// Ting has no Edit menu while it is not the active app: ⌘C and ⌘A go to the text here,
-    /// matched by the Latin layout. Every other ⌘ shortcut is swallowed, so ⌘Q never quits Ting.
+    /// Ting has no Edit menu while it is not the active app: ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z go to the text
+    /// here, and ⌘O shows the optional parameters, matched by the Latin layout. Every other ⌘ shortcut
+    /// is swallowed, so ⌘Q never quits Ting.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         guard flags == .command else { return flags.contains(.command) ? true : super.performKeyEquivalent(with: event) }
         switch KeyTranslator.latin(event.keyCode) {
         case "c": NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
+        case "x": NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self)
+        case "v": NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self)
         case "a": NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)
+        case "z": firstResponder?.undoManager?.undo()
+        case "o": onKey?(.toggleOptional)
         default: break
         }
         return true
@@ -68,11 +74,16 @@ final class MicroAppFlowSession {
     enum State: Equatable {
         case closed
         case approval(MicroApp, file: String)
+        case form(MicroApp)
         case working(MicroApp)
         case result(MicroAppPanelContent)
     }
 
-    var state: State = .closed
+    var state: State = .closed {
+        didSet { if case .form = state {} else { form = nil } }
+    }
+    /// The open parameter panel; set only while `state` is `.form`.
+    var form: MicroAppFormModel?
     var showHeader = true
 }
 
@@ -86,6 +97,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
 
     private(set) var catalog = MicroAppCatalog()
     private let approvals: MicroAppApprovalStore
+    private let values: MicroAppValueStore
     private let runner: MicroAppRunner
     private var panel: MicroAppFlowPanel?
     private var task: Task<Void, Never>?
@@ -94,8 +106,9 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     /// The hash waiting for ⌘↩ in the approval panel.
     private var pendingHash = ""
 
-    init(approvals: MicroAppApprovalStore? = nil, runner: MicroAppRunner = MicroAppRunner()) {
+    init(approvals: MicroAppApprovalStore? = nil, values: MicroAppValueStore? = nil, runner: MicroAppRunner = MicroAppRunner()) {
         self.approvals = approvals ?? MicroAppApprovalStore()
+        self.values = values ?? MicroAppValueStore()
         self.runner = runner
     }
 
@@ -121,7 +134,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             let file = catalog.resolve(id).entryFile ?? "\(app.id).yaml"
             show(.approval(app, file: (folderDisplay() as NSString).appendingPathComponent(file)))
         case .run(let app):
-            run(app)
+            askParameters(app)
         }
     }
 
@@ -144,10 +157,32 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         } catch {
             onToast?("Cannot save the approval: \(error.localizedDescription)")
         }
-        run(app)
+        askParameters(app)
     }
 
-    private func run(_ app: MicroApp) {
+    /// The parameter panel, the same for every start way. A micro-app without parameters runs at once.
+    private func askParameters(_ app: MicroApp) {
+        pendingHash = ""
+        values.load()
+        let form = MicroAppForm.start(app, remembered: values.remembered)
+        guard !form.isEmpty else { return run(app, values: [:]) }
+        session.form = MicroAppFormModel(app: app, form: form)
+        show(.form(app))
+    }
+
+    /// ↩ in the parameter panel: runs with the shown values and remembers them, or marks the empty
+    /// required field and runs nothing.
+    private func submitForm() {
+        guard let model = session.form, case .form = session.state, let shown = model.submit() else { return }
+        do {
+            try values.remember(shown, for: model.app)
+        } catch {
+            onToast?("Cannot save the values: \(error.localizedDescription)")
+        }
+        run(model.app, values: shown)
+    }
+
+    private func run(_ app: MicroApp, values: [String: String]) {
         generation += 1
         let current = generation
         pendingHash = ""
@@ -155,7 +190,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         let stdin = app.input == .clipboard ? (NSPasteboard.general.string(forType: .string) ?? "") : nil
         let runner = self.runner
         task = Task { [weak self] in
-            let result = await runner.run(app, stdin: stdin)
+            let result = await runner.run(app, values: values, stdin: stdin)
             guard let self, self.generation == current, !Task.isCancelled else { return }
             self.task = nil
             self.present(MicroAppResultPlan.make(app: app, result: result, outputLimit: runner.outputLimit,
@@ -183,6 +218,10 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         switch (session.state, key) {
         case (.approval, .commandEnter):
             approve()
+        case (.form, .enter):
+            submitForm()
+        case (.form, .toggleOptional):
+            session.form?.toggleOptional()
         case (.result(let content), .enter):
             copyAll(content)
             close()
@@ -241,7 +280,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     /// keeps running; its result comes back to the front.
     func windowDidResignKey(_ notification: Notification) {
         switch session.state {
-        case .approval, .result: close()
+        case .approval, .form, .result: close()
         case .working, .closed: break
         }
     }

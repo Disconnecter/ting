@@ -133,7 +133,26 @@ instead of starting anything.
   `~/Library/Application Support/Ting/micro-approvals.json` (with `TING_CONFIG`
   set: next to that file, e.g. `/tmp/ting-test.json.micro-approvals.json`), not
   in the micro-apps folder and not in `config.json`.
-- **Running:** a panel shows that the command runs. `Esc` stops it silently and
+- **Parameters:** a micro-app with parameters shows the parameter panel next
+  (after the approval, if one is needed): one field per parameter, in file order,
+  with its `prompt` as label. Required fields are always visible; optional ones
+  are behind `⌘O` and the options icon, filled with their default, and open at
+  once when every parameter is optional or a remembered optional value differs
+  from its default. `Tab` moves between the visible fields, `Return` runs from
+  any field, `Esc` closes without running or saving anything. An empty required
+  text field stops `Return` and is marked. A choice field lists its options under
+  the field: the arrows move the mark, letters filter, the marked option is the
+  value. A micro-app with one choice parameter opens as a list: choose and press
+  `Return`. A micro-app without parameters shows no parameter panel.
+- **Remembered values:** when the run starts, Ting saves the shown values by
+  micro-app id as plain text in
+  `~/Library/Application Support/Ting/micro-values.json` (with `TING_CONFIG` set:
+  next to that file, e.g. `/tmp/ting-test.json.micro-values.json`) and shows them
+  at the next start, a required text fully selected. A value that is no longer
+  one of the choices, or of a removed parameter, is dropped. `remember: false`
+  gives a clean form every time and saves nothing. Do not type secrets into a
+  remembered micro-app.
+- **Running:** after `Return` the same panel shows that the command runs. `Esc` stops it silently and
   leaves the clipboard as it was. After 60 seconds Ting stops the command and
   shows "stopped after 60 s" with the output that came before.
 - **Result:** `output.to: [panel]` shows stdout in the result panel;
