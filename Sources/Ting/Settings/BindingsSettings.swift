@@ -23,8 +23,15 @@ struct BindingsSettings: View {
 
     private var allRows: [BindingRow] {
         let issues = model.issues
+        let catalog = model.microCatalog
+        let folder = model.microStore.displayPath
         return BindingTree.flatten(model.config.items).map { binding in
-            BindingRow(binding: binding, issue: issues.first { $0.sequence == binding.sequence }?.message)
+            var issue = issues.first { $0.sequence == binding.sequence }?.message
+            // A binding to a missing or broken micro-app keeps the config valid; the row says why it does not work.
+            if issue == nil, case .micro(let id) = binding.item.action, !id.isEmpty {
+                issue = catalog.resolve(id).problem(id: id, folder: folder)
+            }
+            return BindingRow(binding: binding, issue: issue)
         }
     }
 
@@ -44,10 +51,19 @@ struct BindingsSettings: View {
             HStack(spacing: 8) {
                 MonoLabel(String(format: "%02d / bindings", allRows.filter { !$0.item.isGroup }.count), size: 10, tracking: 1)
                     .foregroundStyle(Color.tingAmber)
-                TextField("Filter by name, URL or keys", text: $query).textFieldStyle(.roundedBorder)
+                TextField("Filter by name, URL, micro-app or keys", text: $query).textFieldStyle(.roundedBorder)
                 Menu {
                     Button("Application…", action: addApplication)
                     Button("URL", action: addURL)
+                    Menu("Micro-app") {
+                        let choices = model.microCatalog.bindingChoices()
+                        if choices.isEmpty {
+                            Text("No micro-apps in \(model.microStore.displayPath)")
+                        }
+                        ForEach(choices) { choice in
+                            Button(choice.title) { add(.micro("", choice.name, choice.id)) }
+                        }
+                    }
                 } label: { Image(systemName: "plus") }
                     .menuStyle(.borderlessButton).fixedSize()
                     .accessibilityLabel("Add binding")
@@ -124,9 +140,36 @@ struct BindingsSettings: View {
             }
         case .url:
             TextField("URL", text: targetBinding(row)).textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
-        case .micro:
-            TextField("Micro-app id", text: targetBinding(row)).textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
+        case .micro(let id):
+            microPicker(row, id: id)
         }
+    }
+
+    /// The found micro-apps; a missing or broken current id stays in the list, marked, until another one is picked.
+    private func microPicker(_ row: BindingRow, id: String) -> some View {
+        let catalog = model.microCatalog
+        let choices = catalog.bindingChoices(current: id)
+        return Picker("Micro-app", selection: Binding(
+            get: { id },
+            set: { newID in
+                guard newID != id, !newID.isEmpty else { return }
+                model.updateBinding(at: row.sequence) { item in
+                    let oldName = catalog.bindingName(label: "", id: id)
+                    item.action = .micro(newID)
+                    // A label that only repeated the old micro-app's name follows the new one.
+                    if item.label.isEmpty || item.label == oldName || item.label == id {
+                        item.label = catalog.bindingName(label: "", id: newID)
+                    }
+                }
+            })) {
+            if id.isEmpty { Text("Choose a micro-app").tag("") }
+            ForEach(choices) { choice in
+                Text(choice.title).tag(choice.id)
+            }
+        }
+        .labelsHidden()
+        .controlSize(.small)
+        .accessibilityLabel("Micro-app for \(row.item.label)")
     }
 
     private func target(of item: Item) -> String {

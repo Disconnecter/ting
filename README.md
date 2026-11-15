@@ -119,7 +119,7 @@ the log `/tmp/ting-test.json.micro-errors.log`.
 
 ### Starting a micro-app
 
-Bind a key to a micro-app by its id in `config.json`:
+Bind a key to a micro-app in **Settings › Bindings**, or by its id in `config.json`:
 `{"key": "j", "label": "JSON", "micro": "format-json"}`. An item has exactly one
 of `items`, `app`, `url` and `micro`. selecta shows the label, else the
 micro-app's `name`, else the id. A binding to an id that is not loaded keeps the
@@ -184,8 +184,13 @@ Spotlight.
   keys and press **Done** (`Space` and `Return` are recorded as keys). Missing
   groups are created and empty groups are removed automatically. If a shorter
   sequence already opens something, Ting offers to turn it into a group.
+  **+ › Micro-app** binds a key to one of the found micro-apps (name and id) and
+  writes it as `"micro": "<id>"`; the picker follows the folder live. A binding to
+  an id that is not loaded is marked and can be changed or deleted.
 - **Advanced:** the config file location, reveal, open, reload, import and export,
-  and the micro-apps folder with the list of micro-app errors.
+  and the micro-apps folder: the list of found micro-apps (name, id, file, good
+  or broken), the list of micro-app errors, and **Open Folder in Finder**, which
+  creates the folder when it is missing.
 
 ## Configuration file
 

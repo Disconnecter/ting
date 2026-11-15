@@ -146,13 +146,21 @@ final class AppModel {
         if microAppIssues != catalog.issues { microAppIssues = catalog.issues }
     }
 
-    func revealMicroAppsFolder() {
+    /// The loaded micro-apps, for the bindings editor and the Settings list.
+    var microCatalog: MicroAppCatalog { MicroAppCatalog(entries: microApps) }
+
+    /// Opens the micro-apps folder in Finder and creates it first when it is missing. The folder
+    /// watch sees the new folder and loads it. Returns an error message when the folder cannot
+    /// be created or opened.
+    @discardableResult
+    func openMicroAppsFolder() -> String? {
         let url = microStore.folderURL
-        if FileManager.default.fileExists(atPath: url.path) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting([store.url])
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            return "Cannot create \(microStore.displayPath): \(error.localizedDescription)"
         }
+        return NSWorkspace.shared.open(url) ? nil : "Cannot open \(microStore.displayPath) in Finder."
     }
 
     // MARK: Editing (every edit writes the file atomically)
