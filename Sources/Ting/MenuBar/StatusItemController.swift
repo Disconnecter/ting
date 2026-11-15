@@ -36,7 +36,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func updateButton() {
         statusItem.isVisible = model.config.showMenuBarIcon
-        let problem = model.configError != nil || model.hotkeyProblem != nil || model.launchaHotkeyProblem != nil
+        let problem = model.needsAttention
         statusItem.button?.appearsDisabled = !model.isLeaderActive
         statusItem.button?.toolTip = model.isPaused ? "Ting is paused"
             : model.config.leader == nil ? "Ting: no leader key yet"
@@ -62,6 +62,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let error = model.configError ?? model.issues.first(where: { !launchaIssues.contains($0.kind) })?.message {
             menu.addItem(note(error, symbol: "exclamationmark.triangle"))
         }
+        if let issue = model.microAppIssues.first {
+            let files = Set(model.microAppIssues.map(\.file)).count
+            let text = files == 1 ? "Micro-app \(issue.file), line \(issue.line): \(issue.message)"
+                : "\(files) micro-app files have errors. See Settings › Advanced."
+            menu.addItem(note(text, symbol: "exclamationmark.triangle"))
+        }
 
         menu.addItem(.separator())
         let launcha = item("Open launcha", #selector(openLauncha))
@@ -83,7 +89,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(showSettings), key: ","))
         menu.addItem(item("Open Config File", #selector(openConfig)))
-        menu.addItem(item("Reload Config", #selector(reloadConfig)))
+        menu.addItem(item("Reload Config and Micro-apps", #selector(reloadConfig)))
 
         menu.addItem(.separator())
         menu.addItem(item("About Ting", #selector(showAbout)))

@@ -19,6 +19,15 @@ struct SettingsRoot: View {
                     .padding(.vertical, 8)
                     .background(Color.tingAmber.opacity(0.1))
             }
+            if !model.microAppIssues.isEmpty {
+                Label("Some micro-app files have errors. See Advanced.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.tingAmber)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.tingAmber.opacity(0.1))
+            }
             TabView {
                 GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
                 BindingsSettings().tabItem { Label("Bindings", systemImage: "keyboard") }
@@ -165,6 +174,7 @@ private struct AdvancedSettings: View {
                 Text("Ting reloads the file when it changes on disk. Set TING_CONFIG to use another file.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: { MonoLabel("Configuration file", size: 9).foregroundStyle(Color.tingAmber) }
+            MicroAppsSection()
             Section {
                 HStack {
                     Button("Export…", action: export)
@@ -176,7 +186,7 @@ private struct AdvancedSettings: View {
             } header: { MonoLabel("Backup", size: 9).foregroundStyle(Color.tingAmber) }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 320)
+        .frame(width: 560, height: 560)
     }
 
     private func export() {
@@ -206,5 +216,51 @@ private struct AdvancedSettings: View {
         } catch {
             message = "Import failed: \(error.localizedDescription)"
         }
+    }
+}
+
+// MARK: - Micro-apps
+
+private struct MicroAppsSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Section {
+            LabeledContent("Folder") {
+                Text(model.microStore.displayPath).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+            }
+            let working = model.microApps.filter { !$0.isBroken }.count
+            let broken = model.microApps.count - working
+            Text(model.microApps.isEmpty ? "No micro-apps."
+                 : "\(working) working, \(broken) broken.")
+                .font(.caption).foregroundStyle(.secondary)
+            if model.microAppIssues.isEmpty {
+                Label("No errors.", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(model.microAppIssues.enumerated()), id: \.offset) { _, issue in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("\(issue.file):\(issue.line)")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Color.tingAmber)
+                                Text(issue.message).font(.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                }
+                .frame(maxHeight: 140)
+            }
+            HStack {
+                Button("Reveal in Finder") { model.revealMicroAppsFolder() }
+                Spacer()
+                Button("Reload") { model.reload() }
+            }
+            Text("One micro-app per .yaml file. Ting loads the folder again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
+                .font(.caption).foregroundStyle(.secondary)
+        } header: { MonoLabel("Micro-apps", size: 9).foregroundStyle(Color.tingAmber) }
     }
 }
