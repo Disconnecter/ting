@@ -90,3 +90,37 @@ private func app(_ id: String) -> MicroApp {
         #expect(catalog.entries.isEmpty && catalog.issues.isEmpty && catalog.apps.isEmpty)
     }
 }
+
+@Suite struct MicroAppChoiceTests {
+    private var catalog: MicroAppCatalog {
+        MicroAppCatalog.load([
+            ("zeta.yaml", "name: Zeta app\n" + good()),
+            ("alpha.yaml", good()),
+            ("broken.yaml", "format: ting.microapp/2\n"),
+        ])
+    }
+
+    @Test func listsExactlyTheWorkingMicroApps() {
+        let choices = catalog.bindingChoices()
+        #expect(choices.map(\.id) == ["alpha", "zeta"])
+        #expect(choices.map(\.title) == ["alpha", "Zeta app · zeta"])
+        #expect(choices.allSatisfy { $0.state == .working })
+        #expect(catalog.bindingChoices(current: "alpha") == choices)
+        #expect(catalog.bindingChoices(current: "") == choices)
+    }
+
+    @Test func aMissingOrBrokenCurrentIdComesFirstAndIsMarked() {
+        let missing = catalog.bindingChoices(current: "gone")
+        #expect(missing.map(\.id) == ["gone", "alpha", "zeta"])
+        #expect(missing[0].state == .missing)
+        #expect(missing[0].title == "gone (missing)")
+        let broken = catalog.bindingChoices(current: "broken")
+        #expect(broken[0].state == .broken)
+        #expect(broken[0].title == "broken (broken)")
+    }
+
+    @Test func anEmptyFolderStillShowsTheCurrentId() {
+        #expect(MicroAppCatalog().bindingChoices().isEmpty)
+        #expect(MicroAppCatalog().bindingChoices(current: "x").map(\.state) == [.missing])
+    }
+}
