@@ -30,6 +30,9 @@ latest published version.
 - Ting opens apps by bundle identifier and URLs with the default handler chosen
   by macOS. It does not run shell commands and does not pass arguments to apps.
   A URL scheme handler (for example `raycast://`) may perform its own actions.
+- Micro-apps (described in `docs/micro-apps/FORMAT.md`) are not run by this
+  version. Their format passes parameters only as `TING_*` environment variables
+  and the clipboard only as stdin, never as text pasted into the command.
 - Ting has no accounts, analytics or project servers. Its only network access is
   Sparkle's update check against the public feed
   `https://github.com/bobuk-io/ting/releases/latest/download/appcast.xml` and the

@@ -1,0 +1,24 @@
+format: ting.microapp/2
+name: Change case
+description: Change the case of the clipboard text to upper, lower or title case.
+tools: [perl]
+
+params:
+  - name: mode
+    type: choice
+    required: false
+    default: upper
+    choices: [upper, lower, title]
+    prompt: Case
+
+input: clipboard
+# perl -CS reads and writes UTF-8, so non-Latin letters change case too.
+command: |
+  case "$TING_MODE" in
+    upper) perl -CS -pe '$_ = uc' ;;
+    lower) perl -CS -pe '$_ = lc' ;;
+    title) perl -CS -pe 's/(\w)(\w*)/\u$1\L$2/g' ;;
+  esac
+output:
+  to: [clipboard, panel]
+  as: text
