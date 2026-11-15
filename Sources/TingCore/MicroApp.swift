@@ -115,8 +115,14 @@ public struct MicroAppIssue: Equatable, Sendable, CustomStringConvertible {
 public struct MicroAppFailure: Error, Equatable, Sendable, CustomStringConvertible {
     /// Sorted by line; never empty.
     public var issues: [MicroAppIssue]
+    /// The `id` the checker could read from the file: a kebab-case text value. `nil` when the file
+    /// is not valid YAML or its `id` is missing or not valid.
+    public var id: String?
 
-    public init(issues: [MicroAppIssue]) { self.issues = issues }
+    public init(issues: [MicroAppIssue], id: String? = nil) {
+        self.issues = issues
+        self.id = id
+    }
 
     public var description: String { issues.map(\.description).joined(separator: "\n") }
 }
@@ -147,7 +153,7 @@ public enum MicroAppChecker {
         let app = run.check(root)
         if run.issues.isEmpty, let app { return .success(app) }
         let sorted = run.issues.enumerated().sorted { ($0.element.line, $0.offset) < ($1.element.line, $1.offset) }.map(\.element)
-        return .failure(MicroAppFailure(issues: sorted))
+        return .failure(MicroAppFailure(issues: sorted, id: run.explicitID))
     }
 
     /// `a-z0-9` words joined by single `-`.
@@ -167,6 +173,8 @@ public enum MicroAppChecker {
     private struct Run {
         let file: String
         var issues: [MicroAppIssue] = []
+        /// The `id` key of the file when it is a kebab-case text value.
+        var explicitID: String?
 
         init(file: String) { self.file = file }
 
@@ -254,8 +262,11 @@ public enum MicroAppChecker {
             if let e = top["id"], let value = string(e.value, "id") {
                 if !MicroAppChecker.isKebabCase(value) {
                     fail(e.value.line, "`id` `\(value)` must be kebab-case: a-z and 0-9 words joined by `-`")
-                } else if let stem, value != stem {
-                    fail(e.value.line, "`id` `\(value)` must equal the file name `\(stem)`; rename the file or remove `id`")
+                } else {
+                    explicitID = value
+                    if let stem, value != stem {
+                        fail(e.value.line, "`id` `\(value)` must equal the file name `\(stem)`; rename the file or remove `id`")
+                    }
                 }
                 id = value
             } else if top["id"] == nil, let stem, !MicroAppChecker.isKebabCase(stem) {
