@@ -226,6 +226,8 @@ struct ItemIcon: View {
                 Image(systemName: "globe").resizable().foregroundStyle(.secondary)
             case .group:
                 Image(systemName: "folder").resizable().foregroundStyle(.secondary)
+            case .micro:
+                Image(systemName: "terminal").resizable().foregroundStyle(.secondary)
             }
         }
         .scaledToFit()

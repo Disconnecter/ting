@@ -42,7 +42,7 @@ final class MicroAppStore {
     /// Reads every `*.yaml` file of the folder. A missing folder gives an empty list, not an error.
     @discardableResult
     func load() -> MicroAppCatalog {
-        catalog = MicroAppCatalog.build(readFiles())
+        catalog = MicroAppCatalog.build(hashed: readFiles())
         writeLog()
         return catalog
     }
@@ -63,22 +63,24 @@ final class MicroAppStore {
 
     // MARK: Private
 
-    private func readFiles() -> [(file: String, result: Result<MicroApp, MicroAppFailure>)] {
+    private func readFiles() -> [(file: String, result: Result<MicroApp, MicroAppFailure>, hash: String)] {
         let manager = FileManager.default
         guard let names = try? manager.contentsOfDirectory(atPath: folderURL.path) else { return [] }
         return names.filter(Self.isMicroAppFile).compactMap { name in
             let url = folderURL.appendingPathComponent(name)
             var isDirectory: ObjCBool = false
             guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else { return nil }
-            func failure(_ message: String) -> (String, Result<MicroApp, MicroAppFailure>) {
-                (name, .failure(MicroAppFailure(issues: [MicroAppIssue(file: name, line: 1, message: message)])))
+            func failure(_ message: String, hash: String = "") -> (String, Result<MicroApp, MicroAppFailure>, String) {
+                (name, .failure(MicroAppFailure(issues: [MicroAppIssue(file: name, line: 1, message: message)])), hash)
             }
             let size = (try? manager.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
             if size > Self.maxFileSize { return failure("the file is larger than \(Self.maxFileSize / 1024) KB") }
             do {
                 let data = try Data(contentsOf: url)
-                guard let text = String(data: data, encoding: .utf8) else { return failure("the file is not UTF-8 text") }
-                return (name, MicroAppChecker.check(text, fileName: name))
+                // The hash is of exactly the bytes that were checked, so an approval covers what runs.
+                let hash = MicroAppApprovals.hash(data)
+                guard let text = String(data: data, encoding: .utf8) else { return failure("the file is not UTF-8 text", hash: hash) }
+                return (name, MicroAppChecker.check(text, fileName: name), hash)
             } catch {
                 return failure("cannot read the file: \(error.localizedDescription)")
             }

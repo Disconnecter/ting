@@ -1,0 +1,257 @@
+// One micro-app start: approval panel → working state → result (panel, clipboard or both).
+// Only one flow is open at a time; a new start closes the open one and stops its command.
+import AppKit
+import SwiftUI
+import TingCore
+
+/// The flow window: a non-activating panel that takes keyboard focus, like launcha.
+/// ↩, ⌘↩ and Esc go to the flow; other keys go to the panel's views (the result text).
+final class MicroAppFlowPanel: NSPanel {
+    enum Key { case enter, commandEnter, escape }
+    var onKey: ((Key) -> Void)?
+
+    init() {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
+                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        isFloatingPanel = true
+        level = .popUpMenu
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = false
+        hidesOnDeactivate = false
+        becomesKeyOnlyIfNeeded = false
+        isReleasedWhenClosed = false
+        animationBehavior = .none
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown {
+            let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+            switch event.keyCode {
+            case 53:
+                onKey?(.escape)
+                return
+            case 36, 76:
+                if flags.isEmpty { onKey?(.enter); return }
+                if flags == .command { onKey?(.commandEnter); return }
+                return
+            default:
+                break
+            }
+        }
+        super.sendEvent(event)
+    }
+
+    /// Ting has no Edit menu while it is not the active app: ⌘C and ⌘A go to the text here,
+    /// matched by the Latin layout. Every other ⌘ shortcut is swallowed, so ⌘Q never quits Ting.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard flags == .command else { return flags.contains(.command) ? true : super.performKeyEquivalent(with: event) }
+        switch KeyTranslator.latin(event.keyCode) {
+        case "c": NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
+        case "a": NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)
+        default: break
+        }
+        return true
+    }
+}
+
+/// What the flow panel shows now.
+@MainActor
+@Observable
+final class MicroAppFlowSession {
+    enum State: Equatable {
+        case closed
+        case approval(MicroApp, file: String)
+        case working(MicroApp)
+        case result(MicroAppPanelContent)
+    }
+
+    var state: State = .closed
+    var showHeader = true
+}
+
+@MainActor
+final class MicroAppFlowController: NSObject, NSWindowDelegate {
+    let session = MicroAppFlowSession()
+    /// Shows a short message (the 'Copied' toast, errors that fit two lines).
+    var onToast: ((String) -> Void)?
+    /// The micro-apps folder as the user sees it, for the 'not found' error.
+    var folderDisplay: () -> String = { "the micro-apps folder" }
+
+    private(set) var catalog = MicroAppCatalog()
+    private let approvals: MicroAppApprovalStore
+    private let runner: MicroAppRunner
+    private var panel: MicroAppFlowPanel?
+    private var task: Task<Void, Never>?
+    /// Bumped by every start and close, so a late result of a stopped flow is dropped.
+    private var generation = 0
+    /// The hash waiting for ⌘↩ in the approval panel.
+    private var pendingHash = ""
+
+    init(approvals: MicroAppApprovalStore? = nil, runner: MicroAppRunner = MicroAppRunner()) {
+        self.approvals = approvals ?? MicroAppApprovalStore()
+        self.runner = runner
+    }
+
+    var isOpen: Bool { session.state != .closed }
+
+    func setCatalog(_ catalog: MicroAppCatalog) {
+        self.catalog = catalog
+    }
+
+    func configure(_ config: Config) {
+        session.showHeader = config.showPanelHeader
+    }
+
+    /// Starts the micro-app bound as `id`. A missing or broken micro-app shows its error and starts nothing.
+    func start(id: String) {
+        close()
+        approvals.load()
+        switch MicroAppStartStep.first(id: id, catalog: catalog, approvals: approvals.approvals, folder: folderDisplay()) {
+        case .error(let message):
+            present(MicroAppResultPlan.error(title: id, message: message))
+        case .approve(let app, let hash):
+            pendingHash = hash
+            let file = catalog.resolve(id).entryFile ?? "\(app.id).yaml"
+            show(.approval(app, file: (folderDisplay() as NSString).appendingPathComponent(file)))
+        case .run(let app):
+            run(app)
+        }
+    }
+
+    /// Closes any panel and stops a running command, silently. The clipboard stays as it was.
+    func close() {
+        generation += 1
+        task?.cancel()
+        task = nil
+        pendingHash = ""
+        session.state = .closed
+        panel?.orderOut(nil)
+    }
+
+    // MARK: Steps
+
+    private func approve() {
+        guard case .approval(let app, _) = session.state else { return }
+        do {
+            try approvals.approve(id: app.id, hash: pendingHash)
+        } catch {
+            onToast?("Cannot save the approval: \(error.localizedDescription)")
+        }
+        run(app)
+    }
+
+    private func run(_ app: MicroApp) {
+        generation += 1
+        let current = generation
+        pendingHash = ""
+        show(.working(app))
+        let stdin = app.input == .clipboard ? (NSPasteboard.general.string(forType: .string) ?? "") : nil
+        let runner = self.runner
+        task = Task { [weak self] in
+            let result = await runner.run(app, stdin: stdin)
+            guard let self, self.generation == current, !Task.isCancelled else { return }
+            self.task = nil
+            self.present(MicroAppResultPlan.make(app: app, result: result, outputLimit: runner.outputLimit,
+                                                 timeLimit: runner.timeLimit))
+        }
+    }
+
+    private func present(_ plan: MicroAppResultPlan) {
+        if let text = plan.clipboard {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        switch plan.show {
+        case .nothing:
+            close()
+        case .toast(let message):
+            close()
+            onToast?(message)
+        case .panel(let content):
+            show(.result(content))
+        }
+    }
+
+    private func handle(_ key: MicroAppFlowPanel.Key) {
+        switch (session.state, key) {
+        case (.approval, .commandEnter):
+            approve()
+        case (.result(let content), .enter):
+            copyAll(content)
+            close()
+        case (_, .escape):
+            close()
+        default:
+            // ↩ in the approval panel does nothing: only ⌘↩ approves.
+            break
+        }
+    }
+
+    private func copyAll(_ content: MicroAppPanelContent) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(content.text, forType: .string)
+    }
+
+    // MARK: Panel
+
+    private func show(_ state: MicroAppFlowSession.State) {
+        session.state = state
+        let panel = self.panel ?? makePanel()
+        if !panel.isVisible {
+            let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
+            if let visible = screen?.visibleFrame {
+                // Near the upper third, like launcha.
+                let top = visible.maxY - max(40, visible.height * 0.16)
+                let height = max(240, min(680, top - visible.minY - 20))
+                let width: CGFloat = 640
+                panel.setFrame(NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: false)
+            }
+        }
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+    }
+
+    private func makePanel() -> MicroAppFlowPanel {
+        let panel = MicroAppFlowPanel()
+        panel.delegate = self
+        panel.onKey = { [weak self] key in self?.handle(key) }
+        let view = MicroAppFlowView(session: session,
+                                    onApprove: { [weak self] in self?.approve() },
+                                    onCopyAll: { [weak self] in
+                                        guard let self, case .result(let content) = self.session.state else { return }
+                                        self.copyAll(content)
+                                        self.close()
+                                    },
+                                    onDismiss: { [weak self] in self?.close() })
+        let hosting = NSHostingView(rootView: view)
+        hosting.sizingOptions = []
+        panel.contentView = hosting
+        self.panel = panel
+        return panel
+    }
+
+    /// A click elsewhere closes the approval (refused) and the result panel. A running command
+    /// keeps running; its result comes back to the front.
+    func windowDidResignKey(_ notification: Notification) {
+        switch session.state {
+        case .approval, .result: close()
+        case .working, .closed: break
+        }
+    }
+}
+
+private extension MicroAppResolution {
+    var entryFile: String? {
+        switch self {
+        case .working(_, let entry), .broken(let entry): entry.file
+        case .missing: nil
+        }
+    }
+}

@@ -124,6 +124,8 @@ struct BindingsSettings: View {
             }
         case .url:
             TextField("URL", text: targetBinding(row)).textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
+        case .micro:
+            TextField("Micro-app id", text: targetBinding(row)).textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
         }
     }
 
@@ -132,6 +134,7 @@ struct BindingsSettings: View {
         case .group: ""
         case .app(let bundleID): bundleID
         case .url(let url): url
+        case .micro(let id): id
         }
     }
 
@@ -148,6 +151,7 @@ struct BindingsSettings: View {
                         case .group: break
                         case .app: item.action = .app(text)
                         case .url: item.action = .url(text)
+                        case .micro: item.action = .micro(text)
                         }
                     }
                 })

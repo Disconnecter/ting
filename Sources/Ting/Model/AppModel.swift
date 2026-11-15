@@ -40,6 +40,8 @@ final class AppModel {
     @ObservationIgnored private let toast = ToastController()
     @ObservationIgnored private let launchaModel: LaunchaModel
     @ObservationIgnored private let launcha: LaunchaController
+    /// The one open micro-app flow: approval, working state and result.
+    @ObservationIgnored private let microFlow = MicroAppFlowController()
     /// Held-key guard for the launcha hotkey: a repeat while held never toggles twice.
     @ObservationIgnored private var launchaKey = LeaderDoubleTap(isEnabled: false)
     @ObservationIgnored private lazy var recordingGate = HotkeyRecordingGate { [weak self] in self?.setRecordingHotkey($0) }
@@ -105,6 +107,8 @@ final class AppModel {
         leader.onDoubleTap = { [weak self] in self?.launcha.open() }
         launchaModel.onWillOpen = { [weak self] in self?.playSound() }
         runner.onError = { [weak self] message in self?.toast.show(message) }
+        microFlow.onToast = { [weak self] message in self?.toast.show(message) }
+        microFlow.folderDisplay = { [weak self] in self?.microStore.displayPath ?? "the micro-apps folder" }
 
         if !store.fileExists {
             do {
@@ -136,6 +140,8 @@ final class AppModel {
     }
 
     private func applyMicroApps(_ catalog: MicroAppCatalog) {
+        leader.setMicroApps(catalog)
+        microFlow.setCatalog(catalog)
         if microApps != catalog.entries { microApps = catalog.entries }
         if microAppIssues != catalog.issues { microAppIssues = catalog.issues }
     }
@@ -266,6 +272,7 @@ final class AppModel {
         issues = ConfigValidator.validate(next)
         leader.configure(next)
         launcha.configure(next)
+        microFlow.configure(next)
         next.appearance.apply()
         applyHotkey()
         if next.launchAtLogin != previous.launchAtLogin {
@@ -309,13 +316,18 @@ final class AppModel {
         if config.playSound { tink?.play() }
     }
 
-    /// Opens a selecta binding and counts a successful launch once.
+    /// Opens a selecta binding and counts a successful launch once. A micro-app binding starts
+    /// its flow; a missing or broken micro-app only shows its error.
     private func run(_ item: Item) {
+        if case .micro(let id) = item.action {
+            microFlow.start(id: id)
+            return
+        }
         playSound()
         let id: String? = switch item.action {
         case .app(let bundleID): LaunchaCandidate.app(bundleID: bundleID, name: "").id
         case .url(let url): LaunchaCandidate.url(url, name: "").id
-        case .group: nil
+        case .group, .micro: nil
         }
         Task {
             let outcome = await runner.run(item)

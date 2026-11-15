@@ -44,8 +44,8 @@ copy from the ZIP, then open it again. Your settings and bindings are kept.
   nested as deep as you like. `Esc` closes the menu, `Delete` goes back one level.
 - **Actions:** open an app (an app that is already running comes to the front)
   or open a URL with its default handler — web links and app URL schemes such as
-  `raycast://` or `hascs://`. Shell commands are not bindings; they will run
-  only as [micro-apps](#micro-apps).
+  `raycast://` or `hascs://`, or start a [micro-app](#micro-apps). Shell
+  commands run only from approved micro-app files, never from config.json.
 - **Any keyboard layout:** bindings are stored by the Latin letter of the key, so
   they keep working with Russian, Ukrainian or any other layout. The menu shows
   the current layout's letter as a small hint next to the Latin one.
@@ -115,8 +115,37 @@ and `micro-errors.log` next to the config file holds one `file:line: message`
 line per problem (it is empty when all files are good). With `TING_CONFIG` set,
 both get the config file name in front, like the launcha files:
 `TING_CONFIG=/tmp/ting-test.json` uses the folder `/tmp/ting-test.json.micro/` and
-the log `/tmp/ting-test.json.micro-errors.log`. This version of Ting does not run
-micro-apps yet.
+the log `/tmp/ting-test.json.micro-errors.log`.
+
+### Starting a micro-app
+
+Bind a key to a micro-app by its id in `config.json`:
+`{"key": "j", "label": "JSON", "micro": "format-json"}`. An item has exactly one
+of `items`, `app`, `url` and `micro`. selecta shows the label, else the
+micro-app's `name`, else the id. A binding to an id that is not loaded keeps the
+config valid; selecta shows it as not working, and its key shows the error
+instead of starting anything.
+
+- **Approval:** before the first run, and again after any change of the file,
+  the approval panel shows the name, the file and the full command. `⌘Return`
+  approves and runs, `Esc` refuses; `Return` alone does nothing. Ting stores the
+  SHA-256 of the approved file content by micro-app id in
+  `~/Library/Application Support/Ting/micro-approvals.json` (with `TING_CONFIG`
+  set: next to that file, e.g. `/tmp/ting-test.json.micro-approvals.json`), not
+  in the micro-apps folder and not in `config.json`.
+- **Running:** a panel shows that the command runs. `Esc` stops it silently and
+  leaves the clipboard as it was. After 60 seconds Ting stops the command and
+  shows "stopped after 60 s" with the output that came before.
+- **Result:** `output.to: [panel]` shows stdout in the result panel;
+  `[clipboard]` copies it and shows "Copied"; both do both, with a "Copied" note
+  in the panel. An empty result copies nothing and shows "No output". A failing command always opens
+  the result panel with an error mark, the exit code, stderr and stdout, and
+  copies nothing. Output longer than 1 MB is cut, with a note. In the result
+  panel you can scroll and select text; `⌘C` copies the selection, `Return`
+  copies everything and closes, `Esc` closes. This version shows every output
+  style as plain text.
+- Only one micro-app is open at a time: a new start closes the open panel and
+  stops its command.
 
 ## Settings
 
