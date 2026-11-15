@@ -171,7 +171,7 @@ private struct AdvancedSettings: View {
                     Spacer()
                     Button("Reload") { model.reload() }
                 }
-                Text("Ting reloads the file when it changes on disk. Set TING_CONFIG to use another file.")
+                Text("Ting reloads the file when it changes on disk. Micro-apps live in \(model.microStore.displayPath), next to it. Set TING_CONFIG to use another file.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: { MonoLabel("Configuration file", size: 9).foregroundStyle(Color.tingAmber) }
             MicroAppsSection()
@@ -186,7 +186,7 @@ private struct AdvancedSettings: View {
             } header: { MonoLabel("Backup", size: 9).foregroundStyle(Color.tingAmber) }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 560)
+        .frame(width: 560, height: 640)
     }
 
     private func export() {
@@ -223,6 +223,7 @@ private struct AdvancedSettings: View {
 
 private struct MicroAppsSection: View {
     @Environment(AppModel.self) private var model
+    @State private var folderError: String?
 
     var body: some View {
         Section {
@@ -234,6 +235,9 @@ private struct MicroAppsSection: View {
             Text(model.microApps.isEmpty ? "No micro-apps."
                  : "\(working) working, \(broken) broken.")
                 .font(.caption).foregroundStyle(.secondary)
+            if !model.microApps.isEmpty {
+                MicroAppList(entries: model.microApps)
+            }
             if model.microAppIssues.isEmpty {
                 Label("No errors.", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
             } else {
@@ -255,12 +259,48 @@ private struct MicroAppsSection: View {
                 .frame(maxHeight: 140)
             }
             HStack {
-                Button("Reveal in Finder") { model.revealMicroAppsFolder() }
+                Button("Open Folder in Finder") { folderError = model.openMicroAppsFolder() }
                 Spacer()
                 Button("Reload") { model.reload() }
             }
-            Text("One micro-app per .yaml file. Ting loads the folder again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
+            if let folderError {
+                Text(folderError).font(.caption).foregroundStyle(Color.tingAmber)
+            }
+            Text("One micro-app per .yaml file. Ting creates the folder when you open it, loads it again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
                 .font(.caption).foregroundStyle(.secondary)
         } header: { MonoLabel("Micro-apps", size: 9).foregroundStyle(Color.tingAmber) }
+    }
+}
+
+/// Read-only: every file of the micro-apps folder with its name, id and state.
+private struct MicroAppList: View {
+    let entries: [MicroAppEntry]
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+            GridRow {
+                ForEach(["Name", "Id", "File", "State"], id: \.self) { title in
+                    MonoLabel(title, size: 9, weight: .regular, tracking: 1).foregroundStyle(.secondary)
+                }
+            }
+            ForEach(entries, id: \.file) { entry in
+                GridRow {
+                    Text(entry.app?.shownName ?? "—").lineLimit(1)
+                    Text(entry.app?.id ?? entry.fileID).font(.system(size: 11, design: .monospaced)).lineLimit(1)
+                    Text(entry.file).font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                    if entry.isBroken {
+                        Label("broken", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color.tingAmber)
+                            .help(entry.issues.first.map { "line \($0.line): \($0.message)" } ?? "")
+                    } else {
+                        Label("good", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

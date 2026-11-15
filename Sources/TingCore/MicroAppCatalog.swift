@@ -145,3 +145,47 @@ public enum MicroAppResolution: Equatable, Sendable {
         }
     }
 }
+
+/// One entry of the micro-app picker of the bindings editor.
+public struct MicroAppChoice: Equatable, Sendable, Identifiable {
+    public enum State: Equatable, Sendable {
+        /// A loaded micro-app.
+        case working
+        /// The binding's current id, which only a broken file has.
+        case broken
+        /// The binding's current id, which no file has.
+        case missing
+    }
+
+    public var id: String
+    /// The shown name: the micro-app's `name`, else its id.
+    public var name: String
+    public var state: State
+
+    public init(id: String, name: String, state: State) {
+        self.id = id
+        self.name = name
+        self.state = state
+    }
+
+    /// `name · id`, or the id with its state when it does not work.
+    public var title: String {
+        switch state {
+        case .working: name == id ? id : "\(name) · \(id)"
+        case .broken: "\(id) (broken)"
+        case .missing: "\(id) (missing)"
+        }
+    }
+}
+
+extension MicroAppCatalog {
+    /// The picker of a micro-app binding: every working micro-app in file-name order; when
+    /// `current` is not one of them (a broken file or no file), it comes first, marked, so the
+    /// editor can show it and the person can pick another one. An empty `current` adds nothing.
+    public func bindingChoices(current: String? = nil) -> [MicroAppChoice] {
+        let working = apps.map { MicroAppChoice(id: $0.id, name: $0.shownName, state: .working) }
+        guard let current, !current.isEmpty, !working.contains(where: { $0.id == current }) else { return working }
+        let state: MicroAppChoice.State = if case .broken = resolve(current) { .broken } else { .missing }
+        return [MicroAppChoice(id: current, name: current, state: state)] + working
+    }
+}
