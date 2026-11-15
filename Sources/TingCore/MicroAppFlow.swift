@@ -171,7 +171,7 @@ public struct MicroAppResultPlan: Equatable, Sendable {
             }
             let clipboard = toClipboard ? text : nil
             guard toPanel else {
-                let toast = output.stdoutCut ? "\(copiedNote), \(cutNote(limit: outputLimit))" : copiedNote
+                let toast = ([copiedNote] + cut(output)).joined(separator: ", ")
                 return MicroAppResultPlan(clipboard: clipboard, show: .toast(toast))
             }
             let notes = (toClipboard ? [copiedNote] : []) + cut(output)

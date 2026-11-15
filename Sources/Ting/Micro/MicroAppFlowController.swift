@@ -48,12 +48,17 @@ final class MicroAppFlowPanel: NSPanel {
     }
 
     /// Ting has no Edit menu while it is not the active app: ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z go to the text
-    /// here, and ⌘O shows the optional parameters, matched by the Latin layout. Every other ⌘ shortcut
-    /// is swallowed, so ⌘Q never quits Ting.
+    /// here, and ⌘O shows the optional parameters, matched by the Latin layout. ⌘Return and ⌘Enter
+    /// confirm. Every other ⌘ shortcut is swallowed, so ⌘Q never quits Ting.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         guard flags == .command else { return flags.contains(.command) ? true : super.performKeyEquivalent(with: event) }
+        // AppKit sends Command shortcuts here before `sendEvent`, so Cmd+Enter is handled here.
+        if event.keyCode == 36 || event.keyCode == 76 {
+            onKey?(.commandEnter)
+            return true
+        }
         switch KeyTranslator.latin(event.keyCode) {
         case "c": NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
         case "x": NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self)
@@ -85,6 +90,8 @@ final class MicroAppFlowSession {
     /// The open parameter panel; set only while `state` is `.form`.
     var form: MicroAppFormModel?
     var showHeader = true
+    /// The highest parameter form height in the current panel; beyond it the form scrolls.
+    var formMaxHeight = CGFloat(MicroAppFormLayout.maxFormHeight(panelHeight: MicroAppFormLayout.panelCap))
 }
 
 @MainActor
@@ -241,18 +248,19 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     // MARK: Panel
 
     private func show(_ state: MicroAppFlowSession.State) {
-        session.state = state
         let panel = self.panel ?? makePanel()
         if !panel.isVisible {
             let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
             if let visible = screen?.visibleFrame {
                 // Near the upper third, like launcha.
                 let top = visible.maxY - max(40, visible.height * 0.16)
-                let height = max(240, min(680, top - visible.minY - 20))
+                let height = max(240, min(CGFloat(MicroAppFormLayout.panelCap), top - visible.minY - 20))
                 let width: CGFloat = 640
                 panel.setFrame(NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: false)
             }
         }
+        session.formMaxHeight = CGFloat(MicroAppFormLayout.maxFormHeight(panelHeight: Double(panel.frame.height)))
+        session.state = state
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
     }

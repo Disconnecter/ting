@@ -158,6 +158,28 @@ public struct MicroAppForm: Equatable, Sendable {
         }
     }
 
+    /// Why Enter cannot run yet.
+    public enum Block: Equatable, Sendable {
+        /// A required text field is empty.
+        case emptyRequired
+        /// The letters typed in a choice field match no option, so no option is shown as the value.
+        case noOption
+    }
+
+    /// The first field, in file order, that stops Enter: an empty required text, or a choice field
+    /// whose typed letters (`queries`, by field index) match no option. That field gets the focus and
+    /// the mark; `nil` means Enter runs with `values`.
+    public func firstBlocked(queries: [Int: String] = [:]) -> (index: Int, block: Block)? {
+        for index in fields.indices {
+            if index == firstMissingRequired { return (index, .emptyRequired) }
+            if let choices = fields[index].choices, let query = queries[index],
+               MicroAppChoiceFilter.options(choices, matching: query).isEmpty {
+                return (index, .noOption)
+            }
+        }
+        return nil
+    }
+
     /// The shown values by parameter name: what the command gets as `TING_` variables and what is
     /// remembered. A hidden optional field gives its shown value too (its default unless changed);
     /// an optional text made empty gives the empty text.
@@ -190,5 +212,30 @@ public enum MicroAppChoiceFilter {
         guard !filtered.isEmpty else { return nil }
         guard let position = filtered.firstIndex(of: current) else { return filtered.first }
         return filtered[min(max(position + step, 0), filtered.count - 1)]
+    }
+}
+
+/// The height rules of the parameter panel: the form scrolls inside the flow panel's cap.
+public enum MicroAppFormLayout {
+    /// The flow panel is never taller than this.
+    public static let panelCap: Double = 680
+    /// The card's title, footer, paddings and shadow around the form.
+    public static let chrome: Double = 150
+    /// The smallest form height, so a low screen still shows a field.
+    public static let minimumFormHeight: Double = 80
+
+    /// The highest form height inside a flow panel of `panelHeight` points.
+    public static func maxFormHeight(panelHeight: Double) -> Double {
+        max(minimumFormHeight, min(panelHeight, panelCap) - chrome)
+    }
+
+    /// The shown form height: the content height, but never more than the max; beyond it the form scrolls.
+    public static func formHeight(content: Double, panelHeight: Double) -> Double {
+        min(content, maxFormHeight(panelHeight: panelHeight))
+    }
+
+    /// `true` when the content is taller than the space and the form must scroll.
+    public static func scrolls(content: Double, panelHeight: Double) -> Bool {
+        content > maxFormHeight(panelHeight: panelHeight)
     }
 }

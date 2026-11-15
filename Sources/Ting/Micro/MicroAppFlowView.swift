@@ -28,7 +28,7 @@ struct MicroAppFlowView: View {
             case .form:
                 if let model = session.form {
                 Card(title: model.app.shownName, showHeader: session.showHeader, footer: formFooter(model.form)) {
-                    MicroAppFormBody(model: model)
+                    MicroAppFormBody(model: model, maxHeight: session.formMaxHeight)
                 }
                 .padding(.top, 8)
                 }

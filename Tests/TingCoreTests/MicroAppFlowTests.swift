@@ -217,6 +217,26 @@ private func app(to targets: [MicroApp.OutputTarget], style: MicroApp.OutputStyl
         #expect(MicroAppResultPlan.cutNote(limit: 16) == "output cut at 16 bytes")
     }
 
+    @Test func clipboardOnlyToastShowsTheCutMarkWhenOnlyStderrWasCut() {
+        let output = MicroAppRunOutput(stdout: "result", stderr: "noise", stderrCut: true)
+        let plan = MicroAppResultPlan.make(app: app(to: [.clipboard]), result: .success(output))
+        #expect(plan == MicroAppResultPlan(clipboard: "result", show: .toast("Copied, output cut at 1 MB")))
+        let both = MicroAppRunOutput(stdout: "result", stderr: "noise", stdoutCut: true, stderrCut: true)
+        #expect(MicroAppResultPlan.make(app: app(to: [.clipboard]), result: .success(both))
+            == MicroAppResultPlan(clipboard: "result", show: .toast("Copied, output cut at 1 MB")))
+        let small = MicroAppResultPlan.make(app: app(to: [.clipboard]), result: .success(output), outputLimit: 16)
+        #expect(small.show == .toast("Copied, output cut at 16 bytes"))
+    }
+
+    @Test func clipboardOnlyEmptyOutputIsExactlyNoOutput() {
+        for stderrCut in [false, true] {
+            let output = MicroAppRunOutput(stdout: "", stderr: "noise", stderrCut: stderrCut)
+            let plan = MicroAppResultPlan.make(app: app(to: [.clipboard]), result: .success(output))
+            #expect(plan.clipboard == nil)
+            #expect(plan == MicroAppResultPlan(show: .toast("No output")))
+        }
+    }
+
     @Test func cancelledShowsNothingAndCopiesNothing() {
         #expect(MicroAppResultPlan.make(app: app(to: [.clipboard]), result: .cancelled(ok)) == MicroAppResultPlan(show: .nothing))
     }

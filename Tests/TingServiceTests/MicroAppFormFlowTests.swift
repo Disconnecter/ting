@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 import TingCore
 @testable import Ting
@@ -131,5 +132,65 @@ final class MicroAppFormFlowTests: XCTestCase {
     func testAppWithoutParametersHasNoForm() throws {
         let app = try example("format-json")
         XCTAssertTrue(MicroAppForm.start(app, remembered: MicroAppRememberedValues()).isEmpty)
+    }
+
+    // MARK: Review fixes
+
+    func testInterleavedOptionalFieldRendersBetweenTheRequiredOnes() {
+        let app = MicroApp(id: "mixed", description: "Mixed.",
+                           params: [.init(name: "a", kind: .text, required: true, prompt: "A"),
+                                    .init(name: "b", kind: .text, required: false, defaultValue: "", prompt: "B"),
+                                    .init(name: "c", kind: .text, required: true, prompt: "C")],
+                           input: .none, command: "echo $TING_A $TING_B $TING_C", output: .init(targets: [.panel]))
+        let model = MicroAppFormModel(app: app, form: MicroAppForm.start(app, remembered: MicroAppRememberedValues()))
+        model.toggleOptional()
+        // The view renders exactly `visibleIndexes`; Tab follows the same order.
+        XCTAssertEqual(model.form.visibleIndexes.map { model.form.fields[$0].param.shownPrompt }, ["A", "B", "C"])
+        model.focus(0)
+        model.focusNext(1)
+        XCTAssertEqual(model.focus, 1)
+        model.focusNext(1)
+        XCTAssertEqual(model.focus, 2)
+    }
+
+    func testNoMatchFilterDoesNotRunTheHiddenValue() throws {
+        let app = try example("change-case")
+        let model = MicroAppFormModel(app: app, form: MicroAppForm.start(app, remembered: MicroAppRememberedValues()))
+        model.setText("zzz", at: 0)
+        XCTAssertTrue(model.filtered(0).isEmpty)
+        XCTAssertNil(model.submit(), "Enter must not run 'upper' unseen")
+        XCTAssertEqual(model.missing, 0)
+        XCTAssertEqual(model.mark?.block, .noOption)
+        model.setText("ti", at: 0)
+        XCTAssertNil(model.missing)
+        XCTAssertEqual(model.submit(), ["mode": "title"])
+    }
+
+    func testFormTallerThanTheWindowScrollsWithinTheCap() throws {
+        let params = (0..<30).map { MicroApp.Param(name: "p\($0)", kind: .text, required: true, prompt: "Field \($0)") }
+        let app = MicroApp(id: "tall", description: "Tall.", params: params, input: .none,
+                           command: params.map { "echo $\($0.environmentName)" }.joined(separator: "; "),
+                           output: .init(targets: [.panel]))
+        let model = MicroAppFormModel(app: app, form: MicroAppForm.start(app, remembered: MicroAppRememberedValues()))
+        let cap = CGFloat(MicroAppFormLayout.maxFormHeight(panelHeight: 400))
+        XCTAssertEqual(cap, 250)
+
+        func height(maxHeight: CGFloat) -> CGFloat {
+            let hosting = NSHostingView(rootView: MicroAppFormBody(model: model, maxHeight: maxHeight).frame(width: 540))
+            hosting.frame = NSRect(x: 0, y: 0, width: 540, height: 4000)
+            for _ in 0..<5 {
+                hosting.layoutSubtreeIfNeeded()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            }
+            return hosting.fittingSize.height
+        }
+        let natural = height(maxHeight: 100_000)
+        XCTAssertGreaterThan(natural, cap * 2, "30 fields are taller than the window")
+        XCTAssertLessThanOrEqual(height(maxHeight: cap), cap + 1, "the form scrolls inside the cap")
+
+        // Enter on the last empty field focuses it, so the scroll view brings it into view.
+        for index in 0..<29 { model.setText("v", at: index) }
+        XCTAssertNil(model.submit())
+        XCTAssertEqual(model.focus, 29)
     }
 }

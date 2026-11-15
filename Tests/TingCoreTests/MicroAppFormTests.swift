@@ -172,3 +172,53 @@ private let changeCase = MicroApp(
         #expect(MicroAppChoiceFilter.move("A", by: 1, in: ["MX", "TXT"]) == "MX")
     }
 }
+
+private let interleaved = MicroApp(
+    id: "mixed", description: "Mixed.",
+    params: [
+        .init(name: "a", kind: .text, required: true, prompt: "A"),
+        .init(name: "b", kind: .choice(["x", "y"]), required: false, defaultValue: "x", prompt: "B"),
+        .init(name: "c", kind: .text, required: true, prompt: "C"),
+    ],
+    input: .none, command: "echo $TING_A $TING_B $TING_C", output: .init(targets: [.panel]))
+
+@Suite struct MicroAppFormReviewTests {
+    @Test func interleavedFieldsStayInFileOrder() {
+        var form = MicroAppForm.start(interleaved, remembered: MicroAppRememberedValues())
+        #expect(form.visibleIndexes.map { form.fields[$0].param.shownPrompt } == ["A", "C"])
+        form.optionalOpen = true
+        #expect(form.visibleIndexes.map { form.fields[$0].param.shownPrompt } == ["A", "B", "C"])
+        #expect(form.nextVisible(after: 0) == 1)
+        #expect(form.nextVisible(after: 1) == 2)
+    }
+
+    @Test func choiceFilterWithNoMatchBlocksEnter() {
+        let form = MicroAppForm.start(changeCase, remembered: MicroAppRememberedValues())
+        #expect(form.firstBlocked() == nil)
+        #expect(form.firstBlocked(queries: [0: "lo"]) == nil)
+        let blocked = form.firstBlocked(queries: [0: "zzz"])
+        #expect(blocked?.index == 0)
+        #expect(blocked?.block == .noOption)
+    }
+
+    @Test func firstBlockedFollowsFileOrder() {
+        var form = MicroAppForm.start(interleaved, remembered: MicroAppRememberedValues())
+        form.fields[0].value = "ok"
+        let blocked = form.firstBlocked(queries: [1: "q"])
+        #expect(blocked?.index == 1)
+        #expect(blocked?.block == .noOption)
+        let empty = form.firstBlocked()
+        #expect(empty?.index == 2)
+        #expect(empty?.block == .emptyRequired)
+    }
+
+    @Test func tallFormScrollsInsideTheCap() {
+        #expect(MicroAppFormLayout.maxFormHeight(panelHeight: 680) == 530)
+        #expect(MicroAppFormLayout.maxFormHeight(panelHeight: 2000) == 530)
+        #expect(MicroAppFormLayout.maxFormHeight(panelHeight: 200) == 80)
+        #expect(MicroAppFormLayout.formHeight(content: 300, panelHeight: 680) == 300)
+        #expect(!MicroAppFormLayout.scrolls(content: 300, panelHeight: 680))
+        #expect(MicroAppFormLayout.formHeight(content: 2400, panelHeight: 680) == 530)
+        #expect(MicroAppFormLayout.scrolls(content: 2400, panelHeight: 680))
+    }
+}

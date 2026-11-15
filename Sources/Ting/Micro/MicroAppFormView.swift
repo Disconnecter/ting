@@ -5,7 +5,8 @@ import AppKit
 import SwiftUI
 import TingCore
 
-/// The form of one start: the pure `MicroAppForm` plus focus, typed filters and the missing mark.
+/// The form of one start: the pure `MicroAppForm` plus focus, typed filters and the mark of the
+/// field that stopped Enter.
 @MainActor
 @Observable
 final class MicroAppFormModel {
@@ -15,8 +16,9 @@ final class MicroAppFormModel {
     private(set) var focus: Int
     /// Bumped when the focus must move into `focus` (and select its text).
     private(set) var focusToken = 0
-    /// The required text field that was empty on ↩.
-    var missing: Int?
+    /// The field that stopped ↩ (an empty required text, or a choice filter with no match), and why.
+    private(set) var mark: (index: Int, block: MicroAppForm.Block)?
+    var missing: Int? { mark?.index }
     /// The letters typed in a choice field, by field index.
     private(set) var queries: [Int: String] = [:]
 
@@ -36,12 +38,13 @@ final class MicroAppFormModel {
         guard form.fields.indices.contains(index) else { return }
         if form.fields[index].choices != nil {
             queries[index] = text
-            if let mark = MicroAppChoiceFilter.mark(form.fields[index].value, in: filtered(index)) {
-                form.fields[index].value = mark
+            if let marked = MicroAppChoiceFilter.mark(form.fields[index].value, in: filtered(index)) {
+                form.fields[index].value = marked
+                if missing == index { mark = nil }
             }
         } else {
             form.fields[index].value = text
-            if missing == index { missing = nil }
+            if missing == index { mark = nil }
         }
     }
 
@@ -54,6 +57,8 @@ final class MicroAppFormModel {
     func choose(_ option: String, at index: Int) {
         guard form.fields.indices.contains(index) else { return }
         form.fields[index].value = option
+        queries[index] = nil
+        if missing == index { mark = nil }
         focus(index)
     }
 
@@ -63,9 +68,10 @@ final class MicroAppFormModel {
         focus = index
     }
 
-    /// A field lost focus: a choice field forgets its letters.
+    /// A field lost focus: a choice field forgets its letters and shows its marked option again.
     func didLeave(_ index: Int) {
         queries[index] = nil
+        if mark?.index == index, mark?.block == .noOption { mark = nil }
     }
 
     func focus(_ index: Int) {
@@ -89,39 +95,66 @@ final class MicroAppFormModel {
         }
     }
 
-    /// ↩: the shown values, or `nil` after marking and focusing an empty required text field.
+    /// ↩: the shown values, or `nil` after marking and focusing the first field that stops it: an
+    /// empty required text, or a choice field whose letters match no option (its old value is hidden,
+    /// so it never runs unseen).
     func submit() -> [String: String]? {
-        if let index = form.firstMissingRequired {
-            missing = index
-            focus(index)
+        if let blocked = form.firstBlocked(queries: queries) {
+            mark = blocked
+            focus(blocked.index)
             return nil
         }
         return form.values
     }
 }
 
+/// The fields in file order. Taller than `maxHeight`, the form scrolls, and the focused or marked
+/// field is scrolled into view.
 struct MicroAppFormBody: View {
     let model: MicroAppFormModel
+    /// The highest form height inside the flow panel (`MicroAppFormLayout.maxFormHeight`).
+    let maxHeight: CGFloat
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                fields
+                    .padding(.vertical, 2)
+                    .background(GeometryReader { geometry in
+                        Color.clear.preference(key: FormHeightKey.self, value: geometry.size.height)
+                    })
+            }
+            .scrollIndicators(contentHeight > maxHeight ? .automatic : .never)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: contentHeight > 0 ? min(contentHeight, maxHeight) : min(maxHeight, 120))
+            .onPreferenceChange(FormHeightKey.self) { contentHeight = $0 }
+            .onChange(of: model.focusToken) { proxy.scrollTo(model.focus) }
+            .onChange(of: model.focus) { proxy.scrollTo(model.focus) }
+        }
+    }
+
+    private var fields: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !model.app.description.isEmpty {
                 Text(model.app.description).font(.system(size: 12)).foregroundStyle(Color.tingMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(model.form.fields.indices.filter { !model.form.fields[$0].isOptional || !model.form.hasOptionalToggle }, id: \.self) {
-                FieldRow(model: model, index: $0)
+            // File order: an optional field stays between the required fields around it.
+            ForEach(model.form.visibleIndexes, id: \.self) {
+                FieldRow(model: model, index: $0).id($0)
             }
             if model.form.hasOptionalToggle {
                 OptionalToggle(model: model)
-                if model.form.optionalOpen {
-                    ForEach(model.form.fields.indices.filter { model.form.fields[$0].isOptional }, id: \.self) {
-                        FieldRow(model: model, index: $0)
-                    }
-                }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+private struct FormHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 private struct OptionalToggle: View {
@@ -158,7 +191,8 @@ private struct FieldRow: View {
                 MonoLabel(field.param.shownPrompt, size: 9, weight: .regular, tracking: 1)
                     .foregroundStyle(focused ? Color.tingAmber : Color.tingMuted)
                 if missing {
-                    Text("Required").font(.system(size: 11)).foregroundStyle(Color.red)
+                    Text(model.mark?.block == .noOption ? "No option matches; choose one" : "Required")
+                        .font(.system(size: 11)).foregroundStyle(Color.red)
                 }
                 Spacer()
             }

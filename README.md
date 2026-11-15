@@ -142,7 +142,8 @@ instead of starting anything.
   any field, `Esc` closes without running or saving anything. An empty required
   text field stops `Return` and is marked. A choice field lists its options under
   the field: the arrows move the mark, letters filter, the marked option is the
-  value. A micro-app with one choice parameter opens as a list: choose and press
+  value; letters that match no option stop `Return` until an option is chosen.
+  A form taller than the panel scrolls, and the focused field stays in view. A micro-app with one choice parameter opens as a list: choose and press
   `Return`. A micro-app without parameters shows no parameter panel.
 - **Remembered values:** when the run starts, Ting saves the shown values by
   micro-app id as plain text in
