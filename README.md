@@ -103,7 +103,19 @@ A micro-app is a small tool that runs one shell command: it can ask for a few
 parameters, read the clipboard and show or copy the result. Each micro-app is one
 YAML file in a strict, checked format, described in
 [docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md) with five working
-[examples](docs/micro-apps/examples/). This version of Ting does not run
+[examples](docs/micro-apps/examples/).
+
+Ting loads every `*.yaml` file of the `micro/` folder next to the config file
+(`~/.config/ting/micro/`) and loads it again when a file is added, changed or removed. A missing folder simply
+means no micro-apps. When two files have the same id, the first by file name
+works and the second is reported as a duplicate. A file with a mistake is not
+used: the menu-bar menu shows a warning, **Settings › Advanced** lists every
+error with file and line, a short message appears when a change breaks a file,
+and `micro-errors.log` next to the config file holds one `file:line: message`
+line per problem (it is empty when all files are good). With `TING_CONFIG` set,
+both get the config file name in front, like the launcha files:
+`TING_CONFIG=/tmp/ting-test.json` uses the folder `/tmp/ting-test.json.micro/` and
+the log `/tmp/ting-test.json.micro-errors.log`. This version of Ting does not run
 micro-apps yet.
 
 ## Settings
@@ -124,7 +136,8 @@ Spotlight.
   keys and press **Done** (`Space` and `Return` are recorded as keys). Missing
   groups are created and empty groups are removed automatically. If a shorter
   sequence already opens something, Ting offers to turn it into a group.
-- **Advanced:** the config file location, reveal, open, reload, import and export.
+- **Advanced:** the config file location, reveal, open, reload, import and export,
+  and the micro-apps folder with the list of micro-app errors.
 
 ## Configuration file
 

@@ -18,6 +18,10 @@ final class AppModel {
     private(set) var hotkeyStatus: HotkeyService.Status = .inactive
     private(set) var launchaHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var loginItemError: String?
+    /// Every file of the micro-apps folder, good and broken, by file name.
+    private(set) var microApps: [MicroAppEntry] = []
+    /// Problems of the micro-app files, by file name, then by line.
+    private(set) var microAppIssues: [MicroAppIssue] = []
     /// Session-only: the leader is off while paused.
     var isPaused = false {
         didSet { applyHotkey() }
@@ -29,6 +33,7 @@ final class AppModel {
     var launchaConsentError: String? { launchaModel.consentError }
 
     @ObservationIgnored let store = ConfigStore()
+    @ObservationIgnored private(set) lazy var microStore = MicroAppStore(configURL: store.url)
     @ObservationIgnored private let hotkeys = HotkeyService()
     @ObservationIgnored private let leader = LeaderController()
     @ObservationIgnored private let runner: ActionRunner
@@ -60,6 +65,11 @@ final class AppModel {
         case .failed(let reason): reason
         case .inactive, .active: nil
         }
+    }
+
+    /// The menu-bar item shows its problem mark.
+    var needsAttention: Bool {
+        configError != nil || hotkeyProblem != nil || launchaHotkeyProblem != nil || !microAppIssues.isEmpty
     }
 
     var launchaHotkeyDisplay: String { config.launcha.hotkey?.display ?? "Not set" }
@@ -106,9 +116,14 @@ final class AppModel {
         }
         reload()
         store.watch { [weak self] in self?.reload() }
+        microStore.watch { [weak self] previous, current in
+            self?.applyMicroApps(current)
+            if let message = current.toastMessage(since: previous) { self?.toast.show(message) }
+        }
         launchaModel.prewarm()
     }
 
+    /// Loads the config file and the micro-apps folder again.
     func reload() {
         switch store.load() {
         case .success(let loaded):
@@ -116,6 +131,21 @@ final class AppModel {
             apply(loaded)
         case .failure(let error):
             configError = error.message
+        }
+        applyMicroApps(microStore.load())
+    }
+
+    private func applyMicroApps(_ catalog: MicroAppCatalog) {
+        if microApps != catalog.entries { microApps = catalog.entries }
+        if microAppIssues != catalog.issues { microAppIssues = catalog.issues }
+    }
+
+    func revealMicroAppsFolder() {
+        let url = microStore.folderURL
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([store.url])
         }
     }
 
