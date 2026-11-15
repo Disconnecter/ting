@@ -50,7 +50,7 @@ private struct SoundList: View {
                         .padding(.horizontal, 8).padding(.vertical, 5)
                 }
                 ForEach(Array(session.items.enumerated()), id: \.offset) { _, item in
-                    Row(item: item) { onSelect(item.key) }
+                    Row(item: item, microApps: session.microApps) { onSelect(item.key) }
                 }
             }
             .padding(.horizontal, -8)
@@ -83,6 +83,7 @@ private struct SoundList: View {
 
 private struct Row: View {
     let item: Item
+    let microApps: MicroAppCatalog
     let action: () -> Void
 
     var body: some View {
@@ -90,9 +91,16 @@ private struct Row: View {
             HStack(spacing: 10) {
                 KeyCap(key: item.key, style: .sound)
                 ItemIcon(item: item, size: 16)
-                Text(item.label.isEmpty ? placeholder : item.label)
+                Text(title)
                     .font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    .foregroundStyle(isBrokenMicro ? Color.tingMuted : Color.tingInk)
+                    .strikethrough(isBrokenMicro, color: Color.tingMuted)
                 Spacer(minLength: 8)
+                if isBrokenMicro {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10)).foregroundStyle(Color.tingAmber)
+                        .help("Not working: press the key to see why")
+                }
                 if let children = item.children {
                     Text(String(format: "%02d", children.count))
                         .font(.system(size: 10, design: .monospaced)).foregroundStyle(Color.tingAmber)
@@ -106,15 +114,24 @@ private struct Row: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(HoverRowStyle(cornerRadius: 6))
-        .accessibilityLabel("\(SequenceKey.spoken(item.key)), \(item.label)\(item.isGroup ? ", group" : "")")
+        .accessibilityLabel("\(SequenceKey.spoken(item.key)), \(title)\(item.isGroup ? ", group" : "")\(isBrokenMicro ? ", not working" : "")")
     }
 
-    private var placeholder: String {
+    private var title: String {
+        if case .micro(let id) = item.action { return microApps.bindingName(label: item.label, id: id) }
+        if !item.label.isEmpty { return item.label }
         switch item.action {
-        case .group: "Group"
-        case .app(let bundleID): bundleID
-        case .url(let url): url
+        case .group: return "Group"
+        case .app(let bundleID): return bundleID
+        case .url(let url): return url
+        case .micro(let id): return id
         }
+    }
+
+    /// A micro-app binding whose micro-app is missing or broken.
+    private var isBrokenMicro: Bool {
+        if case .micro(let id) = item.action { return !microApps.resolve(id).isWorking }
+        return false
     }
 
     private var arrow: String {
@@ -122,6 +139,7 @@ private struct Row: View {
         case .group: "chevron.right"
         case .url: "arrow.up.right"
         case .app: "arrow.right"
+        case .micro: "play"
         }
     }
 }

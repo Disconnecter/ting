@@ -8,12 +8,18 @@ public struct MicroAppEntry: Equatable, Sendable {
     public var app: MicroApp?
     /// Empty for a working micro-app; sorted by line otherwise.
     public var issues: [MicroAppIssue]
+    /// `MicroAppApprovals.hash` of the file content that was checked; empty when the file could not be read.
+    public var contentHash: String
 
-    public init(file: String, app: MicroApp?, issues: [MicroAppIssue]) {
+    public init(file: String, app: MicroApp?, issues: [MicroAppIssue], contentHash: String = "") {
         self.file = file
         self.app = app
         self.issues = issues
+        self.contentHash = contentHash
     }
+
+    /// The file name without `.yaml`: the id a binding uses when the file has no `id` key.
+    public var fileID: String { (file as NSString).deletingPathExtension }
 
     public var isBroken: Bool { app == nil }
 }
@@ -36,32 +42,52 @@ public struct MicroAppCatalog: Equatable, Sendable {
     /// Checks every file and applies the id rules: when two working files have the same id, the
     /// first by file name works and the later ones are broken with a "duplicate id" issue.
     public static func load(_ files: [(name: String, text: String)]) -> MicroAppCatalog {
-        build(files.map { file in
+        build(hashed: files.map { file in
             let name = (file.name as NSString).lastPathComponent
-            return (name, MicroAppChecker.check(file.text, fileName: name))
+            return (name, MicroAppChecker.check(file.text, fileName: name), MicroAppApprovals.hash(Data(file.text.utf8)))
         })
     }
 
     /// Like `load`, for files that are already checked (or could not be read).
     public static func build(_ checked: [(file: String, result: Result<MicroApp, MicroAppFailure>)]) -> MicroAppCatalog {
+        build(hashed: checked.map { ($0.file, $0.result, "") })
+    }
+
+    /// Like `build`, with the `MicroAppApprovals.hash` of each file's content.
+    public static func build(hashed checked: [(file: String, result: Result<MicroApp, MicroAppFailure>, hash: String)]) -> MicroAppCatalog {
         var owners: [String: String] = [:]
         var entries: [MicroAppEntry] = []
-        for (file, result) in checked.sorted(by: { $0.file < $1.file }) {
+        for (file, result, hash) in checked.sorted(by: { $0.file < $1.file }) {
             switch result {
             case .failure(let failure):
-                entries.append(MicroAppEntry(file: file, app: nil, issues: failure.issues))
+                entries.append(MicroAppEntry(file: file, app: nil, issues: failure.issues, contentHash: hash))
             case .success(let app):
                 if let owner = owners[app.id] {
                     let issue = MicroAppIssue(file: file, line: 1,
                                               message: "duplicate id `\(app.id)`: `\(owner)` already uses it; rename one of the files")
-                    entries.append(MicroAppEntry(file: file, app: nil, issues: [issue]))
+                    entries.append(MicroAppEntry(file: file, app: nil, issues: [issue], contentHash: hash))
                 } else {
                     owners[app.id] = file
-                    entries.append(MicroAppEntry(file: file, app: app, issues: []))
+                    entries.append(MicroAppEntry(file: file, app: app, issues: [], contentHash: hash))
                 }
             }
         }
         return MicroAppCatalog(entries: entries)
+    }
+
+    /// What a binding to `id` finds: the working micro-app with that id; else a broken file whose
+    /// name without `.yaml` is `id` (a broken file has no checked id); else nothing.
+    public func resolve(_ id: String) -> MicroAppResolution {
+        if let entry = entries.first(where: { $0.app?.id == id }), let app = entry.app { return .working(app, entry) }
+        if let entry = entries.first(where: { $0.isBroken && $0.fileID == id }) { return .broken(entry) }
+        return .missing
+    }
+
+    /// The name a binding shows: its label, else the micro-app's `name`, else the id.
+    public func bindingName(label: String, id: String) -> String {
+        if !label.isEmpty { return label }
+        if case .working(let app, _) = resolve(id) { return app.shownName }
+        return id
     }
 
     /// The text of `micro-errors.log`: one `file:line: message` line per problem; empty when all is good.
@@ -85,5 +111,32 @@ public struct MicroAppCatalog: Equatable, Sendable {
         guard let first = broken.first, let issue = first.issues.first else { return nil }
         if broken.count == 1 { return "Micro-app \(issue.file), line \(issue.line): \(issue.message)" }
         return "\(broken.count) micro-app files have errors, first \(issue.file), line \(issue.line)"
+    }
+}
+
+/// What a micro-app binding points to.
+public enum MicroAppResolution: Equatable, Sendable {
+    case working(MicroApp, MicroAppEntry)
+    case broken(MicroAppEntry)
+    case missing
+
+    public var isWorking: Bool {
+        if case .working = self { return true }
+        return false
+    }
+
+    /// Why a binding does not work, in one line; `nil` for a working micro-app.
+    /// `folder` is the micro-apps folder as shown to the user.
+    public func problem(id: String, folder: String) -> String? {
+        switch self {
+        case .working:
+            return nil
+        case .broken(let entry):
+            guard let issue = entry.issues.first else { return "Micro-app \(entry.file) has errors" }
+            let more = entry.issues.count > 1 ? " (+\(entry.issues.count - 1) more)" : ""
+            return "Micro-app \(issue.file), line \(issue.line): \(issue.message)\(more)"
+        case .missing:
+            return "Micro-app `\(id)` not found in \(folder)"
+        }
     }
 }

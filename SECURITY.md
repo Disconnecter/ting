@@ -28,11 +28,19 @@ latest published version.
   write that file can make Ting open any app or URL when you press a binding.
   Keep the file writable only by your user account.
 - Ting opens apps by bundle identifier and URLs with the default handler chosen
-  by macOS. It does not run shell commands and does not pass arguments to apps.
-  A URL scheme handler (for example `raycast://`) may perform its own actions.
-- Micro-apps (described in `docs/micro-apps/FORMAT.md`) are not run by this
-  version. Their format passes parameters only as `TING_*` environment variables
-  and the clipboard only as stdin, never as text pasted into the command.
+  by macOS. App and URL bindings run no shell commands and pass no arguments to
+  apps. A URL scheme handler (for example `raycast://`) may perform its own actions.
+- **Ting runs shell commands**, but only from micro-app files (described in
+  `docs/micro-apps/FORMAT.md`) in the micro-apps folder, and only after you
+  approved the exact file content. The command runs with `/bin/sh -c` as your
+  user, with your full rights and no sandbox. Ting stores the SHA-256 of each
+  approved file in `~/Library/Application Support/Ting/micro-approvals.json`;
+  any change of the file asks again. `config.json` only names a micro-app id and
+  holds no code. Parameters reach the command only as `TING_*` environment
+  variables and the clipboard only as stdin, never as text pasted into the
+  command. Anyone who can write the micro-apps folder can offer a command, but it
+  does not run until you approve it; anyone who can write the approvals file and
+  the folder can run commands as you.
 - Ting has no accounts, analytics or project servers. Its only network access is
   Sparkle's update check against the public feed
   `https://github.com/bobuk-io/ting/releases/latest/download/appcast.xml` and the

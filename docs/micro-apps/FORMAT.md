@@ -134,8 +134,11 @@ loaded; every error is reported as `file:line: message`. The checker reports:
 - an `output` that is not a map, without `to`, with an empty or repeated `to`, a
   target other than `clipboard` or `panel`, or an `as` outside the four styles.
 
-Before the first run, and after any change to the file, Ting shows the file and
-asks the person to confirm it. This is not part of the file.
+Before the first run, and after any change to the file, Ting shows the name, the
+file and the full command and asks the person to approve it with `⌘Return`. The
+approval is the SHA-256 of the whole file content, stored by id outside the
+folder; it is not part of the file. A binding in `config.json` names the id:
+`{"key": "j", "micro": "format-json"}`.
 
 ## YAML subset
 

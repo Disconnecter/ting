@@ -8,6 +8,8 @@ public struct Item: Equatable, Sendable, Codable {
         case app(String)
         /// Absolute URL string, e.g. "https://github.com".
         case url(String)
+        /// A micro-app id, e.g. "format-json". The micro-app does not have to be loaded.
+        case micro(String)
     }
 
     /// A `SequenceKey` name.
@@ -24,6 +26,7 @@ public struct Item: Equatable, Sendable, Codable {
     public static func group(_ key: String, _ label: String, _ items: [Item]) -> Item { Item(key: key, label: label, action: .group(items)) }
     public static func app(_ key: String, _ label: String, _ bundleID: String) -> Item { Item(key: key, label: label, action: .app(bundleID)) }
     public static func url(_ key: String, _ label: String, _ url: String) -> Item { Item(key: key, label: label, action: .url(url)) }
+    public static func micro(_ key: String, _ label: String, _ id: String) -> Item { Item(key: key, label: label, action: .micro(id)) }
 
     public var isGroup: Bool {
         if case .group = action { return true }
@@ -35,8 +38,9 @@ public struct Item: Equatable, Sendable, Codable {
         return nil
     }
 
-    // JSON: {"key": "a", "label": "Apps", "items": [...]} | {..., "app": "com.x"} | {..., "url": "https://..."}.
-    // Decoding: exactly one of "items"/"app"/"url" must be present; "key" is normalized with
+    // JSON: {"key": "a", "label": "Apps", "items": [...]} | {..., "app": "com.x"} | {..., "url": "https://..."}
+    // | {..., "micro": "format-json"}.
+    // Decoding: exactly one of "items"/"app"/"url"/"micro" must be present; "key" is normalized with
     // SequenceKey.normalize ("A" → "a"); an invalid key or a wrong number of action fields throws
     // DecodingError.dataCorrupted. "label" is optional and defaults to "".
     // Unknown fields are ignored. Encoding writes "key", "label" and exactly one action field.
@@ -50,11 +54,13 @@ public struct Item: Equatable, Sendable, Codable {
         let items = try container.decodeIfPresent([Item].self, forKey: .items)
         let app = try container.decodeIfPresent(String.self, forKey: .app)
         let url = try container.decodeIfPresent(String.self, forKey: .url)
-        let actions: [Action] = [items.map(Action.group), app.map(Action.app), url.map(Action.url)].compactMap { $0 }
+        let micro = try container.decodeIfPresent(String.self, forKey: .micro)
+        let actions: [Action] = [items.map(Action.group), app.map(Action.app), url.map(Action.url), micro.map(Action.micro)]
+            .compactMap { $0 }
         guard actions.count == 1, let action = actions.first else {
             throw DecodingError.dataCorrupted(DecodingError.Context(
                 codingPath: container.codingPath,
-                debugDescription: "Item \"\(rawKey)\" needs exactly one of \"items\", \"app\" or \"url\"."))
+                debugDescription: "Item \"\(rawKey)\" needs exactly one of \"items\", \"app\", \"url\" or \"micro\"."))
         }
         self.key = key
         self.label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
@@ -69,11 +75,12 @@ public struct Item: Equatable, Sendable, Codable {
         case .group(let items): try container.encode(items, forKey: .items)
         case .app(let bundleID): try container.encode(bundleID, forKey: .app)
         case .url(let url): try container.encode(url, forKey: .url)
+        case .micro(let id): try container.encode(id, forKey: .micro)
         }
     }
 
     private enum ItemCodingKeys: String, CodingKey {
-        case key, label, items, app, url
+        case key, label, items, app, url, micro
     }
 }
 
@@ -282,7 +289,7 @@ public struct ConfigIssue: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         /// Two items in one group use the same key.
         case duplicateKey
-        /// An app with an empty bundle identifier, or a url with an empty string.
+        /// An app with an empty bundle identifier, a url with an empty string, or a micro-app binding without an id.
         case emptyTarget
         /// A url that does not parse as a URL with a scheme.
         case invalidURL
@@ -355,6 +362,11 @@ public enum ConfigValidator {
                     issues.append(ConfigIssue(kind: .emptyTarget, sequence: sequence, message: "\(name) has no URL."))
                 } else if URL(string: url)?.scheme?.isEmpty ?? true {
                     issues.append(ConfigIssue(kind: .invalidURL, sequence: sequence, message: "\(name) has an invalid URL: \(url)"))
+                }
+            case .micro(let id):
+                // An id that is not loaded is fine: the binding shows as not working until the file appears.
+                if id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    issues.append(ConfigIssue(kind: .emptyTarget, sequence: sequence, message: "\(name) has no micro-app."))
                 }
             }
         }

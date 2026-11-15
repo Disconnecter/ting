@@ -50,6 +50,8 @@ final class LeaderSession {
     var path: [String] = []
     var items: [Item] = []
     var shakeToken = 0
+    /// The loaded micro-apps, for the names and the "not working" mark of micro-app bindings.
+    var microApps = MicroAppCatalog()
     /// Bumped on every open so layout hints are recomputed for the current keyboard layout.
     var generation = 0
 }
@@ -71,6 +73,10 @@ final class LeaderController: NSObject, NSWindowDelegate {
     private var reveal: DispatchWorkItem?
 
     var isOpen: Bool { machine.isOpen }
+
+    func setMicroApps(_ catalog: MicroAppCatalog) {
+        if session.microApps != catalog { session.microApps = catalog }
+    }
 
     func configure(_ config: Config) {
         machine.items = config.items
