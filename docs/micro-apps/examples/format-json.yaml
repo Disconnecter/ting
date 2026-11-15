@@ -1,0 +1,12 @@
+format: ting.microapp/2
+name: Format JSON
+description: Pretty-print the JSON from the clipboard, with sorted keys, and put it back.
+tools: [perl]
+
+input: clipboard
+# jq ships only with macOS 15 and later; JSON::PP is part of the system Perl.
+command: |
+  perl -MJSON::PP -0777 -ne 'my $j = JSON::PP->new->utf8->pretty->indent_length(2)->canonical->allow_nonref; print $j->encode($j->decode($_))'
+output:
+  to: [clipboard, panel]
+  as: code

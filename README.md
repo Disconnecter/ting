@@ -44,7 +44,8 @@ copy from the ZIP, then open it again. Your settings and bindings are kept.
   nested as deep as you like. `Esc` closes the menu, `Delete` goes back one level.
 - **Actions:** open an app (an app that is already running comes to the front)
   or open a URL with its default handler — web links and app URL schemes such as
-  `raycast://` or `hascs://`. Shell commands are not supported.
+  `raycast://` or `hascs://`. Shell commands are not bindings; they will run
+  only as [micro-apps](#micro-apps).
 - **Any keyboard layout:** bindings are stored by the Latin letter of the key, so
   they keep working with Russian, Ukrainian or any other layout. The menu shows
   the current layout's letter as a small hint next to the Latin one.
@@ -95,6 +96,15 @@ in `~/Library/Application Support/Ting/` (`launcha-history.json`,
 instead, with the config file name in front: `TING_CONFIG=/tmp/ting-test.json`
 uses `/tmp/ting-test.json.launcha-history.json` and
 `/tmp/ting-test.json.launcha-consent.json`.
+
+## Micro-apps
+
+A micro-app is a small tool that runs one shell command: it can ask for a few
+parameters, read the clipboard and show or copy the result. Each micro-app is one
+YAML file in a strict, checked format, described in
+[docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md) with five working
+[examples](docs/micro-apps/examples/). This version of Ting does not run
+micro-apps yet.
 
 ## Settings
 

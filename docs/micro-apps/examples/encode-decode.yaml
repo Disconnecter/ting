@@ -1,0 +1,23 @@
+format: ting.microapp/2
+name: Encode / decode
+description: Encode or decode the clipboard text as Base64 or URL encoding.
+tools: [base64, perl]
+
+params:
+  - name: mode
+    type: choice
+    required: true
+    choices: [base64-encode, base64-decode, url-encode, url-decode]
+    prompt: Mode
+
+input: clipboard
+command: |
+  case "$TING_MODE" in
+    base64-encode) base64 ;;
+    base64-decode) base64 -D ;;
+    url-encode) perl -0777 -pe 'chomp; s/([^A-Za-z0-9._~-])/sprintf("%%%02X", ord $1)/ge' ;;
+    url-decode) perl -0777 -pe 's/\+/ /g; s/%([0-9A-Fa-f]{2})/chr hex $1/ge' ;;
+  esac
+output:
+  to: [clipboard, panel]
+  as: text
