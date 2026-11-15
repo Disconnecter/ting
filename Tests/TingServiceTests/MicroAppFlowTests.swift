@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 import TingCore
 @testable import Ting
@@ -137,5 +138,47 @@ final class MicroAppFlowTests: XCTestCase {
         task.cancel()
         let plan = MicroAppResultPlan.make(app: app, result: await task.value)
         XCTAssertEqual(plan, MicroAppResultPlan(show: .nothing))
+    }
+}
+
+/// The key-equivalent path of the flow panel: AppKit sends ⌘ shortcuts there before `sendEvent`.
+@MainActor
+final class MicroAppFlowPanelKeyTests: XCTestCase {
+    private func keyDown(_ keyCode: UInt16, _ characters: String, flags: NSEvent.ModifierFlags = .command) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
+                         context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                         isARepeat: false, keyCode: keyCode)!
+    }
+
+    private func press(_ event: NSEvent) -> (handled: Bool, keys: [MicroAppFlowPanel.Key]) {
+        let panel = MicroAppFlowPanel()
+        var keys: [MicroAppFlowPanel.Key] = []
+        panel.onKey = { keys.append($0) }
+        let handled = panel.performKeyEquivalent(with: event)
+        return (handled, keys)
+    }
+
+    func testCommandReturnConfirms() {
+        let result = press(keyDown(36, "\r"))
+        XCTAssertTrue(result.handled)
+        XCTAssertEqual(result.keys, [.commandEnter])
+    }
+
+    func testCommandKeypadEnterConfirms() {
+        let result = press(keyDown(76, "\u{3}"))
+        XCTAssertTrue(result.handled)
+        XCTAssertEqual(result.keys, [.commandEnter])
+    }
+
+    func testCommandQIsSwallowed() {
+        let result = press(keyDown(12, "q"))
+        XCTAssertTrue(result.handled)
+        XCTAssertEqual(result.keys, [])
+    }
+
+    func testCommandShiftReturnIsSwallowedWithoutConfirming() {
+        let result = press(keyDown(36, "\r", flags: [.command, .shift]))
+        XCTAssertTrue(result.handled)
+        XCTAssertEqual(result.keys, [])
     }
 }

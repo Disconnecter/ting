@@ -47,11 +47,17 @@ final class MicroAppFlowPanel: NSPanel {
     }
 
     /// Ting has no Edit menu while it is not the active app: ⌘C and ⌘A go to the text here,
-    /// matched by the Latin layout. Every other ⌘ shortcut is swallowed, so ⌘Q never quits Ting.
+    /// matched by the Latin layout. ⌘Return and ⌘Enter confirm. Every other ⌘ shortcut is
+    /// swallowed, so ⌘Q never quits Ting.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         guard flags == .command else { return flags.contains(.command) ? true : super.performKeyEquivalent(with: event) }
+        // AppKit sends Command shortcuts here before `sendEvent`, so Cmd+Enter is handled here.
+        if event.keyCode == 36 || event.keyCode == 76 {
+            onKey?(.commandEnter)
+            return true
+        }
         switch KeyTranslator.latin(event.keyCode) {
         case "c": NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
         case "a": NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)

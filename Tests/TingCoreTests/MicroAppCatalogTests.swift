@@ -56,6 +56,52 @@ private func app(_ id: String) -> MicroApp {
         #expect(catalog.apps.map(\.id) == ["a"])
     }
 
+    @Test func brokenFileIsFoundByItsExplicitId() {
+        // `id` differs from the file name and `description` is missing: two semantic errors.
+        let text = "id: format-json\nformat: ting.microapp/2\ninput: none\ncommand: echo hi\noutput:\n  to: [panel]\n"
+        let catalog = MicroAppCatalog.load([("custom.yaml", text), ("other.yaml", good())])
+        let entry = catalog.entries.first { $0.file == "custom.yaml" }
+        #expect(entry?.isBroken == true)
+        #expect(entry?.explicitID == "format-json")
+        guard case .broken(let found) = catalog.resolve("format-json") else { Issue.record("expected broken"); return }
+        #expect(found == entry)
+        #expect(found.file == "custom.yaml")
+        #expect(!found.issues.isEmpty)
+        #expect(found.issues == entry?.issues)
+        // The file name still finds it.
+        #expect(catalog.resolve("custom") == .broken(found))
+        #expect(catalog.resolve("nothing") == .missing)
+    }
+
+    @Test func brokenFileWithoutValidIdIsFoundByFileName() {
+        let catalog = MicroAppCatalog.load([
+            ("no-id.yaml", "format: ting.microapp/2\n"),
+            ("bad-id.yaml", "id: Bad_Id\nformat: ting.microapp/2\n"),
+            ("not-yaml.yaml", "id: [unclosed\n"),
+        ])
+        #expect(catalog.entries.allSatisfy { $0.isBroken && $0.explicitID == nil })
+        for name in ["no-id", "bad-id", "not-yaml"] {
+            guard case .broken(let entry) = catalog.resolve(name) else { Issue.record("expected broken \(name)"); continue }
+            #expect(entry.file == "\(name).yaml")
+        }
+        #expect(catalog.resolve("Bad_Id") == .missing)
+    }
+
+    @Test func workingAppWinsOverABrokenFileWithTheSameExplicitId() {
+        let catalog = MicroAppCatalog.build([
+            ("a-custom.yaml", .failure(MicroAppFailure(issues: [MicroAppIssue(file: "a-custom.yaml", line: 1, message: "bad")],
+                                                       id: "format-json"))),
+            ("format-json.yaml", .success(app("format-json"))),
+        ])
+        #expect(catalog.apps.map(\.id) == ["format-json"])
+        guard case .working(let found, let entry) = catalog.resolve("format-json") else { Issue.record("expected working"); return }
+        #expect(found.id == "format-json")
+        #expect(entry.file == "format-json.yaml")
+        #expect(entry.issues.isEmpty)
+        #expect(!catalog.issues.contains { $0.message.contains("duplicate") })
+        #expect(catalog.issues.map(\.file) == ["a-custom.yaml"])
+    }
+
     @Test func logHasOneLinePerProblemAndIsEmptyWhenGood() {
         let broken = MicroAppCatalog.build([
             ("a.yaml", .failure(MicroAppFailure(issues: [

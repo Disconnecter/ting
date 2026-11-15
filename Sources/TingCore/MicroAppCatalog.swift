@@ -10,12 +10,15 @@ public struct MicroAppEntry: Equatable, Sendable {
     public var issues: [MicroAppIssue]
     /// `MicroAppApprovals.hash` of the file content that was checked; empty when the file could not be read.
     public var contentHash: String
+    /// For a broken file: the kebab-case `id` the checker could read from it; `nil` otherwise.
+    public var explicitID: String?
 
-    public init(file: String, app: MicroApp?, issues: [MicroAppIssue], contentHash: String = "") {
+    public init(file: String, app: MicroApp?, issues: [MicroAppIssue], contentHash: String = "", explicitID: String? = nil) {
         self.file = file
         self.app = app
         self.issues = issues
         self.contentHash = contentHash
+        self.explicitID = explicitID
     }
 
     /// The file name without `.yaml`: the id a binding uses when the file has no `id` key.
@@ -60,7 +63,7 @@ public struct MicroAppCatalog: Equatable, Sendable {
         for (file, result, hash) in checked.sorted(by: { $0.file < $1.file }) {
             switch result {
             case .failure(let failure):
-                entries.append(MicroAppEntry(file: file, app: nil, issues: failure.issues, contentHash: hash))
+                entries.append(MicroAppEntry(file: file, app: nil, issues: failure.issues, contentHash: hash, explicitID: failure.id))
             case .success(let app):
                 if let owner = owners[app.id] {
                     let issue = MicroAppIssue(file: file, line: 1,
@@ -75,10 +78,12 @@ public struct MicroAppCatalog: Equatable, Sendable {
         return MicroAppCatalog(entries: entries)
     }
 
-    /// What a binding to `id` finds: the working micro-app with that id; else a broken file whose
-    /// name without `.yaml` is `id` (a broken file has no checked id); else nothing.
+    /// What a binding to `id` finds, in this order: the working micro-app with that id; a broken
+    /// file whose kept explicit `id` is `id`; a broken file whose name without `.yaml` is `id`;
+    /// else nothing. A broken file never owns an id, so a working micro-app always wins.
     public func resolve(_ id: String) -> MicroAppResolution {
         if let entry = entries.first(where: { $0.app?.id == id }), let app = entry.app { return .working(app, entry) }
+        if let entry = entries.first(where: { $0.isBroken && $0.explicitID == id }) { return .broken(entry) }
         if let entry = entries.first(where: { $0.isBroken && $0.fileID == id }) { return .broken(entry) }
         return .missing
     }
