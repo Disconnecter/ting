@@ -38,7 +38,11 @@ final class LeaderPanel: NSPanel {
     }
 
     /// Swallow ⌘ shortcuts so, for example, ⌘Q does not quit Ting while the menu is up.
-    override func performKeyEquivalent(with event: NSEvent) -> Bool { true }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // AppKit also offers arrows here before sendEvent. Claiming every event
+        // discards navigation before the controller can see it.
+        event.type == .keyDown && event.modifierFlags.contains(.command)
+    }
 }
 
 /// What the leader menu shows. Updated by `LeaderController`.
