@@ -38,7 +38,7 @@ cp "$ARCHIVE" "$TMP/"
 cp "$NOTES" "$TMP/$(basename "$ARCHIVE" .zip).md"
 "$SPARKLE_BIN/generate_appcast" --account "$ACCOUNT" --maximum-deltas 0 --embed-release-notes \
   --download-url-prefix "https://github.com/bobuk-io/ting/releases/download/v${MARKETING_VERSION}/" \
-  --link "https://bobuk-io.github.io/apps/ting/" "$TMP"
+  --link "https://bobuk.io/apps/ting/" "$TMP"
 [[ -f "$TMP/appcast.xml" ]] || { echo "No appcast was generated." >&2; exit 1; }
 grep -q "sparkle:version>${BUILD_NUMBER}<" "$TMP/appcast.xml" || {
   echo "The appcast does not contain build ${BUILD_NUMBER}." >&2
