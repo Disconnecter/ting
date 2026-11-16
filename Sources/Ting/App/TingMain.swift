@@ -10,6 +10,11 @@ enum TingMain {
             // Before the app starts: no window, no menu-bar icon, no config read, no file written.
             exit(runCheck(arguments))
         }
+        if AgentPrompt.handles(arguments) {
+            // The same rules as --check: nothing starts, nothing is read but the bundle, nothing is written.
+            print(AgentPromptSource.text())
+            exit(0)
+        }
         TingApp.main()
     }
 

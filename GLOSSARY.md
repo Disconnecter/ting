@@ -62,3 +62,9 @@ The terms used for Ting in code, documents and the interface.
   document, check it with the check command and save it in the micro-apps
   folder; it does not change `config.json`, and the person approves the file
   and binds its key.
+- **agent prompt:** the ready English text for a coding agent that **Copy Agent
+  Prompt** (menu-bar menu and Settings › Advanced) puts on the clipboard and
+  `Ting --agent-prompt` prints. It names the format document inside Ting.app,
+  the GitHub link of the running version as the fallback, the check command
+  with the real path of the executable and the micro-apps folder, says not to
+  change `config.json`, and ends open for the person's task.

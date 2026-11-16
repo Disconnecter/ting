@@ -172,6 +172,12 @@ final class AppModel {
         return NSWorkspace.shared.open(url) ? nil : "Cannot open \(microStore.displayPath) in Finder."
     }
 
+    /// Puts the agent prompt on the clipboard and shows the toast.
+    func copyAgentPrompt(pasteboard: NSPasteboard = .general) {
+        AgentPromptSource.copy(AgentPromptSource.text(), to: pasteboard)
+        toast.show(AgentPrompt.toast)
+    }
+
     // MARK: Editing (every edit writes the file atomically)
 
     func update(_ change: (inout Config) -> Void) {

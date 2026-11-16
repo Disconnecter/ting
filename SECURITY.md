@@ -56,6 +56,11 @@ latest published version.
   prints their problems. It never runs a micro-app command, opens no window,
   does not read `config.json` and writes no file: no log, no approvals and no
   values. A file that passes the check is not approved by it.
+- **Copy Agent Prompt** and `Ting --agent-prompt` only build a text from the
+  paths of this Mac (Ting.app, the micro-apps folder) and the GitHub link of the
+  running version. They put it on the clipboard or print it; they send nothing,
+  start no agent and write no file. The text tells the agent not to change
+  `config.json`; the person still approves the file and binds its key.
 - The command gets the PATH of your login shell, so whoever can change your
   shell start-up files can change which programs a micro-app runs.
 - The parameter values of the last started run of each micro-app are stored as

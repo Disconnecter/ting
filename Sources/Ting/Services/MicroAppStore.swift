@@ -23,14 +23,20 @@ final class MicroAppStore {
     /// uses `/tmp/ting-test.json.micro/` and `/tmp/ting-test.json.micro-errors.log`, so two
     /// overrides in one directory never share a folder.
     init(configURL: URL, environment: [String: String] = ProcessInfo.processInfo.environment) {
+        folderURL = Self.folderURL(configURL: configURL, environment: environment)
         if let override = environment["TING_CONFIG"], !override.isEmpty {
-            folderURL = configURL.appendingPathExtension("micro")
             logURL = configURL.appendingPathExtension("micro-errors.log")
         } else {
-            let directory = configURL.deletingLastPathComponent()
-            folderURL = directory.appendingPathComponent("micro", isDirectory: true)
-            logURL = directory.appendingPathComponent("micro-errors.log")
+            logURL = configURL.deletingLastPathComponent().appendingPathComponent("micro-errors.log")
         }
+    }
+
+    /// The micro-apps folder of a config file, without making a store (and without reading anything).
+    nonisolated static func folderURL(configURL: URL, environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        if let override = environment["TING_CONFIG"], !override.isEmpty {
+            return configURL.appendingPathExtension("micro")
+        }
+        return configURL.deletingLastPathComponent().appendingPathComponent("micro", isDirectory: true)
     }
 
     var displayPath: String { Self.display(folderURL) }
