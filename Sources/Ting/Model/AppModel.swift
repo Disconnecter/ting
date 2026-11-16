@@ -294,6 +294,7 @@ final class AppModel {
         let previous = config
         config = next
         issues = ConfigValidator.validate(next)
+        runner.prepare(next.items)
         leader.configure(next)
         launcha.configure(next)
         microFlow.configure(next)
@@ -355,8 +356,10 @@ final class AppModel {
         case .url(let url): LaunchaCandidate.url(url, name: "").id
         case .group, .micro: nil
         }
+        let activated = runner.activateRunning(item)
         Task {
-            let outcome = await runner.run(item)
+            let outcome: LaunchOutcome
+            if let activated { outcome = activated } else { outcome = await runner.run(item) }
             if let id { await launchaModel.record(outcome, id: id) }
         }
     }

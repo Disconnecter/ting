@@ -17,9 +17,12 @@ from grime and sound-system culture: amber keycaps on graphite, `esc pull up`,
 Requires **macOS 14 or later**. Official releases are universal builds for
 **Apple Silicon and Intel**.
 
-[Release notes for Ting 0.5.0](docs/releases/v0.5.0.md): micro-apps become
-small scripts of steps (shell, Python, HTTP, AI) with shared libraries, and a
-coding agent can now set up your bindings too.
+[Release notes for Ting 0.5.1](docs/releases/v0.5.1.md): faster menu opening
+and app switching, preloaded app icons, and aligned keycaps.
+
+[In 0.5.0](docs/releases/v0.5.0.md), micro-apps became small scripts of steps
+(shell, Python, HTTP, AI) with shared libraries, and a coding agent can set up
+your bindings too.
 
 ## Install
 

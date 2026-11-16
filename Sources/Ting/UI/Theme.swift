@@ -141,7 +141,8 @@ struct KeyCap: View {
         }
         .foregroundStyle(foreground)
         .padding(.horizontal, key.count > 1 && key.hasPrefix("f") ? 4 : 0)
-        .frame(minWidth: large ? 30 : (hint == nil ? 22 : 28), minHeight: large ? 30 : 22)
+        // One width with or without a layout hint, so the labels of a menu line up.
+        .frame(minWidth: large ? 30 : 28, minHeight: large ? 30 : 22)
         .background(background, in: RoundedRectangle(cornerRadius: large ? 7 : 5, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: large ? 7 : 5, style: .continuous).strokeBorder(border))
         .accessibilityLabel("Key \(SequenceKey.spoken(key))")
@@ -239,10 +240,30 @@ struct ItemIcon: View {
 @MainActor
 enum AppIcons {
     private static var cache: [String: NSImage] = [:]
+    private static var missing: Set<String> = []
+
+    /// Resolve icons while loading bindings, never on the first menu opening.
+    static func prepare(_ items: [Item]) {
+        missing.removeAll()
+        func visit(_ items: [Item]) {
+            for item in items {
+                switch item.action {
+                case .group(let children): visit(children)
+                case .app(let id): _ = icon(id)
+                default: break
+                }
+            }
+        }
+        visit(items)
+    }
 
     static func icon(_ bundleID: String) -> NSImage? {
         if let cached = cache[bundleID] { return cached }
-        guard !bundleID.isEmpty, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
+        guard !missing.contains(bundleID) else { return nil }
+        guard !bundleID.isEmpty, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            missing.insert(bundleID)
+            return nil
+        }
         let image = NSWorkspace.shared.icon(forFile: url.path)
         cache[bundleID] = image
         return image

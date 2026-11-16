@@ -63,7 +63,6 @@ private struct SoundList: View {
             .foregroundStyle(Color.tingMuted)
             .padding(.top, 10)
         }
-        .id(session.generation)
         .foregroundStyle(Color.tingInk)
         .padding(.horizontal, 20)
         .padding(.top, session.showPanelHeader ? 20 : 4)
@@ -75,7 +74,6 @@ private struct SoundList: View {
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14, style: .continuous))
         }
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
-        .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ting menu")
     }

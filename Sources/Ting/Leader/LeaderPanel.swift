@@ -18,7 +18,7 @@ final class LeaderPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = false
+        hasShadow = true
         hidesOnDeactivate = false
         becomesKeyOnlyIfNeeded = false
         isReleasedWhenClosed = false
@@ -52,8 +52,6 @@ final class LeaderSession {
     var shakeToken = 0
     /// The loaded micro-apps, for the names and the "not working" mark of micro-app bindings.
     var microApps = MicroAppCatalog()
-    /// Bumped on every open so layout hints are recomputed for the current keyboard layout.
-    var generation = 0
 }
 
 /// Drives the leader panel with `LeaderMachine`.
@@ -80,6 +78,11 @@ final class LeaderController: NSObject, NSWindowDelegate {
 
     func configure(_ config: Config) {
         machine.items = config.items
+        AppIcons.prepare(config.items)
+        if !machine.isOpen {
+            session.path = []
+            session.items = config.items
+        }
         machine.unknownKey = config.unknownKey
         showDelay = config.showDelay
         session.leader = config.leader?.display ?? ""
@@ -161,9 +164,10 @@ final class LeaderController: NSObject, NSWindowDelegate {
         case .show(let path):
             session.path = path
             session.items = machine.currentItems
+            resizePanel()
         case .run(let item):
-            hide()
             onRun?(item)
+            hide()
         case .reject(_, let closed):
             if closed { doubleTap.reset(); hide() } else { shake() }
         case .close:
@@ -180,16 +184,10 @@ final class LeaderController: NSObject, NSWindowDelegate {
     // MARK: Panel
 
     private func present() {
-        session.path = machine.path
-        session.items = machine.currentItems
-        session.generation += 1
+        if session.path != machine.path { session.path = machine.path }
+        if session.items != machine.currentItems { session.items = machine.currentItems }
         let panel = self.panel ?? makePanel()
-        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        if let visible = screen?.visibleFrame {
-            let size = NSSize(width: 460, height: min(760, visible.height))
-            panel.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
-                                  width: size.width, height: size.height), display: false)
-        }
+        resizePanel()
         // Key at once, visible only after the delay: fast typing never shows the menu.
         panel.alphaValue = showDelay <= 0 ? 1 : 0
         panel.makeKeyAndOrderFront(nil)
@@ -200,6 +198,18 @@ final class LeaderController: NSObject, NSWindowDelegate {
         }
         reveal = work
         if showDelay > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + showDelay, execute: work) }
+    }
+
+    private func resizePanel() {
+        guard let panel else { return }
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
+        guard let visible = screen?.visibleFrame else { return }
+        let fitting = panel.contentView?.fittingSize ?? NSSize(width: 340, height: 640)
+        let size = NSSize(width: 340, height: min(max(100, fitting.height), visible.height))
+        panel.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
+                              width: size.width, height: size.height), display: false)
+        panel.invalidateShadow()
     }
 
     private func hide() {
@@ -220,7 +230,7 @@ final class LeaderController: NSObject, NSWindowDelegate {
                                   onSelect: { [weak self] key in self?.select(key) },
                                   onDismiss: { [weak self] in self?.close() })
         let hosting = NSHostingView(rootView: view)
-        hosting.sizingOptions = []
+        hosting.sizingOptions = [.intrinsicContentSize]
         panel.contentView = hosting
         self.panel = panel
         return panel
