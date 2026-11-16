@@ -111,12 +111,13 @@ final class HomebrewUpdateRunner {
             onFinish(.failed(exitCode: -1, output: "Could not prepare the update in \(folder.path): \(error.localizedDescription)"))
             return true
         }
-        // The progress viewer for the time without an installed Ting. Without it (no bundle, a full
-        // disk) the helper falls back to the installed copy.
-        if let viewerSource {
-            let viewer = folder.appendingPathComponent("viewer")
-            try? fm.createDirectory(at: viewer, withIntermediateDirectories: true)
-            try? fm.copyItem(at: viewerSource, to: viewer.appendingPathComponent("Ting.app"))
+        // The progress viewer for the time without an installed Ting. It is required: without a
+        // complete copy nothing could show the progress while brew replaces Ting, so brew never starts.
+        do {
+            try Self.prepareViewer(from: viewerSource, in: folder)
+        } catch {
+            onFinish(.failed(exitCode: -1, output: "Could not prepare the progress window in \(folder.path): \(error.localizedDescription)"))
+            return true
         }
         Self.removeOldRuns(in: base, keeping: folder)
         let process = Process()
@@ -186,6 +187,30 @@ final class HomebrewUpdateRunner {
     func conclude(_ outcome: HomebrewUpdateOutcome, role: HomebrewUpdateRole) -> Bool {
         acknowledge(relaunch: role.relaunchWhenDone(after: outcome))
         return role.restarts(after: outcome)
+    }
+
+    enum ViewerError: LocalizedError {
+        case noBundle
+        case incomplete(String)
+        var errorDescription: String? {
+            switch self {
+            case .noBundle: "this Ting is not running from an app bundle that can be copied."
+            case .incomplete(let path): "the copy has no executable at \(path)."
+            }
+        }
+    }
+
+    /// Copies `source` (Ting.app) to `<run folder>/viewer/Ting.app` and checks that its executable
+    /// is there, the one the helper starts.
+    static func prepareViewer(from source: URL?, in folder: URL) throws {
+        guard let source else { throw ViewerError.noBundle }
+        let fm = FileManager.default
+        let viewer = folder.appendingPathComponent("viewer")
+        try fm.createDirectory(at: viewer, withIntermediateDirectories: true)
+        let copy = viewer.appendingPathComponent("Ting.app")
+        try fm.copyItem(at: source, to: copy)
+        let executable = copy.appendingPathComponent("Contents/MacOS/Ting")
+        guard fm.isExecutableFile(atPath: executable.path) else { throw ViewerError.incomplete(executable.path) }
     }
 
     /// Run folders of earlier updates, older than a day, with their viewer copies.
@@ -279,7 +304,7 @@ final class HomebrewUpdateRunner {
       if ! alive; then
         now=$(date +%s)
         if [ $((now - last)) -ge 10 ]; then
-          if show; then last=$now; elif [ -n "$(target)" ]; then final; last=$now; fi
+          if show; then last=$now; fi
         fi
       fi
       sleep 0.2

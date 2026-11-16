@@ -123,7 +123,8 @@ latest published version.
   A small helper script in Ting's per-user temporary folder runs the command
   and writes its output there. Before it starts, Ting copies its own signed
   bundle into the same folder; when Ting quits while brew runs, the helper
-  starts that copy, which shows only the progress window. After a successful
+  starts that copy, which shows only the progress window. If the copy cannot
+  be made, Ting does not start brew and shows why. After a successful
   update, or when nobody saw the result, the helper starts the installed Ting
   again (the newest Caskroom record, resolved). Run folders older than a day are
   removed at the next update.
