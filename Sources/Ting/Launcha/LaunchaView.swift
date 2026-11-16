@@ -67,8 +67,8 @@ private struct LaunchaCard: View {
         .background(Color.soundPanel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(alignment: .top) {
             Rectangle().fill(Color.tingAmber).frame(height: 3)
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14, style: .continuous))
         }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
         .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
         .accessibilityElement(children: .contain)
@@ -214,8 +214,11 @@ private struct ResultList: View {
                 // No animation: also right for Reduce Motion.
                 if rows.indices.contains(selection) { proxy.scrollTo(rows[selection].id) }
             }
-            .onChange(of: rows.first?.id) {
-                if let first = rows.first?.id { proxy.scrollTo(first, anchor: .top) }
+            .onChange(of: rows.map(\.id)) {
+                // Refreshes preserve the selected result; keep it visible after reordering too.
+                if rows.indices.contains(selection) {
+                    proxy.scrollTo(rows[selection].id, anchor: selection == 0 ? .top : nil)
+                }
             }
         }
         .accessibilityElement(children: .contain)

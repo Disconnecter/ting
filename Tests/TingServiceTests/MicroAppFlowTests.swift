@@ -177,6 +177,16 @@ final class MicroAppFlowPanelKeyTests: XCTestCase {
         XCTAssertEqual(result.keys, [])
     }
 
+    func testCommandNavigationAndSelectionReachTheEditor() {
+        for code: UInt16 in [51, 117, 123, 124, 125, 126] {
+            for flags: NSEvent.ModifierFlags in [.command, [.command, .shift], [.command, .option]] {
+                let result = press(keyDown(code, "", flags: flags))
+                XCTAssertFalse(result.handled, "key \(code), flags \(flags)")
+                XCTAssertEqual(result.keys, [])
+            }
+        }
+    }
+
     func testCommandShiftReturnIsSwallowedWithoutConfirming() {
         let result = press(keyDown(36, "\r", flags: [.command, .shift]))
         XCTAssertTrue(result.handled)

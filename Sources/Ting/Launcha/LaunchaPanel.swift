@@ -7,6 +7,8 @@ import TingCore
 final class LaunchaPanel: NSPanel {
     /// ⌘↩: show the selected result in Finder.
     var onReveal: (() -> Void)?
+    /// List navigation must keep working when Tab moves focus away from the search field.
+    var onMove: ((Int) -> Void)?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
@@ -26,6 +28,27 @@ final class LaunchaPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    static func navigationDelta(keyCode: UInt16, flags: NSEvent.ModifierFlags, composing: Bool) -> Int? {
+        guard !composing, flags.intersection([.command, .shift, .option, .control]).isEmpty else { return nil }
+        switch keyCode {
+        case 126: return -1
+        case 125: return 1
+        case 116: return -8
+        case 121: return 8
+        default: return nil
+        }
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, let onMove,
+           let delta = Self.navigationDelta(keyCode: event.keyCode, flags: event.modifierFlags,
+                                           composing: (firstResponder as? NSTextView)?.hasMarkedText() == true) {
+            onMove(delta)
+            return
+        }
+        super.sendEvent(event)
+    }
 
     /// What the panel does with a ⌘ key equivalent.
     enum KeyEquivalentRoute: Equatable {
@@ -175,6 +198,7 @@ final class LaunchaController: NSObject, NSWindowDelegate {
         let panel = LaunchaPanel()
         panel.delegate = self
         panel.onReveal = { [weak self] in self?.activate(reveal: true) }
+        panel.onMove = { [weak self] delta in self?.model.moveSelection(by: delta) }
         let view = LaunchaView(model: model, chrome: chrome,
                                onActivate: { [weak self] reveal in self?.activate(reveal: reveal) },
                                onDismiss: { [weak self] in self?.close() })

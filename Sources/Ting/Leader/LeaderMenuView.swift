@@ -71,8 +71,8 @@ private struct SoundList: View {
         .background(Color.soundPanel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(alignment: .top) {
             Rectangle().fill(Color.tingAmber).frame(height: 3)
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14, style: .continuous))
         }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ting menu")

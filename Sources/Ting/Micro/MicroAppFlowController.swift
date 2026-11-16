@@ -55,6 +55,8 @@ final class MicroAppFlowPanel: NSPanel {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        // Command navigation/deletion (including selection with Shift) belongs to the editor.
+        if flags.contains(.command), [51, 117, 123, 124, 125, 126].contains(event.keyCode) { return false }
         guard flags == .command else { return flags.contains(.command) ? true : super.performKeyEquivalent(with: event) }
         // AppKit sends Command shortcuts here before `sendEvent`, so Cmd+Enter is handled here.
         if event.keyCode == 36 || event.keyCode == 76 {
