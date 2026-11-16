@@ -4,12 +4,18 @@
 # Packages Ting once (ad-hoc signed) into a temporary folder, so the format document is inside
 # the app. Then, for each named agent, it makes a fresh temporary TING_CONFIG, gives the agent
 # only the text of `Ting --agent-prompt` and one fixed task, and runs the agent without a dialog.
-# An agent passes when exactly one .yaml file is in its temporary micro-apps folder and
-# `Ting --check` exits with 0 for it.
+# An agent passes when exactly one .yaml file (hidden ones included) is in its temporary
+# micro-apps folder and `Ting --check` exits with 0 for it.
 #
 # Never touches ~/.config/ting/ or ~/Library/Application Support/Ting/, and sends no key presses.
-# Prints one result line per agent; exits with 0 only when every named agent passes.
+# It hashes every file in both folders before and after the run and checks that none changed.
+#
+# Prints one result line per agent. Exit codes: 0 when every named agent passes and the
+# folders are unchanged; 1 when an agent fails or a file in the folders changed; 2 for a wrong
+# call; 3 (inconclusive) when the agents pass but launcha-history.json changed, which the
+# person's own running Ting does when they open something through launcha: run it again.
 # Set AGENT_TRIAL_KEEP=1 to keep the temporary folder after a full pass.
+# AGENT_TRIAL_WATCH (folders separated by ':') replaces the two folders, for tests of the script.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -34,15 +40,15 @@ for agent in "$@"; do
   command -v "$agent" >/dev/null || { echo "$agent is not installed (not in PATH)" >&2; exit 2; }
 done
 
+WATCH=${AGENT_TRIAL_WATCH:-"$HOME/.config/ting:$HOME/Library/Application Support/Ting"}
+IFS=: read -r -a WATCH_DIRS <<<"$WATCH"
+
 # A snapshot of the person's Ting folders: one line with the content hash of each file.
-# launcha-history.json is left out: the person's own running Ting rewrites it whenever they
-# open something through launcha, and the trial has no part in it. Config, micro-apps,
-# approvals and values all stay in the snapshot.
 snapshot() {
   local dir
-  for dir in "$HOME/.config/ting" "$HOME/Library/Application Support/Ting"; do
+  for dir in "${WATCH_DIRS[@]}"; do
     if [[ -d "$dir" ]]; then
-      find "$dir" -type f ! -name launcha-history.json -exec shasum -a 256 {} + 2>/dev/null
+      find "$dir" -type f -exec shasum -a 256 {} + 2>/dev/null
     else
       echo "absent $dir"
     fi
@@ -89,7 +95,6 @@ run_agent() {
 }
 
 FAILED=0
-RESULTS=()
 for agent in "$@"; do
   dir="$WORK/$agent"
   mkdir -p "$dir/work"
@@ -101,10 +106,8 @@ for agent in "$@"; do
   echo "Running ${agent}…"
   status=0
   if ! base=$(TING_CONFIG="$config" "$TING" --agent-prompt 2>"$dir/agent-prompt.log"); then
-    result="FAIL $agent: Ting --agent-prompt failed (see $dir/agent-prompt.log)"
+    echo "FAIL $agent: Ting --agent-prompt failed (see $dir/agent-prompt.log)"
     FAILED=1
-    RESULTS+=("$result")
-    echo "$result"
     continue
   fi
   prompt="$base$TASK"
@@ -112,9 +115,10 @@ for agent in "$@"; do
   TING_CONFIG="$config" run_agent "$agent" "$dir" "$prompt" </dev/null >"$dir/agent.log" 2>&1 || status=$?
 
   result=""
-  shopt -s nullglob
+  # dotglob: a hidden draft such as .draft.yaml counts as a second file.
+  shopt -s nullglob dotglob
   files=("$micro"/*.yaml)
-  shopt -u nullglob
+  shopt -u nullglob dotglob
   if [[ $status -ne 0 ]]; then
     result="FAIL $agent: the agent exited with $status (log: $dir/agent.log)"
   elif [[ ${#files[@]} -ne 1 ]]; then
@@ -127,19 +131,25 @@ for agent in "$@"; do
     result="PASS $agent: $(basename "${files[0]}")"
   fi
   [[ $result == PASS* ]] || FAILED=1
-  RESULTS+=("$result")
   echo "$result"
 done
 
 AFTER=$(snapshot)
 if [[ "$AFTER" != "$BEFORE" ]]; then
-  echo "FAIL: ~/.config/ting/ or ~/Library/Application Support/Ting/ changed during the trial:" >&2
-  diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") >&2 || true
-  FAILED=1
+  changes=$(diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") | grep '^[<>]' || true)
+  echo "The watched folders changed during the trial:" >&2
+  printf '%s\n' "$changes" >&2
+  # Every changed line names launcha-history.json: the person's own Ting, not the trial, most
+  # likely wrote it, but the trial cannot prove that the folders stayed unchanged.
+  if [[ $FAILED -eq 0 ]] && ! grep -qv '/launcha-history\.json$' <<<"$changes"; then
+    echo "INCONCLUSIVE: only launcha-history.json changed, probably by the running Ting; run the trial again" >&2
+    FAILED=3
+  else
+    echo "FAIL: a file in the watched folders changed" >&2
+    FAILED=1
+  fi
 fi
 
-echo
-printf '%s\n' "${RESULTS[@]}"
 if [[ $FAILED -eq 0 && "${AGENT_TRIAL_KEEP:-0}" != 1 ]]; then
   rm -rf "$WORK"
 else
