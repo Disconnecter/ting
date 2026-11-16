@@ -15,7 +15,10 @@
 - A leader is any non-modifier key, alone or with modifiers. A modifier key on its
   own must never become a leader.
 - `Sources/TingCore` holds pure logic with tests. Keep AppKit out of it. Run
-  `swift test` after every change; tests must pass without warnings.
+  the fewest tests that prove a change after every change
+  (`swift test --filter <name>` for the code you changed); do not run a test again after
+  it passed, and docs-only changes need no tests. The seemasta checks after a Run and the
+  release scripts run the full `swift test`; tests must pass without warnings.
 - Do not add GitHub Actions or other hosted CI: they are slow. Run tests and
   release checks locally.
 - Every release must be signed with Developer ID, notarized and stapled, signed
