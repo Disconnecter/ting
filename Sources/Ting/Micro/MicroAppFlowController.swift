@@ -256,7 +256,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
 
     private func copyAll(_ content: MicroAppPanelContent) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(content.text, forType: .string)
+        // The plain result: console text (and every error) without its escape codes.
+        NSPasteboard.general.setString(content.plainText, forType: .string)
     }
 
     // MARK: Panel

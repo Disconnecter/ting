@@ -169,7 +169,8 @@ public struct MicroAppResultPlan: Equatable, Sendable {
                 return MicroAppResultPlan(show: .panel(MicroAppPanelContent(title: title, text: "", style: app.output.style,
                                                                             isError: false, notes: [noOutputNote] + cut(output))))
             }
-            let clipboard = toClipboard ? text : nil
+            // Console text goes to the clipboard without its escape codes.
+            let clipboard = toClipboard ? (app.output.style == .console ? ConsoleText.plain(text) : text) : nil
             guard toPanel else {
                 let toast = ([copiedNote] + cut(output)).joined(separator: ", ")
                 return MicroAppResultPlan(clipboard: clipboard, show: .toast(toast))

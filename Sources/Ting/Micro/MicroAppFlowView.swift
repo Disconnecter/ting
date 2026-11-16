@@ -1,6 +1,5 @@
 // The micro-app panels in the launcha style: graphite card, amber top rule, mono footer.
-// In this version every output style is shown as plain text: `code` and `console` (and every
-// error) monospaced, `text` and `markdown` in the system font.
+// The result text is drawn by `MicroAppOutputRenderer` in the style of `output.as`.
 import AppKit
 import SwiftUI
 import TingCore
@@ -171,42 +170,69 @@ private struct ResultBody: View {
                 }
             }
             if !content.text.isEmpty {
-                SelectableText(text: content.text, monospaced: monospaced, takesFocus: true)
-                    .frame(height: height)
+                let rendered = MicroAppOutputRenderer.render(content)
+                SelectableText(text: rendered, plainText: content.plainText, takesFocus: true)
+                    .frame(height: height(rendered))
                     .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
             }
         }
     }
 
-    private var monospaced: Bool {
-        content.isError || content.style == .code || content.style == .console
-    }
-
-    private var height: CGFloat {
-        let lines = content.text.split(separator: "\n", omittingEmptySubsequences: false).count
-        return min(440, max(44, CGFloat(lines) * 17 + 16))
+    /// Grows with the text, then scrolls.
+    private func height(_ rendered: NSAttributedString) -> CGFloat {
+        let measured: CGFloat
+        if rendered.length <= 20_000 {
+            measured = ceil(rendered.boundingRect(with: NSSize(width: SelectableText.textWidth, height: .greatestFiniteMagnitude),
+                                                  options: [.usesLineFragmentOrigin, .usesFontLeading]).height)
+        } else {
+            measured = CGFloat(content.text.split(separator: "\n", omittingEmptySubsequences: false).count) * 17
+        }
+        return min(440, max(44, measured + 20))
     }
 }
 
-/// Read-only, selectable, scrolling text: ⌘C copies the selection, ⌘A selects all.
+/// Read-only, selectable, scrolling text: ⌘C copies the selection as plain text (the whole plain
+/// text when nothing is selected), ⌘A selects all.
 private struct SelectableText: NSViewRepresentable {
-    let text: String
-    let monospaced: Bool
+    let text: NSAttributedString
+    let plainText: String
     /// The text view becomes the first responder, so ⌘C and the arrow keys reach it at once.
     let takesFocus: Bool
 
+    /// The width the text gets inside the card: the card minus its padding, the inset and the line padding.
+    static let textWidth: CGFloat = 580 - 40 - 12 - 10
+
+    init(text: NSAttributedString, plainText: String, takesFocus: Bool) {
+        self.text = text
+        self.plainText = plainText
+        self.takesFocus = takesFocus
+    }
+
+    init(text: String, monospaced: Bool, takesFocus: Bool) {
+        self.init(text: MicroAppOutputRenderer.render(text, style: monospaced ? .code : .text), plainText: text,
+                  takesFocus: takesFocus)
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
+        let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        if let view = scroll.documentView as? NSTextView {
-            view.isEditable = false
-            view.isSelectable = true
-            view.drawsBackground = false
-            view.textContainerInset = NSSize(width: 6, height: 8)
-            view.isAutomaticLinkDetectionEnabled = false
-        }
+        scroll.borderType = .noBorder
+        let view = PlainCopyTextView(frame: NSRect(x: 0, y: 0, width: SelectableText.textWidth, height: 0))
+        view.minSize = .zero
+        view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        view.isVerticallyResizable = true
+        view.isHorizontallyResizable = false
+        view.autoresizingMask = [.width]
+        view.textContainer?.widthTracksTextView = true
+        view.isEditable = false
+        view.isSelectable = true
+        view.isRichText = true
+        view.drawsBackground = false
+        view.textContainerInset = NSSize(width: 6, height: 8)
+        view.isAutomaticLinkDetectionEnabled = false
+        scroll.documentView = view
         update(scroll)
         return scroll
     }
@@ -216,12 +242,10 @@ private struct SelectableText: NSViewRepresentable {
     }
 
     private func update(_ scroll: NSScrollView) {
-        guard let view = scroll.documentView as? NSTextView else { return }
-        let font = monospaced ? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular) : NSFont.systemFont(ofSize: 13)
-        if view.string != text || view.font != font {
-            view.string = text
-            view.font = font
-            view.textColor = NSColor.theme(light: 0x222A2E, dark: 0xEEF1EC)
+        guard let view = scroll.documentView as? PlainCopyTextView else { return }
+        view.plainText = plainText
+        if let storage = view.textStorage, !storage.isEqual(to: text) {
+            storage.setAttributedString(text)
             view.scrollToBeginningOfDocument(nil)
         }
         if takesFocus {
@@ -229,5 +253,17 @@ private struct SelectableText: NSViewRepresentable {
                 if let window = view.window, window.firstResponder !== view { window.makeFirstResponder(view) }
             }
         }
+    }
+}
+
+/// Copies plain text only, never the styling: the selection as shown, or `plainText` without a selection.
+private final class PlainCopyTextView: NSTextView {
+    var plainText = ""
+
+    override func copy(_ sender: Any?) {
+        let range = selectedRange()
+        let text = range.length == 0 ? plainText : (string as NSString).substring(with: range)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }
