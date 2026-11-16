@@ -117,21 +117,111 @@ import TingCore
         runner.acknowledge(relaunch: false)
     }
 
-    /// brew may stop or replace Ting while it runs: the helper outlives Ting and opens the
-    /// installed copy with the log, so the result stays visible.
-    @Test func homebrewHelperSurvivesTingAndReopensIt() async throws {
+    /// The path with every symlink resolved, as `cd -P` in the helper gives it.
+    private func real(_ url: URL) -> String {
+        guard let resolved = realpath(url.path, nil) else { return url.path }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
+    /// A process that has already exited: a Ting that brew stopped or that crashed.
+    private func deadPID() throws -> pid_t {
         let dead = Process()
         dead.executableURL = URL(fileURLWithPath: "/usr/bin/true")
         try dead.run()
         dead.waitUntilExit()
-        let install = try install(brew: "echo '🍺  ting was successfully upgraded!'")
-        let runner = try runner(install, pid: dead.processIdentifier)
+        return dead.processIdentifier
+    }
+
+    /// brew may stop or replace Ting while it runs. The helper sees that Ting is gone while brew
+    /// still works and opens the installed copy at once; that copy watches the same run, gets the
+    /// output that brew writes after Ting's exit and the result.
+    @Test func homebrewProgressStaysVisibleAfterTingQuits() async throws {
+        let install = try install(brew: "echo first\nsleep 1\necho second\necho '🍺  ting was successfully upgraded!'")
+        let runner = try runner(install, pid: try deadPID())
         _ = runner.start(onOutput: { _ in }, onFinish: { _ in })
         let directory = try #require(runner.directory)
         let opened = try await waitFor("open-calls")
-        #expect(opened == "\(install.app.path) --args --homebrew-update-log \(directory.path)\n")
-        let log = try String(contentsOf: directory.appendingPathComponent("output.log"), encoding: .utf8)
-        #expect(log.contains("successfully upgraded"))
+        #expect(opened == "\(real(install.app)) --args --homebrew-update-log \(directory.path)\n")
+        // Opened while brew still runs: no result yet, and the rest of the output is still to come.
+        #expect(HomebrewUpdateRunner.outcome(in: directory) == nil)
+        #expect(!HomebrewUpdateRunner.output(in: directory).contains("second"))
+
+        let watcher = HomebrewUpdateRunner(install: nil, base: root.appendingPathComponent("runs"), pollInterval: 0.05)
+        var seen: [String] = []
+        let outcome = try await withCheckedThrowingContinuation { continuation in
+            watcher.watch(directory, onOutput: { seen.append($0) }, onFinish: { continuation.resume(returning: $0) })
+        }
+        #expect(outcome == .upgraded)
+        #expect(seen.contains { $0.contains("second") })
+        #expect(try String(contentsOf: directory.appendingPathComponent("pid"), encoding: .utf8)
+            == String(ProcessInfo.processInfo.processIdentifier))
+        watcher.acknowledge(relaunch: false)
+    }
+
+    /// The reopened copy has no helper of its own; its Cancel still stops brew, and is no success.
+    @Test func homebrewWatcherCancelIsNotSuccess() async throws {
+        let install = try install(brew: "echo started\nsleep 5\necho '🍺  ting was successfully upgraded!'")
+        let runner = try runner(install)
+        _ = runner.start(onOutput: { _ in }, onFinish: { _ in })
+        let directory = try #require(runner.directory)
+        let watcher = HomebrewUpdateRunner(install: nil, base: root.appendingPathComponent("runs"), pollInterval: 0.05)
+        let outcome = try await withCheckedThrowingContinuation { continuation in
+            watcher.watch(directory, onOutput: { _ in }, onFinish: { continuation.resume(returning: $0) })
+            watcher.cancel()
+        }
+        guard case .cancelled = outcome else { Issue.record("Expected a cancel, got \(outcome)"); return }
+        watcher.acknowledge(relaunch: false)
+    }
+
+    /// A copy that runs from the Caskroom: the upgrade removes its version folder. The restart
+    /// opens the new record, not the old path.
+    @Test func homebrewRestartOpensTheReplacement() async throws {
+        let prefix = root.appendingPathComponent("prefix")
+        let caskroom = prefix.appendingPathComponent("Caskroom/ting")
+        let old = caskroom.appendingPathComponent("0.7.3/Ting.app")
+        try fm.createDirectory(at: old, withIntermediateDirectories: true)
+        _ = try script("prefix/bin/brew", """
+            rm -rf '\(caskroom.appendingPathComponent("0.7.3").path)'
+            mkdir -p '\(caskroom.appendingPathComponent("0.7.4/Ting.app").path)'
+            echo '🍺  ting was successfully upgraded!'
+            """)
+        let install = try #require(HomebrewDetection.install(of: old, prefixes: [prefix]))
+        let ting = Process()
+        ting.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        ting.arguments = ["30"]
+        try ting.run()
+        let runner = try runner(install, pid: ting.processIdentifier)
+        #expect(try await finish(runner) == .upgraded)
+        let directory = try #require(runner.directory)
+        runner.acknowledge(relaunch: true)
+        ting.terminate()
+        ting.waitUntilExit()
+        let opened = try await waitFor("open-calls")
+        #expect(!fm.fileExists(atPath: old.path))
+        #expect(opened == "\(real(caskroom.appendingPathComponent("0.7.4/Ting.app"))) --args --homebrew-update-log \(directory.path)\n")
+    }
+
+    /// A run that cannot start shows its reason, not an empty log.
+    @Test func homebrewStartupFailuresShowTheReason() async throws {
+        let install = try install(brew: "exit 0")
+        let blocker = root.appendingPathComponent("not-a-folder")
+        try Data("x".utf8).write(to: blocker)
+        let unpreparable = HomebrewUpdateRunner(install: install, base: blocker, pollInterval: 0.05)
+        let unstartable = HomebrewUpdateRunner(install: install, base: root.appendingPathComponent("runs"),
+                                               shell: root.appendingPathComponent("missing/sh"), pollInterval: 0.05)
+        for (runner, reason) in [(unpreparable, "Could not prepare the update"), (unstartable, "Could not start the update helper")] {
+            let outcome = try await finish(runner)
+            guard case .failed(let code, let text) = outcome else { Issue.record("Expected a failure, got \(outcome)"); continue }
+            #expect(code == -1)
+            #expect(text.contains(reason))
+            let model = HomebrewUpdateModel()
+            model.finish(outcome, log: runner.directory.map(HomebrewUpdateRunner.output(in:)))
+            #expect(model.output == text)
+            #expect(model.phase == .finished(outcome))
+            #expect(!model.succeeded)
+        }
+        #expect(read("brew-calls").isEmpty)
     }
 
     @Test func homebrewChoiceStartsNoSparkle() throws {
