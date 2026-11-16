@@ -106,6 +106,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     let session = MicroAppFlowSession()
     /// Shows a short message (the 'Copied' toast, errors that fit two lines).
     var onToast: ((String) -> Void)?
+    /// A micro-app needs Accessibility and Ting does not have it: show the Accessibility window.
+    var onAccessibilityNeeded: (() -> Void)?
     /// The micro-apps folder as the user sees it, for the 'not found' error.
     var folderDisplay: () -> String = { "the micro-apps folder" }
 
@@ -125,6 +127,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private var target: MicroAppTarget?
     /// The context of the open flow, read before its parameter panel.
     private var context = MicroAppContext()
+    /// The generation of the run that asked for Accessibility: its failure shows no panel.
+    private var accessibilityAsked: Int?
     /// `false` builds the panel with its real views and key handling but never puts it on screen
     /// or gives it keyboard focus. For tests, so the user's screen and typing are not touched.
     private let presentsWindow: Bool
@@ -240,6 +244,9 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             case .success(let context):
                 self.context = context
                 self.askParameters(app)
+            case .failure(let error) where error.needsAccessibility:
+                self.close()
+                self.onAccessibilityNeeded?()
             case .failure(let error):
                 self.present(MicroAppResultPlan.error(title: app.shownName, message: error.localizedDescription))
             }
@@ -294,6 +301,11 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             let result = await runner.run(app, values: values, stdin: stdin, context: context, progress: progress)
             guard let self, self.generation == current, !Task.isCancelled else { return }
             self.task = nil
+            // A `keys` or `paste` step without Accessibility: the Accessibility window says what to do.
+            if self.accessibilityAsked == current, case .stepFailed = result {
+                self.close()
+                return
+            }
             self.present(MicroAppResultPlan.make(app: app, result: result, outputLimit: runner.outputLimit,
                                                  timeLimit: runner.timeLimit(for: app)), title: app.shownName)
         }
@@ -303,7 +315,15 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private func deliver(_ action: MicroAppKeyboardAction, to target: MicroAppTarget?, generation current: Int) async throws {
         guard generation == current else { throw CancellationError() }
         panel?.orderOut(nil)
-        try await keyboard.send(action, to: target)
+        do {
+            try await keyboard.send(action, to: target)
+        } catch where error.needsAccessibility {
+            if generation == current {
+                accessibilityAsked = current
+                onAccessibilityNeeded?()
+            }
+            throw error
+        }
     }
 
     private func present(_ plan: MicroAppResultPlan, title: String = "Ting") {
@@ -342,6 +362,11 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
                 if !keepOnClipboard {
                     self.pasteboard.clearContents()
                     self.pasteboard.setString(text, forType: .string)
+                }
+                if error.needsAccessibility {
+                    self.onAccessibilityNeeded?()
+                    self.onToast?("Not pasted. The result is on the clipboard.")
+                    return
                 }
                 self.present(MicroAppResultPlan.error(title: title, message: "\(error.localizedDescription) The result is on the clipboard."))
             }

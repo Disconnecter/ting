@@ -24,7 +24,16 @@ struct MicroAppTarget: Equatable, Sendable {
 /// A context or keyboard problem, with the message the person sees.
 struct MicroAppInputError: LocalizedError, Equatable {
     var message: String
+    /// Ting does not have the Accessibility permission: the flow shows the Accessibility window.
+    var needsAccessibility = false
     var errorDescription: String? { message }
+
+    static let accessibility = MicroAppInputError(message: MicroAppContextScripts.accessibilityMessage, needsAccessibility: true)
+}
+
+extension Error {
+    /// `true` for the error of a missing Accessibility permission.
+    var needsAccessibility: Bool { (self as? MicroAppInputError)?.needsAccessibility == true }
 }
 
 @MainActor
@@ -140,11 +149,10 @@ final class MicroAppContextReader: MicroAppContextReading {
 
 /// The Accessibility parts: the permission, the selected text and the front window of an app.
 enum MicroAppAccessibility {
-    /// Throws the message for the person, and shows the macOS prompt, when Ting is not trusted.
+    /// Throws `MicroAppInputError.accessibility` when Ting may not use Accessibility. Ting's own
+    /// Accessibility window explains how to allow it, so the prompt of macOS is not shown.
     static func require() throws {
-        if AXIsProcessTrusted() { return }
-        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        throw MicroAppInputError(message: MicroAppContextScripts.accessibilityMessage)
+        guard AXIsProcessTrusted() else { throw MicroAppInputError.accessibility }
     }
 
     private static func application(_ pid: pid_t) -> AXUIElement {

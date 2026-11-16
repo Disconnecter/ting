@@ -180,7 +180,7 @@ struct QuietButtonStyle: ButtonStyle {
             .padding(.horizontal, 13)
             .frame(height: 30)
             .foregroundStyle(prominent ? Color.soundKeyInk : Color.tingInk)
-            .background(prominent ? Color.tingAmber.opacity(configuration.isPressed ? 0.8 : 1)
+            .background(prominent ? Color.soundKey.opacity(configuration.isPressed ? 0.8 : 1)
                                   : Color.tingInk.opacity(configuration.isPressed ? 0.14 : 0.05),
                         in: RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.tingInk.opacity(prominent ? 0 : 0.1)))

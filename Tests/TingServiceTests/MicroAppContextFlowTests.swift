@@ -42,6 +42,7 @@ final class MicroAppContextFlowTests: XCTestCase {
     private var keyboard: FakeKeyboard!
     private var flow: MicroAppFlowController!
     private var toasts: [String] = []
+    private var accessibilityAsked = 0
     private let target = MicroAppTarget(pid: 4242, bundleID: "com.example.Editor", name: "Editor", path: "/Applications/Editor.app")
 
     override func setUp() async throws {
@@ -62,7 +63,9 @@ final class MicroAppContextFlowTests: XCTestCase {
                                       runner: runner, pasteboard: pasteboard, presentsWindow: false,
                                       contextReader: reader, keyboard: keyboard, frontmost: { target })
         flow.onToast = { [weak self] in self?.toasts.append($0) }
+        flow.onAccessibilityNeeded = { [weak self] in self?.accessibilityAsked += 1 }
         toasts = []
+        accessibilityAsked = 0
     }
 
     override func tearDown() async throws {
@@ -127,13 +130,48 @@ final class MicroAppContextFlowTests: XCTestCase {
 
     func testAContextErrorShowsTheMessageAndRunsNothing() async throws {
         let marker = directory.appendingPathComponent("ran")
-        reader.error = MicroAppInputError(message: MicroAppContextScripts.accessibilityMessage)
-        load([("sel.yaml", header + "context: [selection]\ninput: none\nsteps:\n  - command: touch '\(marker.path)'; echo \"$TING_CONTEXT_SELECTION_TEXT\"\noutput:\n  to: [panel]\n")])
+        let refused = MicroAppContextScripts.message(.notAllowed, appName: "Finder", reading: "the Finder selection")!
+        reader.error = MicroAppInputError(message: refused)
+        load([("sel.yaml", header + "context: [finder]\ninput: none\nsteps:\n  - command: touch '\(marker.path)'; echo \"$TING_CONTEXT_FINDER_SELECTION\"\noutput:\n  to: [panel]\n")])
         try await start("sel")
         guard case .result(let content) = flow.session.state else { return XCTFail("expected the error panel") }
         XCTAssertTrue(content.isError)
-        XCTAssertEqual(content.text, MicroAppContextScripts.accessibilityMessage)
+        XCTAssertEqual(content.text, refused)
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        XCTAssertEqual(accessibilityAsked, 0)
+    }
+
+    func testWithoutAccessibilityTheContextOpensTheAccessibilityWindowInsteadOfAPanel() async throws {
+        let marker = directory.appendingPathComponent("ran")
+        reader.error = MicroAppInputError.accessibility
+        load([("sel.yaml", header + "context: [selection]\ninput: none\nsteps:\n  - command: touch '\(marker.path)'; echo \"$TING_CONTEXT_SELECTION_TEXT\"\noutput:\n  to: [panel]\n")])
+        try await start("sel")
+        XCTAssertEqual(accessibilityAsked, 1)
+        XCTAssertFalse(flow.isOpen, "no error panel over the Accessibility window")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    func testWithoutAccessibilityAKeysStepOpensTheAccessibilityWindowAndStops() async throws {
+        let marker = directory.appendingPathComponent("after")
+        keyboard.error = MicroAppInputError.accessibility
+        load([("keys.yaml", header + "input: none\nsteps:\n  - keys: cmd+s\n  - command: touch '\(marker.path)'\noutput:\n  to: [panel]\n")])
+        try await start("keys")
+        XCTAssertEqual(accessibilityAsked, 1)
+        XCTAssertFalse(flow.isOpen)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "the steps after it do not run")
+    }
+
+    func testWithoutAccessibilityTheAppOutputLeavesTheResultOnTheClipboard() async throws {
+        pasteboard.clearContents()
+        pasteboard.setString("old", forType: .string)
+        keyboard.error = MicroAppInputError.accessibility
+        load([("out.yaml", header + "input: none\nsteps:\n  - text: result\noutput:\n  to: [app]\n")])
+        try await start("out")
+        try await settle()
+        XCTAssertEqual(accessibilityAsked, 1)
+        XCTAssertEqual(pasteboard.string(forType: .string), "result")
+        XCTAssertEqual(toasts, ["Not pasted. The result is on the clipboard."])
+        XCTAssertFalse(flow.isOpen)
     }
 
     func testLibrariesReadTheContextOfTheStart() async throws {

@@ -268,6 +268,21 @@ private struct MicroAppsSection: View {
             if let folderError {
                 Text(folderError).font(.caption).foregroundStyle(Color.tingAmber)
             }
+            let access = model.accessibility.access
+            LabeledContent("Accessibility") {
+                HStack(spacing: 8) {
+                    if access.isTrusted {
+                        Label("Allowed", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                    } else {
+                        Text("Not allowed").foregroundStyle(Color.tingAmber)
+                        Button("Allow…") { model.accessibility.show() }
+                    }
+                }
+            }
+            .onAppear { access.refresh() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in access.refresh() }
+            Text("Only micro-apps that read the selected text or the front window, press keys or paste need it.")
+                .font(.caption).foregroundStyle(.secondary)
             Text("One micro-app per .yaml file. Ting creates the folder when you open it, loads it again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
                 .font(.caption).foregroundStyle(.secondary)
         } header: { MonoLabel("Micro-apps", size: 9).foregroundStyle(Color.tingAmber) }

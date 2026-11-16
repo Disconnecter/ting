@@ -147,9 +147,11 @@ context: [app, finder]
   selected, the text is then that line.
 - A value that Ting cannot read is empty: no Finder or browser window, nothing
   selected. macOS asks the person once to allow Ting to control Finder or the
-  browser. Without that, or without the Accessibility permission (System
-  Settings › Privacy & Security › Accessibility), the micro-app does not start
-  and the panel says what to allow.
+  browser; without that, the micro-app does not start and the panel says what to
+  allow. Without the Accessibility permission, the micro-app does not start and
+  Ting opens a window that shows how to turn it on: drag Ting into System
+  Settings › Privacy & Security › Accessibility. Settings › Advanced shows
+  whether Ting has it.
 - The approval panel shows what the micro-app reads. A library lists its own
   `context`; a micro-app that calls it needs no `context` for it.
 

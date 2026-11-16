@@ -17,9 +17,12 @@ from grime and sound-system culture: amber keycaps on graphite, `esc pull up`,
 Requires **macOS 14 or later**. Official releases are universal builds for
 **Apple Silicon and Intel**.
 
-[Release notes for Ting 0.6.0](docs/releases/v0.6.0.md): micro-apps read the
-active app, the Finder selection, the browser tab and the selected text, and can
-press keys and paste their result into the app.
+[Release notes for Ting 0.6.1](docs/releases/v0.6.1.md): a window that shows how
+to give Ting Accessibility, with its icon to drag into System Settings.
+
+[In 0.6.0](docs/releases/v0.6.0.md), micro-apps learned to read the active app,
+the Finder selection, the browser tab and the selected text, and to press keys
+and paste their result into the app.
 
 [In 0.5.0](docs/releases/v0.5.0.md), micro-apps became small scripts of steps
 (shell, Python, HTTP, AI) with shared libraries, and a coding agent can set up
@@ -202,7 +205,10 @@ output:
 Ting asks macOS for a permission only when a micro-app needs it: **Automation**
 for Finder or the browser (macOS asks once per app), and **Accessibility** for
 the selected text, the window, key presses and pasted text (turn on Ting in
-System Settings › Privacy & Security › Accessibility). The selected text comes
+System Settings › Privacy & Security › Accessibility). Without Accessibility, Ting
+opens a window with the steps and its icon to drag into that list, and closes
+it by itself once access is on; **Settings › Advanced** shows whether Ting has
+it and opens the same window. The selected text comes
 from Accessibility; when an app does not give it, Ting presses `⌘C` there and
 puts the clipboard back.
 
@@ -335,8 +341,9 @@ instead of starting anything. Every micro-app can also be started by name from
   leaves the clipboard as it was. After 60 seconds Ting stops the command and
   shows "stopped after 60 s" with the output that came before.
 - **Context:** a micro-app with `context:` reads it before the parameter panel,
-  from the app that was in front when you pressed the key. When a permission is
-  missing, the panel says what to allow and nothing runs.
+  from the app that was in front when you pressed the key. When Automation is
+  missing, the panel says what to allow; without Accessibility, Ting opens its
+  Accessibility window. Nothing runs then.
 - **Result:** `output.to: [panel]` shows stdout in the result panel;
   `[clipboard]` copies it and shows "Copied"; both do both, with a "Copied" note
   in the panel. `[app]` pastes it into the app that was in front and puts the
@@ -375,8 +382,9 @@ Spotlight.
   an id that is not loaded is marked and can be changed or deleted.
 - **Advanced:** the config file location, reveal, open, reload, import and export,
   and the micro-apps folder: the list of found micro-apps (name, id, file, good
-  or broken), the list of micro-app errors, **Open Folder in Finder**, which
-  creates the folder when it is missing, and **Copy Agent Prompt** (see
+  or broken), the list of micro-app errors, whether Ting has Accessibility (with
+  **Allow…**, which opens the Accessibility window), **Open Folder in Finder**,
+  which creates the folder when it is missing, and **Copy Agent Prompt** (see
   [Setting up Ting with a coding agent](#setting-up-ting-with-a-coding-agent)).
 
 ## Configuration file

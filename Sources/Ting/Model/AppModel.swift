@@ -43,6 +43,8 @@ final class AppModel {
     @ObservationIgnored private let launcha: LaunchaController
     /// The one open micro-app flow: approval, working state and result.
     @ObservationIgnored private let microFlow = MicroAppFlowController()
+    /// The Accessibility window, and whether Ting may use Accessibility.
+    @ObservationIgnored let accessibility = AccessibilityWindowController()
     /// Held-key guard for the launcha hotkey: a repeat while held never toggles twice.
     @ObservationIgnored private var launchaKey = LeaderDoubleTap(isEnabled: false)
     @ObservationIgnored private lazy var recordingGate = HotkeyRecordingGate { [weak self] in self?.setRecordingHotkey($0) }
@@ -115,6 +117,8 @@ final class AppModel {
         }
         runner.onError = { [weak self] message in self?.toast.show(message) }
         microFlow.onToast = { [weak self] message in self?.toast.show(message) }
+        microFlow.onAccessibilityNeeded = { [weak self] in self?.accessibility.show() }
+        accessibility.onGranted = { [weak self] in self?.toast.show("Accessibility is on. Start the micro-app again.") }
         microFlow.folderDisplay = { [weak self] in self?.microStore.displayPath ?? "the micro-apps folder" }
 
         if !store.fileExists {
