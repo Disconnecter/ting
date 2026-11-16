@@ -25,27 +25,36 @@ latest published version.
   not request Accessibility or Input Monitoring permission and does not observe
   keystrokes outside its own leader menu.
 - Bindings and settings are stored in `~/.config/ting/config.json`. Anyone who can
-  write that file can make Ting open any app or URL when you press a binding.
-  Keep the file writable only by your user account.
+  write that file can make Ting open any app or URL when you press a binding, or
+  bind a key to a micro-app id. `config.json` holds no code.
 - Ting opens apps by bundle identifier and URLs with the default handler chosen
-  by macOS. App and URL bindings run no shell commands and pass no arguments to
-  apps. A URL scheme handler (for example `raycast://`) may perform its own actions.
+  by macOS. App and URL bindings work as before: they run no shell commands and
+  pass no arguments to apps. A URL scheme handler (for example `raycast://`) may perform its own actions.
 - **Ting runs shell commands**, but only from micro-app files (described in
-  `docs/micro-apps/FORMAT.md`) in the micro-apps folder, and only after you
-  approved the exact file content. The command runs with `/bin/sh -c` as your
-  user, with your full rights and no sandbox. Ting stores the SHA-256 of each
-  approved file in `~/Library/Application Support/Ting/micro-approvals.json`;
-  any change of the file asks again. `config.json` only names a micro-app id and
-  holds no code. Parameters reach the command only as `TING_*` environment
+  `docs/micro-apps/FORMAT.md`) in the micro-apps folder `~/.config/ting/micro/`,
+  and only after you approved the exact file content in the approval panel. The
+  command runs with `/bin/sh -c` as your user, with your full rights. Ting puts
+  no limit on what it does: there is no sandbox, and it can read and change your
+  files, use the network and start other programs. Only the run time is limited
+  (60 seconds). Approve only commands you understand.
+- Ting stores the SHA-256 of each approved file by micro-app id in
+  `~/Library/Application Support/Ting/micro-approvals.json`; any change of the
+  file asks again, before any parameter is asked. `config.json` only names a
+  micro-app id. Parameters reach the command only as `TING_*` environment
   variables and the clipboard only as stdin, never as text pasted into the
-  command. Anyone who can write the micro-apps folder can offer a command, but it
-  does not run until you approve it; anyone who can write the approvals file and
-  the folder can run commands as you.
+  command.
+- Anyone who can write the micro-apps folder can offer a command; the approval
+  stands between that file and a run. Anyone who can also write the approvals
+  file can run commands as you. **Keep the micro-apps folder, `config.json` and
+  `~/Library/Application Support/Ting/` writable only by your user account.**
+- The command gets the PATH of your login shell, so whoever can change your
+  shell start-up files can change which programs a micro-app runs.
 - The parameter values of the last started run of each micro-app are stored as
   plain text in `~/Library/Application Support/Ting/micro-values.json`, unless
   the file says `remember: false`. Esc in the parameter panel saves nothing.
-- Ting has no accounts, analytics or project servers. Its only network access is
-  Sparkle's update check against the public feed
+- Ting has no accounts, analytics or project servers. Apart from what your
+  approved micro-app commands do, its only network access is Sparkle's update
+  check against the public feed
   `https://github.com/bobuk-io/ting/releases/latest/download/appcast.xml` and the
   download of a newer release from GitHub.
 - Sparkle accepts an update only if the archive's EdDSA signature matches the

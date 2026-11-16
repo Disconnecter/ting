@@ -82,8 +82,8 @@ public struct MicroAppCatalog: Equatable, Sendable {
                 if let owner = owners[app.id] {
                     let issue = MicroAppIssue(file: file, line: 1,
                                               message: "duplicate id `\(app.id)`: `\(owner)` already uses it; rename one of the files")
-                    // The file itself is good, so its name and hidden flag are known.
-                    entries.append(MicroAppEntry(file: file, app: nil, issues: [issue], contentHash: hash,
+                    // The file itself is good, so its id, name and hidden flag are known.
+                    entries.append(MicroAppEntry(file: file, app: nil, issues: [issue], contentHash: hash, explicitID: app.id,
                                                  brokenName: app.name, brokenHidden: app.hidden))
                 } else {
                     owners[app.id] = file

@@ -7,22 +7,52 @@ an AI assistant such as Claude Code, so the format is strict and easy to check:
 every mistake is reported with the file name and the line.
 
 The five files in [`examples/`](examples/) are complete, working micro-apps for
-macOS 14 and later.
+macOS 14 and later. Ting does not install them: copy the ones you want into the
+micro-apps folder.
+
+## Folder
+
+Ting loads every `*.yaml` file of the folder `micro/` next to the config file:
+`~/.config/ting/micro/`. Subfolders and other files (also `.yml`) are ignored. A
+missing folder means no micro-apps. Ting loads the folder again, without a
+restart, when a file is added, changed or removed, and reads the user's PATH
+again at that moment. **Settings › Advanced › Open Folder in Finder** opens the
+folder and creates it when it is missing.
+
+With `TING_CONFIG` set, the folder and the error log sit next to that file with
+its name in front: `TING_CONFIG=/tmp/ting-test.json` uses the folder
+`/tmp/ting-test.json.micro/` and the log `/tmp/ting-test.json.micro-errors.log`.
 
 ## How a micro-app runs
 
 Ting never pastes anything into the command text:
 
-- the command runs with `/bin/sh -c`;
+- the command runs with `/bin/sh -c`, as the user, with the user's full rights,
+  no sandbox and the home folder as the working folder;
+- `PATH` is the PATH of the user's login shell (zsh, bash or fish), read once
+  when Ting starts and again on each load of the folder, so Homebrew and npm
+  tools are found. If the shell does not answer within 5 seconds, Ting uses its
+  own PATH plus `/opt/homebrew/bin` and `/usr/local/bin`;
+- before the command starts, every program of `tools` must be on that PATH;
+  otherwise nothing runs and Ting shows the error `tool not found: <name>`;
 - with `input: clipboard`, the clipboard text goes to the command's **stdin**;
   with `input: none`, stdin is empty;
 - each parameter becomes an **environment variable**: `TING_` and the upper-case
   parameter name (`domain` → `$TING_DOMAIN`). A file cannot choose other
   variable names;
-- on exit code 0, the command's **stdout** is the result and goes to `output.to`;
+- on exit code 0, the command's **stdout**, read as UTF-8 and without the line
+  breaks at its end, is the result and goes to `output.to`. An empty result
+  copies nothing and shows "No output";
 - on a non-zero exit code, the result panel shows an error mark, the exit code,
   stderr and stdout, and **nothing goes to the clipboard**, whatever `output.to`
-  says.
+  says;
+- stdout and stderr are each cut at 1 MB; the panel then shows a note that the
+  output was cut;
+- the command may run at most **60 seconds**. Then Ting stops it and its child
+  processes (a polite stop signal first, a hard kill a moment later) and shows
+  "stopped after 60 s" with the output that came before. `Esc` stops it earlier,
+  silently, and leaves the clipboard as it was. A new micro-app start also
+  stops the running one: only one micro-app is open at a time.
 
 All transformation is done by the command itself (`perl`, `awk`, `tr`,
 `base64`, …). The format has no templates, filters or expressions. Quote the
@@ -37,7 +67,7 @@ Only use tools that ship with macOS 14, or list the extra ones in `tools`
 
 ```yaml
 format: ting.microapp/2          # required, exactly this text
-id: dns-lookup                   # optional; must equal the file name
+id: dns-lookup                   # optional; the file name without .yaml if absent
 name: DNS lookup                 # optional; shown in menus, the id if absent
 description: Look up a domain.   # required, one line, shown as a hint
 tools: [dig, whois]              # optional; commands the script expects on PATH
@@ -66,8 +96,12 @@ output:                          # required
 ## File
 
 - One file holds one micro-app. The file name ends in `.yaml`.
-- The file name without `.yaml` is the micro-app's **id**. It is kebab-case:
-  words of `a-z` and `0-9` joined by single `-` (`format-json`, `dns-lookup`).
+- The **micro-app id** is the `id` key, or, without it, the file name without
+  `.yaml`. It is kebab-case: words of `a-z` and `0-9` joined by single `-`
+  (`format-json`, `dns-lookup`). The `id` key does not have to equal the file
+  name, so a binding keeps working when the file is renamed.
+- Two files with the same id: the first by file name works, the second is a
+  broken file with a `duplicate id` error.
 
 ## Keys
 
@@ -76,7 +110,7 @@ output:                          # required
 | Key | Required | Value |
 |---|---|---|
 | `format` | yes | Exactly `ting.microapp/2`. |
-| `id` | no | Kebab-case text equal to the file name without `.yaml`. If absent, the id comes from the file name. |
+| `id` | no | Kebab-case text. If absent, the id is the file name without `.yaml`. |
 | `name` | no | One line of text shown in selecta and launcha. If absent, the id is shown. |
 | `description` | yes | One non-empty line that says what the micro-app does; shown as a hint. |
 | `tools` | no | A list of command names the command expects on `PATH`, such as `[dig, whois]`. Names use letters, digits, `.`, `_`, `+` and `-`. |
@@ -143,8 +177,8 @@ loaded; every error is reported as `file:line: message`. The checker reports:
 - an unknown key at the top level, in a parameter or in `output`;
 - a missing required key;
 - `format` other than `ting.microapp/2`;
-- an `id` that is not kebab-case or differs from the file name; without `id`, a
-  file name that is not kebab-case; a file name that does not end in `.yaml`;
+- an `id` that is not kebab-case; without `id`, a file name that is not
+  kebab-case; an id that an earlier file (by file name) already uses;
 - an empty or multi-line `name`, `description` or `prompt`;
 - `tools` that is not a list of command names;
 - `hidden`, `required` or `remember` that is not `true` or `false` (`yes`,
@@ -163,11 +197,55 @@ loaded; every error is reported as `file:line: message`. The checker reports:
 - an `output` that is not a map, without `to`, with an empty or repeated `to`, a
   target other than `clipboard` or `panel`, or an `as` outside the four styles.
 
-Before the first run, and after any change to the file, Ting shows the name, the
-file and the full command and asks the person to approve it with `⌘Return`. The
-approval is the SHA-256 of the whole file content, stored by id outside the
-folder; it is not part of the file. A binding in `config.json` names the id:
-`{"key": "j", "micro": "format-json"}`.
+## Errors and the error log
+
+A broken file is not used. Ting marks it in the menu-bar menu, lists every error
+with file and line in **Settings › Advanced**, shows a short message when a change
+breaks a file, and writes the **micro-app error log** `micro-errors.log` next to
+the config file: `~/.config/ting/micro-errors.log` (with `TING_CONFIG` set, see
+[Folder](#folder)). Ting writes the log again on each load of the folder. It has
+one line per problem, `file:line: message`, sorted by file and line, and it is
+empty when all files are good:
+
+```text
+dns-lookup.yaml:14: `params[1].type` is `number`; it must be one of: text, choice
+dns-lookup.yaml:27: command: `$TING_RECORD_TYPE` is not a declared param
+```
+
+### How to check a file (for Claude Code)
+
+There is no separate check command. To check a file you wrote:
+
+1. Save it as `<id>.yaml` in the micro-apps folder. Ting loads it within a
+   moment.
+2. Read `micro-errors.log`. Lines that start with your file name are its errors;
+   no such line means the file is good. Fix the file and read the log again.
+3. A good file is not run by itself: the person approves it at its first start.
+   To try the command without Ting, run it like Ting does, for example
+   `printf '%s' 'input' | TING_MODE=upper /bin/sh -c "$(cat command.sh)"`, with
+   `LANG` and `LC_*` unset.
+
+For tests and experiments, use a temporary config with `TING_CONFIG`, so the
+person's own folder, log and approvals are not touched.
+
+## Approval, bindings and state
+
+Before the first run, and after any change to the file, Ting shows the approval
+panel with the name, the file and the full command; `⌘Return` approves and runs,
+`Esc` refuses. The approval is the SHA-256 of the whole file content, stored by
+micro-app id; it is not part of the file. A binding in `config.json` names the
+id: `{"key": "j", "micro": "format-json"}`. Every micro-app that is not
+`hidden: true` can also be started by name from launcha.
+
+Ting keeps its own state for micro-apps outside the folder and outside
+`config.json`, in `~/Library/Application Support/Ting/`:
+
+- `micro-approvals.json`: the approved hash of each micro-app id;
+- `micro-values.json`: the remembered values of the last started run of each
+  micro-app, as plain text (not for `remember: false`).
+
+With `TING_CONFIG` set, both sit next to that file with its name in front, such
+as `/tmp/ting-test.json.micro-approvals.json`.
 
 ## YAML subset
 

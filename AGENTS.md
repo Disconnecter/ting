@@ -32,6 +32,9 @@
   `Scripts/check_release_privacy.swift`; do not ship local home or build paths.
 - Never overwrite the user's `~/.config/ting/config.json` during development or
   testing. Use `TING_CONFIG=/tmp/...` for manual checks.
+- Tests and manual checks of micro-apps use a temporary micro-apps folder through
+  `TING_CONFIG` (`$TING_CONFIG.micro/`); never write to `~/.config/ting/micro/`,
+  its error log or the approvals and values in `~/Library/Application Support/Ting/`.
 - Do not send synthetic key presses while the user is working: the leader menu
   takes keyboard focus and can swallow their typing.
 - After every release, update the Ting pages on the landing site

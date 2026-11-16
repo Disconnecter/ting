@@ -274,9 +274,6 @@ public enum MicroAppChecker {
                     fail(e.value.line, "`id` `\(value)` must be kebab-case: a-z and 0-9 words joined by `-`")
                 } else {
                     explicitID = value
-                    if let stem, value != stem {
-                        fail(e.value.line, "`id` `\(value)` must equal the file name `\(stem)`; rename the file or remove `id`")
-                    }
                 }
                 id = value
             } else if top["id"] == nil, let stem, !MicroAppChecker.isKebabCase(stem) {
