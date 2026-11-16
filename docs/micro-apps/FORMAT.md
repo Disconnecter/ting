@@ -111,7 +111,28 @@ stored as plain text, so do not use a remembered parameter for a secret.
 | Key | Required | Value |
 |---|---|---|
 | `to` | yes | A non-empty list of `clipboard`, `panel` or both, each at most once. `clipboard` replaces the clipboard with stdout; `panel` shows stdout in the result panel. |
-| `as` | no | How the panel shows stdout: `text`, `markdown`, `code` (monospaced, as a code block) or `console` (monospaced terminal output). Default `markdown`. |
+| `as` | no | How the panel shows stdout: `markdown`, `console`, `text` or `code`. Default `markdown`. |
+
+The output styles of the result panel:
+
+- `markdown` (the default): formatted text. Ting shows `#` headings, `-`, `*` and
+  `1.` lists (nested by two spaces), `**bold**`, `*italic*`, `` `inline code` ``,
+  fenced code blocks, `>` quotes, `---` rules and tables (`| a | b |` with a
+  `|---|--:|` line under the first row) as aligned columns; `:` in that line aligns
+  a column right or centre. A table whose first row is empty has no header. Line
+  breaks inside a paragraph stay. Everything else is shown as written.
+- `console`: monospaced terminal output. ANSI colour and style codes (`ESC[...m`:
+  the 16 colours, 256 colours, 24-bit colours, bold, dim, italic, underline,
+  inverse, strikethrough) are shown as colours and styles; every other escape code
+  and control character is removed.
+- `text`: plain text in the system font, shown as written.
+- `code`: monospaced plain text, shown as written.
+
+An error (a non-zero exit, a timeout, a micro-app that cannot start) is always
+shown as `console` text, whatever `as` says. Enter, ⌘C without a selection and the
+`clipboard` target copy the plain result: stdout as it is, and for `console` without
+its escape codes. ⌘C with a selection copies the selected text as shown, without
+styling.
 
 ## Rules of the checker
 
