@@ -15,6 +15,11 @@ enum TingMain {
             print(AgentPromptSource.text())
             exit(0)
         }
+        if let run = HomebrewUpdate.resultDirectory(in: arguments, base: HomebrewUpdateRunner.defaultBase,
+                                                    argument: HomebrewUpdate.viewerArgument) {
+            // Only the progress window of a Homebrew update, from the copy in its run folder.
+            MainActor.assumeIsolated { HomebrewUpdateViewer.run(run) }
+        }
         TingApp.main()
     }
 

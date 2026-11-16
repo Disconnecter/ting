@@ -108,10 +108,31 @@ latest published version.
   (Ting 0.6.1 and older:
   `https://github.com/bobuk-io/ting/releases/latest/download/appcast.xml`) and
   the download of a newer release from GitHub. The feed only names the release;
-  the archive is accepted only with the signature below.
+  the archive is accepted only with the signature below. A copy that Homebrew
+  installed does neither; it reaches the network only through the Homebrew
+  update described below, which you start yourself.
 - Sparkle accepts an update only if the archive's EdDSA signature matches the
   public key built into the app and the new app passes macOS code signature
   checks. Development builds contain no feed and never update.
+- **Ting runs `brew` in one case only.** When the running Ting.app is the copy
+  that a Homebrew Caskroom record of the cask `ting` points to, Sparkle is not
+  started. Choosing **Update Ting via Homebrew…** runs
+  `<prefix>/bin/brew upgrade --cask --greedy bobuk-io/tap/ting`, with the `brew`
+  of the prefix that owns that record, as your user and without a terminal (a
+  password prompt fails instead of waiting). It never upgrades other packages.
+  A small helper script in Ting's per-user temporary folder runs the command
+  and writes its output there. Before it starts, Ting copies its own signed
+  bundle into the same folder; when Ting quits while brew runs, the helper
+  starts that copy, which shows only the progress window. If the copy cannot
+  be made, Ting does not start brew and shows why. After a successful
+  update, or when nobody saw the result, the helper starts the installed Ting
+  again (the newest Caskroom record, resolved). Run folders older than a day are
+  removed at the next update.
+  The downloaded archive is checked by Homebrew against the SHA-256 of the cask
+  in the official tap `bobuk-io/homebrew-tap`, and the app keeps its Developer
+  ID signature and notarization; whoever can change your Homebrew installation
+  or tap can change what this command installs. Ting reads no configuration for
+  it and does not touch `~/.config/ting` or micro-app data.
 - Official release apps are signed with Developer ID, notarized by Apple and
   include a stapled ticket. Notarization is not a guarantee that software is
   bug-free or safe for every use case.
