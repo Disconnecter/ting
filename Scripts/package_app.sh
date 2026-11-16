@@ -149,6 +149,9 @@ for notice in LICENSE THIRD_PARTY_NOTICES.md; do
   cp "$ROOT/$notice" "$APP/Contents/Resources/$notice"
 done
 
+# The micro-app format document, read by coding agents from the installed app.
+cp "$ROOT/docs/micro-apps/FORMAT.md" "$APP/Contents/Resources/FORMAT.md"
+
 # Bundle app resources (if any).
 APP_RESOURCES_DIR="$ROOT/Sources/$APP_NAME/Resources"
 if [[ -d "$APP_RESOURCES_DIR" ]]; then

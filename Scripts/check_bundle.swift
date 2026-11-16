@@ -52,4 +52,15 @@ require(Bundle(url: sparkle)?.object(forInfoDictionaryKey: "CFBundleShortVersion
 for notice in ["LICENSE", "THIRD_PARTY_NOTICES.md"] {
     require(FileManager.default.fileExists(atPath: resources.appendingPathComponent(notice).path), "\(notice) is missing")
 }
+// The micro-app format document of this version, for coding agents.
+let format = resources.appendingPathComponent("FORMAT.md")
+guard let shipped = try? Data(contentsOf: format) else {
+    fputs("Bundle check failed: FORMAT.md is missing\n", stderr)
+    exit(1)
+}
+guard let source = try? Data(contentsOf: root.appendingPathComponent("docs/micro-apps/FORMAT.md")) else {
+    fputs("Bundle check failed: docs/micro-apps/FORMAT.md of the repository is unreadable\n", stderr)
+    exit(1)
+}
+require(shipped == source, "FORMAT.md differs from docs/micro-apps/FORMAT.md")
 print("BUNDLE_CHECK_PASSED: \(string("CFBundleShortVersionString") ?? "?") (\(string("CFBundleVersion") ?? "?"))")
