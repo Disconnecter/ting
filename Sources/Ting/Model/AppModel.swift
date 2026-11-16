@@ -124,6 +124,8 @@ final class AppModel {
                 configError = "Cannot create \(store.displayPath): \(error.localizedDescription)"
             }
         }
+        // The user's PATH is read at start (the first load) and again on each load of the folder.
+        microStore.onLoad = { UserPATH.refresh() }
         reload()
         store.watch { [weak self] in self?.reload() }
         microStore.watch { [weak self] previous, current in

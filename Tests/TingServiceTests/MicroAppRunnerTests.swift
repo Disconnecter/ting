@@ -187,6 +187,24 @@ final class MicroAppRunnerTests: XCTestCase {
 
     // MARK: User PATH
 
+    /// A changed shell PATH reaches the next run after a refresh; without one the read is kept.
+    func testUserPATHCacheKeepsTheReadUntilARefresh() async throws {
+        final class Counter: @unchecked Sendable {
+            private let lock = NSLock()
+            private var n = 0
+            func next() -> Int { lock.lock(); defer { lock.unlock() }; n += 1; return n }
+        }
+        let counter = Counter()
+        let cache = UserPATHCache(reader: { "/path/\(counter.next())" })
+        let first = await cache.value()
+        let again = await cache.value()
+        XCTAssertEqual(first, "/path/1")
+        XCTAssertEqual(again, "/path/1")
+        await cache.refresh()
+        let refreshed = await cache.value()
+        XCTAssertEqual(refreshed, "/path/2")
+    }
+
     func testUserPATHComesFromTheLoginShell() async throws {
         let dir = try temporary()
         let shell = try script(#"""

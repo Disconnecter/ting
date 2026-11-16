@@ -64,6 +64,20 @@ final class MicroAppStoreTests: XCTestCase {
         XCTAssertNotEqual(MicroAppStore(configURL: ConfigStore.defaultURL(environment: other), environment: other).folderURL, custom.folderURL)
     }
 
+    /// The app reads the user's PATH again on each load: the first one at start and every load
+    /// that the watch makes after a file change.
+    func testEveryLoadCallsOnLoadAlsoFromTheWatch() async throws {
+        let store = MicroAppStore(configURL: try temporaryConfig(), environment: [:])
+        try makeFolder(store)
+        var loads = 0
+        store.onLoad = { loads += 1 }
+        store.load()
+        XCTAssertEqual(loads, 1)
+        _ = try await change(store, "add a file") { try put(Self.good, "say-hi.yaml", in: store) }
+        XCTAssertGreaterThanOrEqual(loads, 2)
+        store.stopWatching()
+    }
+
     func testMissingFolderIsAnEmptyList() throws {
         let store = MicroAppStore(configURL: try temporaryConfig(), environment: [:])
         let catalog = store.load()

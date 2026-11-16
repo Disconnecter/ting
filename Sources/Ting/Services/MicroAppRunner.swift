@@ -41,21 +41,40 @@ enum UserPATH {
         return (MicroAppRunRules.fallbackPATH(tingPATH: environment["PATH"]), .fallback)
     }
 
-    /// The user's PATH, read once per Ting run.
+    /// The user's PATH: the last read that `refresh` started, or a first read now.
     static func shared() async -> String {
-        await Cache.instance.value()
+        await UserPATHCache.shared.value()
     }
 
-    private actor Cache {
-        static let instance = Cache()
-        private var task: Task<String, Never>?
+    /// Reads the PATH from the login shell again, in the background: at Ting's start and on each
+    /// load of the micro-apps folder. A run that asks after the new read began waits for it.
+    static func refresh() {
+        Task { await UserPATHCache.shared.refresh() }
+    }
+}
 
-        func value() async -> String {
-            if let task { return await task.value }
-            let task = Task.detached { await UserPATH.read().path }
-            self.task = task
-            return await task.value
-        }
+/// Keeps the newest PATH read. A new read replaces the old one; `value` waits for the newest.
+actor UserPATHCache {
+    static let shared = UserPATHCache()
+
+    private let reader: @Sendable () async -> String
+    private var task: Task<String, Never>?
+
+    init(reader: @escaping @Sendable () async -> String = { await UserPATH.read().path }) {
+        self.reader = reader
+    }
+
+    func value() async -> String {
+        if let task { return await task.value }
+        return await refresh().value
+    }
+
+    @discardableResult
+    func refresh() -> Task<String, Never> {
+        let reader = self.reader
+        let task = Task.detached { await reader() }
+        self.task = task
+        return task
     }
 }
 
