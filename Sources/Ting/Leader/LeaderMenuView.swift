@@ -49,15 +49,17 @@ private struct SoundList: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 8).padding(.vertical, 5)
                 }
-                ForEach(Array(session.items.enumerated()), id: \.offset) { _, item in
-                    Row(item: item, microApps: session.microApps) { onSelect(item.key) }
+                ForEach(session.items, id: \.key) { item in
+                    Row(item: item, microApps: session.microApps, selected: session.selectedItem?.key == item.key) { onSelect(item.key) }
                 }
             }
             .padding(.horizontal, -8)
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 10)
-            HStack(spacing: 14) {
-                MonoLabel("esc pull up", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("⌫ rewind", size: 9, weight: .regular, tracking: 1)
+            HStack(spacing: 10) {
+                MonoLabel("↑↓ select", size: 9, weight: .regular, tracking: 0.5)
+                MonoLabel("↩ open", size: 9, weight: .regular, tracking: 0.5)
+                MonoLabel("← back", size: 9, weight: .regular, tracking: 0.5)
+                MonoLabel("esc close", size: 9, weight: .regular, tracking: 0.5)
                 Spacer()
             }
             .foregroundStyle(Color.tingMuted)
@@ -82,6 +84,7 @@ private struct SoundList: View {
 private struct Row: View {
     let item: Item
     let microApps: MicroAppCatalog
+    let selected: Bool
     let action: () -> Void
 
     var body: some View {
@@ -109,10 +112,12 @@ private struct Row: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.tingAmber.opacity(0.18) : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(HoverRowStyle(cornerRadius: 6))
         .accessibilityLabel("\(SequenceKey.spoken(item.key)), \(title)\(item.isGroup ? ", group" : "")\(isBrokenMicro ? ", not working" : "")")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var title: String {

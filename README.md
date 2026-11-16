@@ -78,6 +78,9 @@ usage history.
   cannot be a leader.
 - **Sequences:** letters, digits, `Space`, `Return` and F-keys. Groups can be
   nested as deep as you like. `Esc` closes the menu, `Delete` goes back one level.
+- **Menu navigation:** `↑` and `↓` select a row (hold to repeat); `Return` or keypad
+  `Enter` opens it. `→` enters the selected group; `←` goes back, or closes at the
+  top level. An explicit `Return` binding takes priority over opening the selected row.
 - **Actions:** open an app (an app that is already running comes to the front)
   or open a URL with its default handler — web links and app URL schemes such as
   `raycast://` or `hascs://`, or start a [micro-app](#micro-apps). Shell

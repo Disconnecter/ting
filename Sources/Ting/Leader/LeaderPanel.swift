@@ -49,6 +49,8 @@ final class LeaderSession {
     var showPanelHeader = true
     var path: [String] = []
     var items: [Item] = []
+    var selection = 0
+    var selectedItem: Item? { items.indices.contains(selection) ? items[selection] : nil }
     var shakeToken = 0
     /// The loaded micro-apps, for the names and the "not working" mark of micro-app bindings.
     var microApps = MicroAppCatalog()
@@ -69,6 +71,13 @@ final class LeaderController: NSObject, NSWindowDelegate {
     private var showDelay: TimeInterval = 0.25
     private var panel: LeaderPanel?
     private var reveal: DispatchWorkItem?
+    private let presentsWindow: Bool
+
+    /// Tests exercise the controller without showing a window or taking keyboard focus.
+    init(presentsWindow: Bool = true) {
+        self.presentsWindow = presentsWindow
+        super.init()
+    }
 
     var isOpen: Bool { machine.isOpen }
 
@@ -77,6 +86,7 @@ final class LeaderController: NSObject, NSWindowDelegate {
     }
 
     func configure(_ config: Config) {
+        let selectedKey = session.selectedItem?.key
         machine.items = config.items
         AppIcons.prepare(config.items)
         if !machine.isOpen {
@@ -94,6 +104,7 @@ final class LeaderController: NSObject, NSWindowDelegate {
             session.path = machine.path
             session.items = machine.currentItems
         }
+        session.selection = session.items.firstIndex(where: { $0.key == selectedKey }) ?? 0
     }
 
     /// The leader hotkey went down. `time` is any monotonic clock in seconds.
@@ -128,10 +139,37 @@ final class LeaderController: NSObject, NSWindowDelegate {
 
     // MARK: Events
 
-    private func handleKeyDown(_ event: NSEvent) {
-        guard machine.isOpen, !event.isARepeat else { return }
+    func handleKeyDown(_ event: NSEvent) {
+        guard machine.isOpen else { return }
+        let plain = event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
+        if plain, event.keyCode == 125 || event.keyCode == 126 {
+            doubleTap.sequenceInput()
+            let delta = event.keyCode == 125 ? 1 : -1
+            session.selection = min(max(session.selection + delta, 0), max(0, session.items.count - 1))
+            reveal?.perform()
+            return
+        }
+        guard !event.isARepeat else { return }
         // Any key in between: the next leader press is not a double tap.
         doubleTap.sequenceInput()
+        if plain {
+            switch event.keyCode {
+            case 123:
+                apply(machine.handle(.back))
+                return
+            case 124:
+                if let item = session.selectedItem, item.isGroup { select(item.key) }
+                return
+            case 36, 76:
+                if !session.items.contains(where: { $0.key == "return" }) {
+                    if let item = session.selectedItem { select(item.key) }
+                    return
+                }
+            default: break
+            }
+        }
+        // Modified arrows are not sequence keys and must not close or shake the menu.
+        if (123...126).contains(event.keyCode) { return }
         switch event.keyCode {
         case 53:
             apply(machine.handle(.escape))
@@ -162,8 +200,10 @@ final class LeaderController: NSObject, NSWindowDelegate {
         case .open:
             present()
         case .show(let path):
+            let returningKey = session.path.count > path.count ? session.path.last : nil
             session.path = path
             session.items = machine.currentItems
+            session.selection = session.items.firstIndex(where: { $0.key == returningKey }) ?? 0
             resizePanel()
         case .run(let item):
             onRun?(item)
@@ -186,6 +226,8 @@ final class LeaderController: NSObject, NSWindowDelegate {
     private func present() {
         if session.path != machine.path { session.path = machine.path }
         if session.items != machine.currentItems { session.items = machine.currentItems }
+        session.selection = 0
+        guard presentsWindow else { return }
         let panel = self.panel ?? makePanel()
         resizePanel()
         // Key at once, visible only after the delay: fast typing never shows the menu.
