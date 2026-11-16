@@ -287,4 +287,75 @@ final class LaunchaModelTests: XCTestCase {
         XCTAssertFalse(unwritable.set(.allowed))
         XCTAssertEqual(unwritable.policy, .needsConsent, "The choice changes only when it was saved")
     }
+
+    func testMicroAppsAreListedAndStartTheFlow() async throws {
+        let apps = root.appendingPathComponent("Applications")
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        _ = try app("Safari", id: "com.apple.Safari", in: apps)
+        let fixture = try makeModel(files: [root.appendingPathComponent("never.txt")])
+        let model = fixture.model
+        let good = """
+        format: ting.microapp/2
+        name: Format JSON
+        description: Pretty-print JSON.
+        input: clipboard
+        command: cat
+        output:
+          to: [panel]
+        """
+        let hidden = good.replacingOccurrences(of: "name: Format JSON", with: "name: Hidden JSON\nhidden: true")
+        let catalog = MicroAppCatalog.load([
+            ("format-json.yaml", good),
+            ("hidden-json.yaml", hidden),
+            ("broken-json.yaml", "format: ting.microapp/2\n"),
+        ])
+        let folder = root.appendingPathComponent("micro")
+        model.setMicroApps(catalog.launchaCandidates(bindings: []), folder: folder)
+        var started: [LaunchaMicroStart] = []
+        model.onStartMicro = { started.append($0) }
+        var willOpen = 0
+        model.onWillOpen = { willOpen += 1 }
+
+        model.open()
+        try await wait("index") { model.hasIndex && model.rows.count == 3 }
+        XCTAssertEqual(Set(model.rows.map(\.name)), ["Safari", "Format JSON", "broken-json"])
+
+        model.query = "json"
+        XCTAssertEqual(model.rows.map(\.name), ["broken-json", "Format JSON"])
+        XCTAssertTrue(fixture.calls.all.isEmpty, "a micro-app match keeps Spotlight off")
+        XCTAssertFalse(model.rows.first?.isWorking ?? true)
+        XCTAssertTrue(model.rows.first?.detail.hasPrefix("Not working: line ") ?? false)
+        XCTAssertEqual(model.rows.last?.detail, "Pretty-print JSON.")
+        XCTAssertEqual(model.rows.last?.url, folder.appendingPathComponent("format-json.yaml"))
+        XCTAssertTrue(model.rows.last?.isWorking ?? false)
+
+        model.query = "format"
+        XCTAssertEqual(model.rows.map(\.name), ["Format JSON"])
+
+        var outcome = await model.activateSelection()
+        XCTAssertEqual(outcome, .opened)
+        XCTAssertEqual(started, [.id("format-json")])
+        XCTAssertFalse(model.isOpen)
+        XCTAssertEqual(willOpen, 0, "the micro-app flow is not an app open")
+        XCTAssertTrue(fixture.opener.opened.isEmpty)
+        let saved = try LaunchHistory.decode(Data(contentsOf: fixture.history))
+        XCTAssertEqual(saved.entries["micro:format-json"]?.events.count, 1)
+
+        // A broken file starts the flow too, which shows its error; it is not counted.
+        model.open()
+        model.query = "broken"
+        try await wait("broken row") { model.rows.count == 1 }
+        outcome = await model.activateSelection()
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(started, [.id("format-json"), .file("broken-json.yaml")])
+
+        // ⌘↩ shows the file in Finder and starts nothing.
+        model.open()
+        model.query = "format"
+        try await wait("format row") { model.rows.count == 1 }
+        outcome = await model.activateSelection(reveal: true)
+        XCTAssertEqual(outcome, .revealed)
+        XCTAssertEqual(fixture.opener.revealed, [folder.appendingPathComponent("format-json.yaml")])
+        XCTAssertEqual(started.count, 2)
+    }
 }

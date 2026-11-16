@@ -118,10 +118,16 @@ public struct MicroAppFailure: Error, Equatable, Sendable, CustomStringConvertib
     /// The `id` the checker could read from the file: a kebab-case text value. `nil` when the file
     /// is not valid YAML or its `id` is missing or not valid.
     public var id: String?
+    /// The `name` the checker could read from the file: a one-line text value; `nil` otherwise.
+    public var name: String?
+    /// The `hidden` value the checker could read from the file; `nil` when it is missing or not valid.
+    public var hidden: Bool?
 
-    public init(issues: [MicroAppIssue], id: String? = nil) {
+    public init(issues: [MicroAppIssue], id: String? = nil, name: String? = nil, hidden: Bool? = nil) {
         self.issues = issues
         self.id = id
+        self.name = name
+        self.hidden = hidden
     }
 
     public var description: String { issues.map(\.description).joined(separator: "\n") }
@@ -153,7 +159,7 @@ public enum MicroAppChecker {
         let app = run.check(root)
         if run.issues.isEmpty, let app { return .success(app) }
         let sorted = run.issues.enumerated().sorted { ($0.element.line, $0.offset) < ($1.element.line, $1.offset) }.map(\.element)
-        return .failure(MicroAppFailure(issues: sorted, id: run.explicitID))
+        return .failure(MicroAppFailure(issues: sorted, id: run.explicitID, name: run.parsedName, hidden: run.parsedHidden))
     }
 
     /// `a-z0-9` words joined by single `-`.
@@ -175,6 +181,10 @@ public enum MicroAppChecker {
         var issues: [MicroAppIssue] = []
         /// The `id` key of the file when it is a kebab-case text value.
         var explicitID: String?
+        /// The `name` key when it is a valid value, kept for a broken file.
+        var parsedName: String?
+        /// The `hidden` key when it is a valid value, kept for a broken file.
+        var parsedHidden: Bool?
 
         init(file: String) { self.file = file }
 
@@ -274,6 +284,7 @@ public enum MicroAppChecker {
             }
 
             let name = top["name"].flatMap { string($0.value, "name") }
+            parsedName = name
             let description = top["description"].flatMap { string($0.value, "description") }
 
             var tools: [String] = []
@@ -288,7 +299,9 @@ public enum MicroAppChecker {
                 }
             }
 
-            let hidden = top["hidden"].flatMap { bool($0.value, "hidden") } ?? false
+            let parsedHidden = top["hidden"].flatMap { bool($0.value, "hidden") }
+            self.parsedHidden = parsedHidden
+            let hidden = parsedHidden ?? false
             let remember = top["remember"].flatMap { bool($0.value, "remember") } ?? true
             let params = top["params"].map { checkParams($0.value) } ?? []
             let input = top["input"].flatMap { oneOf($0.value, "input", MicroApp.Input.allCases.map(\.rawValue)) }.flatMap(MicroApp.Input.init)

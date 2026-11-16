@@ -11,19 +11,33 @@ struct LaunchaRow: Identifiable, Equatable {
         /// An indexed app. `candidateID` is the launch-history identity.
         case app(candidateID: String)
         case file
+        /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
+        case micro(candidateID: String, start: LaunchaMicroStart, isWorking: Bool)
     }
 
     var id: String
     var kind: Kind
     var name: String
-    /// The retained app bundle URL, or the file URL.
+    /// The retained app bundle URL, the file URL, or the micro-app file URL.
     var url: URL
-    /// Secondary text: the folder of a file, with `~` for the home folder.
+    /// Secondary text: the folder of a file, with `~` for the home folder, or the
+    /// description of a micro-app, or why a micro-app file does not work.
     var detail: String
 
     var isApp: Bool {
         if case .app = kind { return true }
         return false
+    }
+
+    var isMicro: Bool {
+        if case .micro = kind { return true }
+        return false
+    }
+
+    /// False only for a broken micro-app file.
+    var isWorking: Bool {
+        if case .micro(_, _, let working) = kind { return working }
+        return true
     }
 }
 
@@ -70,6 +84,8 @@ final class LaunchaModel {
     @ObservationIgnored var onRequestClose: (() -> Void)?
     /// Called just before an app or file opens (not for a reveal in Finder).
     @ObservationIgnored var onWillOpen: (() -> Void)?
+    /// Starts the micro-app flow for a micro-app or a broken file, after the panel closed.
+    @ObservationIgnored var onStartMicro: ((LaunchaMicroStart) -> Void)?
 
     @ObservationIgnored private let makeServices: ServiceFactory
     @ObservationIgnored private var services: Services
@@ -79,6 +95,8 @@ final class LaunchaModel {
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let refreshInterval: Duration
     @ObservationIgnored private var apps: [IndexedLaunchaApp] = []
+    @ObservationIgnored private var microApps: [LaunchaMicroCandidate] = []
+    @ObservationIgnored private var microFolder: URL?
     @ObservationIgnored private var history = LaunchHistory()
     @ObservationIgnored private var spotlightQuery: String?
     @ObservationIgnored private var scanSerial = 0
@@ -151,6 +169,14 @@ final class LaunchaModel {
         selection = 0
     }
 
+    /// The micro-apps to list, with the folder their files are in. Redraws an open list.
+    func setMicroApps(_ candidates: [LaunchaMicroCandidate], folder: URL) {
+        guard candidates != microApps || folder != microFolder else { return }
+        microApps = candidates
+        microFolder = folder
+        if isOpen { recompute(keepSelection: true) }
+    }
+
     // MARK: Selection and actions
 
     var selectedRow: LaunchaRow? { rows.indices.contains(selection) ? rows[selection] : nil }
@@ -172,6 +198,13 @@ final class LaunchaModel {
         onRequestClose?()
         close()
         if reveal { return opener.reveal(row.url) }
+        if case .micro(let candidateID, let start, let isWorking) = row.kind {
+            // The same flow as a binding: approval, parameters, result. A broken file shows its own errors.
+            onStartMicro?(start)
+            guard isWorking else { return .failed }
+            await record(.opened, id: candidateID)
+            return .opened
+        }
         onWillOpen?()
         switch row.kind {
         case .app(let candidateID):
@@ -180,6 +213,8 @@ final class LaunchaModel {
             return outcome
         case .file:
             return await opener.openFile(row.url, name: row.name)
+        case .micro:
+            return nil
         }
     }
 
@@ -290,8 +325,17 @@ final class LaunchaModel {
         let previous = keepSelection ? selectedRow?.id : nil
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let byID = Dictionary(apps.map { ($0.candidate.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let matches = LaunchaSearch.results(for: trimmed, in: apps.map(\.candidate), history: history, now: Date())
+        let microByID = Dictionary(microApps.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let folder = microFolder ?? home
+        let candidates = microApps.map(\.candidate) + apps.map(\.candidate)
+        let matches = LaunchaSearch.results(for: trimmed, in: candidates, history: history, now: Date())
         let appRows = matches.compactMap { match -> LaunchaRow? in
+            if let micro = microByID[match.candidate.id] {
+                return LaunchaRow(id: micro.id,
+                                  kind: .micro(candidateID: micro.id, start: micro.start, isWorking: micro.isWorking),
+                                  name: match.candidate.name, url: folder.appendingPathComponent(micro.file),
+                                  detail: micro.problem.map { "Not working: \($0)" } ?? micro.description)
+            }
             guard let app = byID[match.candidate.id] else { return nil }
             return LaunchaRow(id: match.candidate.id, kind: .app(candidateID: match.candidate.id),
                               name: match.candidate.name, url: app.url, detail: "")
