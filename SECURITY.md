@@ -120,10 +120,13 @@ latest published version.
   `<prefix>/bin/brew upgrade --cask --greedy bobuk-io/tap/ting`, with the `brew`
   of the prefix that owns that record, as your user and without a terminal (a
   password prompt fails instead of waiting). It never upgrades other packages.
-  A small helper script in Ting's per-user temporary folder runs the command,
-  writes its output there and, after a successful update or when Ting quit
-  while brew ran, starts the installed Ting again (the newest Caskroom record, resolved) to
-  show the progress or the result.
+  A small helper script in Ting's per-user temporary folder runs the command
+  and writes its output there. Before it starts, Ting copies its own signed
+  bundle into the same folder; when Ting quits while brew runs, the helper
+  starts that copy, which shows only the progress window. After a successful
+  update, or when nobody saw the result, the helper starts the installed Ting
+  again (the newest Caskroom record, resolved). Run folders older than a day are
+  removed at the next update.
   The downloaded archive is checked by Homebrew against the SHA-256 of the cask
   in the official tap `bobuk-io/homebrew-tap`, and the app keeps its Developer
   ID signature and notarization; whoever can change your Homebrew installation

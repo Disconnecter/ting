@@ -83,6 +83,9 @@ public enum HomebrewUpdate {
     public static let arguments = ["upgrade", "--cask", "--greedy", tap]
     /// The argument with which the helper starts the installed copy again to show the result.
     public static let resultArgument = "--homebrew-update-log"
+    /// The argument with which the helper starts the progress viewer, the copy of Ting.app in the
+    /// run folder, while the installed Ting is gone.
+    public static let viewerArgument = "--homebrew-update-viewer"
 
     /// The command as the window shows it.
     public static func commandLine(for install: HomebrewInstall) -> String {
@@ -100,9 +103,11 @@ public enum HomebrewUpdate {
         return upgraded ? .upgraded : .upToDate
     }
 
-    /// The run folder named by `--homebrew-update-log <folder>`, accepted only directly inside `base`.
-    public static func resultDirectory(in arguments: [String], base: URL) -> URL? {
-        guard let index = arguments.firstIndex(of: resultArgument), index + 1 < arguments.count else { return nil }
+    /// The run folder named by `--homebrew-update-log <folder>` (or another `argument`), accepted
+    /// only directly inside `base`.
+    public static func resultDirectory(in arguments: [String], base: URL,
+                                       argument: String = resultArgument) -> URL? {
+        guard let index = arguments.firstIndex(of: argument), index + 1 < arguments.count else { return nil }
         let folder = URL(fileURLWithPath: arguments[index + 1]).standardizedFileURL
         guard folder.deletingLastPathComponent().path == base.standardizedFileURL.path else { return nil }
         return folder

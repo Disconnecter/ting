@@ -7,14 +7,45 @@ import TingCore
 /// helper script runs brew with its output in a log file and its exit code in a status file of a
 /// run folder; any Ting only reads those files. The helper ignores SIGHUP and outlives Ting.
 ///
-/// The window must stay visible while brew works, so the helper watches the process whose pid is
-/// in the run folder. When that Ting is gone while brew still runs, the helper starts the installed
-/// copy with `--homebrew-update-log <run folder>`; that copy writes its own pid and shows the same
-/// command, the rest of the live output and the result (`watch(_:)`). After brew the helper waits
-/// for a Ting to see the result. When Ting asks for a restart (success), or no Ting is there to show
-/// it, the helper starts the installed copy again. "Installed copy" is looked up after brew: the
-/// newest `Caskroom/ting/<version>/Ting.app`, resolved, because an upgrade removes the old version
-/// folder; the old place only when no record is left.
+/// The window must stay visible while brew works, also in the moments when no installed Ting.app
+/// exists (brew removed the old one and has not placed the new one, or placing it failed). So
+/// before brew starts, Ting copies its own bundle into the run folder (an APFS clone, cheap). The
+/// helper watches the process whose pid is in the run folder; when that Ting is gone while brew
+/// still runs, it starts that copy with `--homebrew-update-viewer <run folder>`: a process that
+/// shows only the progress window (`HomebrewUpdateViewer`), with the rest of the live output and
+/// the result, independent of what brew does to the installed bundle.
+///
+/// After brew the helper waits for whoever shows the window to see the result. When it asks for a
+/// restart, or nobody is there to show it, the helper starts the installed copy with
+/// `--homebrew-update-log <run folder>`, which shows the result once more (role `.final`, which
+/// never asks for another restart). "Installed copy" is looked up after brew: the newest
+/// `Caskroom/ting/<version>/Ting.app`, resolved, because an upgrade removes the old version folder;
+/// the old place only when no record is left. With no installed copy at all, the viewer shows the
+/// result unless someone has already seen it.
+/// Who shows a run, given explicitly by how the process was started.
+enum HomebrewUpdateRole: Equatable {
+    /// The Ting that started the update from its menu.
+    case owner
+    /// The copy in the run folder that the helper started while the installed Ting was gone.
+    case viewer
+    /// The installed Ting that the helper started after brew to show the result.
+    case final
+
+    /// Whether this process should quit so that the helper starts the installed Ting. The owner
+    /// and the viewer may run old or removed code after a success; the final copy is the new one.
+    /// After a failure the viewer also hands over, so that Ting is back once its window is closed.
+    func restarts(after outcome: HomebrewUpdateOutcome) -> Bool {
+        switch self {
+        case .owner, .viewer: outcome == .upgraded
+        case .final: false
+        }
+    }
+
+    func relaunchWhenDone(after outcome: HomebrewUpdateOutcome) -> Bool {
+        self == .viewer || restarts(after: outcome)
+    }
+}
+
 @MainActor
 final class HomebrewUpdateRunner {
     /// Nil for a copy that only watches a run that another copy started.
@@ -23,6 +54,7 @@ final class HomebrewUpdateRunner {
     private let base: URL
     private let opener: URL
     private let shell: URL
+    private let viewerSource: URL?
     private let pollInterval: TimeInterval
 
     private var helper: Process?
@@ -36,12 +68,15 @@ final class HomebrewUpdateRunner {
     init(install: HomebrewInstall?, tingPID: pid_t = ProcessInfo.processInfo.processIdentifier,
          base: URL = HomebrewUpdateRunner.defaultBase,
          opener: URL = URL(fileURLWithPath: "/usr/bin/open"),
-         shell: URL = URL(fileURLWithPath: "/bin/sh"), pollInterval: TimeInterval = 0.25) {
+         shell: URL = URL(fileURLWithPath: "/bin/sh"),
+         viewerSource: URL? = Bundle.main.bundleURL.pathExtension == "app" ? Bundle.main.bundleURL : nil,
+         pollInterval: TimeInterval = 0.25) {
         self.install = install
         self.tingPID = tingPID
         self.base = base
         self.opener = opener
         self.shell = shell
+        self.viewerSource = viewerSource
         self.pollInterval = pollInterval
     }
 
@@ -76,6 +111,14 @@ final class HomebrewUpdateRunner {
             onFinish(.failed(exitCode: -1, output: "Could not prepare the update in \(folder.path): \(error.localizedDescription)"))
             return true
         }
+        // The progress viewer for the time without an installed Ting. Without it (no bundle, a full
+        // disk) the helper falls back to the installed copy.
+        if let viewerSource {
+            let viewer = folder.appendingPathComponent("viewer")
+            try? fm.createDirectory(at: viewer, withIntermediateDirectories: true)
+            try? fm.copyItem(at: viewerSource, to: viewer.appendingPathComponent("Ting.app"))
+        }
+        Self.removeOldRuns(in: base, keeping: folder)
         let process = Process()
         process.executableURL = shell
         process.arguments = [script.path, folder.path, install.app.path,
@@ -137,6 +180,25 @@ final class HomebrewUpdateRunner {
         }
     }
 
+    /// Acknowledges the result for `role`. Returns true when this process should quit now so
+    /// that the helper starts the installed Ting.
+    @discardableResult
+    func conclude(_ outcome: HomebrewUpdateOutcome, role: HomebrewUpdateRole) -> Bool {
+        acknowledge(relaunch: role.relaunchWhenDone(after: outcome))
+        return role.restarts(after: outcome)
+    }
+
+    /// Run folders of earlier updates, older than a day, with their viewer copies.
+    static func removeOldRuns(in base: URL, keeping current: URL) {
+        let fm = FileManager.default
+        let limit = Date().addingTimeInterval(-86_400)
+        for folder in (try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        where folder.lastPathComponent != current.lastPathComponent {
+            let date = (try? folder.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if let date, date < limit { try? fm.removeItem(at: folder) }
+        }
+    }
+
     /// Tells the helper that Ting has seen the result; with `relaunch` the helper starts the
     /// installed copy again as soon as this process has quit.
     func acknowledge(relaunch: Bool) {
@@ -182,6 +244,7 @@ final class HomebrewUpdateRunner {
     static let helperScript = #"""
     #!/bin/sh
     dir=$1; app=$2; caskroom=$3; opener=$4; shift 4
+    viewer="$dir/viewer/Ting.app/Contents/MacOS/Ting"
     trap '' HUP
     alive() { p=$(cat "$dir/pid" 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
     target() {
@@ -193,11 +256,19 @@ final class HomebrewUpdateRunner {
       [ -z "$found" ] && [ -d "$app" ] && found=$app
       [ -n "$found" ] && printf '%s\n' "$found"
     }
-    reopen() {
-      t=$(target) || return 1
-      [ -n "$t" ] || return 1
+    show() {
+      [ -x "$viewer" ] || return 1
       rm -f "$dir/pid"
-      "$opener" "$t" --args --homebrew-update-log "$dir"
+      "$viewer" --homebrew-update-viewer "$dir" >/dev/null 2>&1 </dev/null &
+    }
+    final() {
+      t=$(target)
+      if [ -n "$t" ]; then
+        rm -f "$dir/pid"
+        "$opener" "$t" --args --homebrew-update-log "$dir"
+      elif [ ! -e "$dir/handled" ]; then
+        show
+      fi
     }
     "$@" >"$dir/output.log" 2>&1 </dev/null &
     child=$!
@@ -207,7 +278,9 @@ final class HomebrewUpdateRunner {
       if [ -e "$dir/cancel" ] && [ ! -e "$dir/cancelled" ]; then : >"$dir/cancelled"; kill -TERM "$child" 2>/dev/null; fi
       if ! alive; then
         now=$(date +%s)
-        if [ $((now - last)) -ge 10 ] && reopen; then last=$now; fi
+        if [ $((now - last)) -ge 10 ]; then
+          if show; then last=$now; elif [ -n "$(target)" ]; then final; last=$now; fi
+        fi
       fi
       sleep 0.2
     done
@@ -221,6 +294,6 @@ final class HomebrewUpdateRunner {
     done
     if [ -e "$dir/handled" ] && [ ! -e "$dir/relaunch" ]; then exit 0; fi
     while alive; do sleep 0.2; done
-    reopen
+    final
     """#
 }

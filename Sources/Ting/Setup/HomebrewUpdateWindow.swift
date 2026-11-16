@@ -49,6 +49,7 @@ final class HomebrewUpdateWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private var runner: HomebrewUpdateRunner?
+    private var role: HomebrewUpdateRole = .owner
     private let model = HomebrewUpdateModel()
 
     /// Starts the update, or brings the running one to the front: a second start is refused.
@@ -57,6 +58,7 @@ final class HomebrewUpdateWindowController: NSObject, NSWindowDelegate {
         if model.restarting || runner?.isRunning == true { show(); return }
         let runner = HomebrewUpdateRunner(install: install)
         self.runner = runner
+        role = .owner
         model.command = HomebrewUpdate.commandLine(for: install)
         model.output = ""
         model.phase = .running
@@ -66,33 +68,32 @@ final class HomebrewUpdateWindowController: NSObject, NSWindowDelegate {
                      onFinish: { [weak self] in self?.finish($0) })
     }
 
-    /// The copy that the helper started (`--homebrew-update-log`): it shows that run, live while
-    /// brew still works, and takes over the restart after a success that it saw happen.
-    func showRun(_ directory: URL) {
+    /// Shows a run that the helper started this process for. The role comes from the argument the
+    /// helper used, never from the timing of the status file: `.viewer` is the recovery window
+    /// (a copy of Ting.app in the run folder) while Ting is gone, `.final` the installed Ting
+    /// started after brew.
+    func showRun(_ directory: URL, role: HomebrewUpdateRole) {
         if runner?.isRunning == true { show(); return }
+        self.role = role
         model.command = (try? String(contentsOf: directory.appendingPathComponent("command"), encoding: .utf8))
             ?? HomebrewUpdate.arguments.joined(separator: " ")
         model.output = HomebrewUpdateRunner.output(in: directory)
         model.phase = .running
         model.restarting = false
-        // A result that is already there is the one this copy was restarted for: never restart again.
-        let restartOnSuccess = HomebrewUpdateRunner.outcome(in: directory) == nil
         let runner = HomebrewUpdateRunner(install: nil)
         self.runner = runner
         show()
         runner.watch(directory, onOutput: { [weak self] in self?.model.output = $0 },
-                     onFinish: { [weak self] in self?.finish($0, restart: restartOnSuccess) })
+                     onFinish: { [weak self] in self?.finish($0) })
     }
 
-    private func finish(_ outcome: HomebrewUpdateOutcome, restart: Bool = true) {
+    private func finish(_ outcome: HomebrewUpdateOutcome) {
         model.finish(outcome, log: (runner?.directory).map(HomebrewUpdateRunner.output(in:)))
-        guard outcome == .upgraded, restart else {
-            runner?.acknowledge(relaunch: false)
-            return
-        }
-        // Start Ting again from its installed place; the new copy shows this result again.
+        // The viewer exists only to show this result: bring its window back if it was closed.
+        if role == .viewer { show() }
+        guard runner?.conclude(outcome, role: role) == true else { return }
+        // Quit so that the helper starts the installed Ting, which shows this result again.
         model.restarting = true
-        runner?.acknowledge(relaunch: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { NSApp.terminate(nil) }
     }
 
@@ -106,8 +107,11 @@ final class HomebrewUpdateWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        // Closing the window does not stop brew; the menu action shows it again.
+        // Closing the window does not stop brew; the menu action shows it again. The recovery
+        // viewer is nothing but this window: closing it after the result quits it, and the helper
+        // then starts the installed Ting again.
         window = nil
+        if role == .viewer, runner?.isRunning != true { NSApp.terminate(nil) }
     }
 
     private func makeWindow() -> NSWindow {
@@ -163,5 +167,19 @@ private struct HomebrewUpdateView: View {
         }
         .padding(16)
         .frame(minWidth: 520, minHeight: 340)
+    }
+}
+
+/// The recovery viewer: the copy of Ting.app in the run folder, started by the helper with
+/// `--homebrew-update-viewer <run folder>` while the installed Ting is gone. It runs only this
+/// window: no menu-bar icon, no hotkey, no configuration, no Sparkle.
+@MainActor
+enum HomebrewUpdateViewer {
+    static func run(_ directory: URL) -> Never {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        HomebrewUpdateWindowController.shared.showRun(directory, role: .viewer)
+        app.run()
+        exit(0)
     }
 }

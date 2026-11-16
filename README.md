@@ -80,7 +80,8 @@ offer **Update Ting via Homebrew…** instead. That runs exactly
 that installed Ting, and shows the command, the live output of brew and the real
 result: updated, already up to date, or the error (for example no network, a
 Homebrew lock or a password prompt that cannot be answered). If Ting stops while
-brew replaces it, Ting opens again at once and keeps showing the progress. After
+brew replaces it, a copy of Ting made before brew started shows the progress
+window until the end, even while no Ting.app is installed. After
 an update Ting starts again from its installed place (the new Caskroom record)
 and shows the result once more. The
 `--greedy` flag is needed because the cask declares built-in updates. You can
