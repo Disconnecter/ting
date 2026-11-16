@@ -179,6 +179,32 @@ in a temporary folder, runs the check command and fixes the file until it is
 good, then moves it into the micro-apps folder. It does not change `config.json`:
 you approve the new file at its first start and bind a key to it yourself.
 
+### Asking a coding agent for a micro-app
+
+**Copy Agent Prompt**, in the menu-bar menu next to **Open Config File** and in
+**Settings › Advanced** next to **Open Folder in Finder**, puts a ready text on
+the clipboard and shows "Agent prompt copied". Paste it into a coding agent such
+as Claude Code, Codex or pi and add what the micro-app should do after its last
+line, "The micro-app I want:". The text names the real paths of this Mac: the
+format document inside Ting.app (`Ting.app/Contents/Resources/FORMAT.md`), with
+the GitHub link of the running version
+(`https://raw.githubusercontent.com/bobuk-io/ting/v<version>/docs/micro-apps/FORMAT.md`)
+as the fallback, the check command with the path of the Ting executable and the
+micro-apps folder (the one of `TING_CONFIG` when it is set). It tells the agent
+to write and check the file in a temporary folder, to move it into the
+micro-apps folder only when the check reports no problem, and not to change
+`config.json`. Without the document inside the app (a `swift run` build), the
+text names only the link, at the tag of the version of the source tree.
+
+`Ting --agent-prompt` prints the same text and exits, for scripts:
+
+```sh
+/Applications/Ting.app/Contents/MacOS/Ting --agent-prompt
+```
+
+Like the check command, it opens no window, does not read `config.json` and
+writes no file.
+
 ### Starting a micro-app
 
 Bind a key to a micro-app in **Settings › Bindings**, or by its id in `config.json`:
@@ -256,8 +282,9 @@ Spotlight.
   an id that is not loaded is marked and can be changed or deleted.
 - **Advanced:** the config file location, reveal, open, reload, import and export,
   and the micro-apps folder: the list of found micro-apps (name, id, file, good
-  or broken), the list of micro-app errors, and **Open Folder in Finder**, which
-  creates the folder when it is missing.
+  or broken), the list of micro-app errors, **Open Folder in Finder**, which
+  creates the folder when it is missing, and **Copy Agent Prompt** (see
+  [Asking a coding agent for a micro-app](#asking-a-coding-agent-for-a-micro-app)).
 
 ## Configuration file
 

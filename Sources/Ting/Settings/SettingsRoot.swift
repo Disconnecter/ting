@@ -260,6 +260,8 @@ private struct MicroAppsSection: View {
             }
             HStack {
                 Button("Open Folder in Finder") { folderError = model.openMicroAppsFolder() }
+                Button("Copy Agent Prompt") { model.copyAgentPrompt() }
+                    .help("Copy a text for a coding agent such as Claude Code, Codex or pi; add your task after it.")
                 Spacer()
                 Button("Reload") { model.reload() }
             }

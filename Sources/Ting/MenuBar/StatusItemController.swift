@@ -89,6 +89,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(showSettings), key: ","))
         menu.addItem(item("Open Config File", #selector(openConfig)))
+        menu.addItem(item("Copy Agent Prompt", #selector(copyAgentPrompt)))
         menu.addItem(item("Reload Config and Micro-apps", #selector(reloadConfig)))
 
         menu.addItem(.separator())
@@ -123,6 +124,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func togglePause() { model.isPaused.toggle() }
     @objc private func showSettings() { openSettings() }
     @objc private func openConfig() { model.openConfigFile() }
+    @objc private func copyAgentPrompt() { model.copyAgentPrompt() }
     @objc private func reloadConfig() { model.reload() }
 
     @objc private func checkForUpdates() { UpdateService.shared.checkForUpdates() }
