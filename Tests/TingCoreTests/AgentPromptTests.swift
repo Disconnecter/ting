@@ -12,8 +12,20 @@ import Testing
 
     @Test func linkPointsToTheTagOfTheVersion() {
         #expect(link == "https://raw.githubusercontent.com/bobuk-io/ting/v0.4.0/docs/micro-apps/FORMAT.md")
-        #expect(AgentPrompt.formatLink(version: nil)
-            == "https://raw.githubusercontent.com/bobuk-io/ting/main/docs/micro-apps/FORMAT.md")
+        #expect(AgentPrompt.formatLink(version: TingVersion.marketing)
+            == "https://raw.githubusercontent.com/bobuk-io/ting/v\(TingVersion.marketing)/docs/micro-apps/FORMAT.md")
+    }
+
+    /// The version of runs without a bundle is the one that `version.env` gives the packaged app.
+    @Test func sourceVersionMatchesVersionEnv() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let env = try String(contentsOf: root.appendingPathComponent("version.env"), encoding: .utf8)
+        let line = try #require(env.split(separator: "\n").first { $0.hasPrefix("MARKETING_VERSION=") })
+        let value = line.dropFirst("MARKETING_VERSION=".count).trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        #expect(TingVersion.marketing == value)
+        #expect(!AgentPrompt.formatLink(version: TingVersion.marketing).contains("/main/"))
     }
 
     @Test func handlesOnlyTheOptionFirst() {

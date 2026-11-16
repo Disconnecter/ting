@@ -22,10 +22,11 @@ enum AgentPromptSource {
         return FileManager.default.isReadableFile(atPath: path) ? path : nil
     }
 
-    /// The marketing version of the bundle; nil without a bundle.
-    static func version(bundle: Bundle) -> String? {
+    /// The marketing version of the bundle; without one (a SwiftPM build), the version of the
+    /// source tree it was built from.
+    static func version(bundle: Bundle) -> String {
         guard let version = bundle.infoDictionary?["CFBundleShortVersionString"] as? String,
-              !version.isEmpty else { return nil }
+              !version.isEmpty else { return TingVersion.marketing }
         return version
     }
 

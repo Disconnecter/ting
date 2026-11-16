@@ -16,10 +16,9 @@ public enum AgentPrompt {
 
     /// The raw GitHub file of the format document at the tag of `version`, e.g.
     /// `https://raw.githubusercontent.com/bobuk-io/ting/v0.4.0/docs/micro-apps/FORMAT.md`.
-    /// Without a version (a run without a bundle) it points to `main`.
-    public static func formatLink(version: String?) -> String {
-        let ref = version.map { "v" + $0 } ?? "main"
-        return "https://raw.githubusercontent.com/bobuk-io/ting/\(ref)/docs/micro-apps/FORMAT.md"
+    /// A run without a bundle passes `TingVersion.marketing`, the version of its source tree.
+    public static func formatLink(version: String) -> String {
+        "https://raw.githubusercontent.com/bobuk-io/ting/v\(version)/docs/micro-apps/FORMAT.md"
     }
 
     /// The text of the prompt.

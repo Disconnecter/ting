@@ -194,7 +194,7 @@ micro-apps folder (the one of `TING_CONFIG` when it is set). It tells the agent
 to write and check the file in a temporary folder, to move it into the
 micro-apps folder only when the check reports no problem, and not to change
 `config.json`. Without the document inside the app (a `swift run` build), the
-text names only the link.
+text names only the link, at the tag of the version of the source tree.
 
 `Ting --agent-prompt` prints the same text and exits, for scripts:
 

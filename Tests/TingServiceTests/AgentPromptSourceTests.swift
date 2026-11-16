@@ -28,12 +28,15 @@ final class AgentPromptSourceTests: XCTestCase {
     }
 
     func testABundleWithoutTheDocumentNamesOnlyTheLink() throws {
-        // The test bundle has no FORMAT.md and no version of Ting.
+        // The test bundle has no FORMAT.md and no version of Ting: the link of the source version.
         let bundle = Bundle(for: Self.self)
         XCTAssertNil(AgentPromptSource.formatDocument(bundle: bundle))
+        XCTAssertEqual(AgentPromptSource.version(bundle: bundle), TingVersion.marketing)
         let text = AgentPromptSource.text(bundle: bundle, environment: [:])
         XCTAssertFalse(text.contains("Resources/FORMAT.md"))
-        XCTAssertTrue(text.contains("https://raw.githubusercontent.com/bobuk-io/ting/"), text)
+        let link = "https://raw.githubusercontent.com/bobuk-io/ting/v\(TingVersion.marketing)/docs/micro-apps/FORMAT.md"
+        XCTAssertTrue(text.contains("format document at \(link)."), text)
+        XCTAssertFalse(text.contains("/main/"), text)
     }
 
     func testABundleWithTheDocumentNamesItFirst() throws {
@@ -97,9 +100,10 @@ final class AgentPromptSourceTests: XCTestCase {
         process.waitUntilExit()
 
         XCTAssertEqual(process.terminationStatus, 0)
-        // Built with SwiftPM the executable has no bundle: no document inside the app, the link of main.
+        // Built with SwiftPM the executable has no bundle: no document inside the app, and the link
+        // at the tag of the source version.
         let expected = AgentPrompt.text(
-            formatDocument: nil, link: AgentPrompt.formatLink(version: nil),
+            formatDocument: nil, link: AgentPrompt.formatLink(version: TingVersion.marketing),
             microAppsFolder: config.standardizedFileURL.path + ".micro",
             executable: executable.resolvingSymlinksInPath().standardizedFileURL.path)
         XCTAssertEqual(String(decoding: output, as: UTF8.self), expected + "\n")
