@@ -79,8 +79,10 @@ offer **Update Ting via Homebrew…** instead. That runs exactly
 `brew upgrade --cask --greedy bobuk-io/tap/ting` with the `brew` of the prefix
 that installed Ting, and shows the command, the live output of brew and the real
 result: updated, already up to date, or the error (for example no network, a
-Homebrew lock or a password prompt that cannot be answered). After an update
-Ting starts again from its installed place and shows the result once more. The
+Homebrew lock or a password prompt that cannot be answered). If Ting stops while
+brew replaces it, Ting opens again at once and keeps showing the progress. After
+an update Ting starts again from its installed place (the new Caskroom record)
+and shows the result once more. The
 `--greedy` flag is needed because the cask declares built-in updates. You can
 also run the same command in a terminal yourself.
 

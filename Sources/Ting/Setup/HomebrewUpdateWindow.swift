@@ -29,6 +29,18 @@ final class HomebrewUpdateModel {
     }
 
     var succeeded: Bool { phase == .finished(.upgraded) || phase == .finished(.upToDate) }
+
+    /// Shows the result. A failure or cancel shows the text it carries: the whole brew output, or
+    /// the reason why the run could not start when there is no log at all.
+    func finish(_ outcome: HomebrewUpdateOutcome, log: String?) {
+        switch outcome {
+        case .failed(_, let text), .cancelled(let text):
+            output = text.isEmpty ? (log ?? output) : text
+        case .upgraded, .upToDate:
+            output = log ?? output
+        }
+        phase = .finished(outcome)
+    }
 }
 
 @MainActor
@@ -54,21 +66,27 @@ final class HomebrewUpdateWindowController: NSObject, NSWindowDelegate {
                      onFinish: { [weak self] in self?.finish($0) })
     }
 
-    /// The copy that the helper started after an update shows the result of that run.
-    func showResult(of directory: URL) {
-        guard let outcome = HomebrewUpdateRunner.outcome(in: directory) else { return }
+    /// The copy that the helper started (`--homebrew-update-log`): it shows that run, live while
+    /// brew still works, and takes over the restart after a success that it saw happen.
+    func showRun(_ directory: URL) {
+        if runner?.isRunning == true { show(); return }
         model.command = (try? String(contentsOf: directory.appendingPathComponent("command"), encoding: .utf8))
             ?? HomebrewUpdate.arguments.joined(separator: " ")
         model.output = HomebrewUpdateRunner.output(in: directory)
-        model.phase = .finished(outcome)
+        model.phase = .running
         model.restarting = false
+        // A result that is already there is the one this copy was restarted for: never restart again.
+        let restartOnSuccess = HomebrewUpdateRunner.outcome(in: directory) == nil
+        let runner = HomebrewUpdateRunner(install: nil)
+        self.runner = runner
         show()
+        runner.watch(directory, onOutput: { [weak self] in self?.model.output = $0 },
+                     onFinish: { [weak self] in self?.finish($0, restart: restartOnSuccess) })
     }
 
-    private func finish(_ outcome: HomebrewUpdateOutcome) {
-        model.output = (runner?.directory).map(HomebrewUpdateRunner.output(in:)) ?? model.output
-        model.phase = .finished(outcome)
-        guard outcome == .upgraded else {
+    private func finish(_ outcome: HomebrewUpdateOutcome, restart: Bool = true) {
+        model.finish(outcome, log: (runner?.directory).map(HomebrewUpdateRunner.output(in:)))
+        guard outcome == .upgraded, restart else {
             runner?.acknowledge(relaunch: false)
             return
         }

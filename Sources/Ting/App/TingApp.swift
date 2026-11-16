@@ -27,9 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                           openSettings: { SettingsOpener.open() },
                                           openWelcome: { [weak self] in self?.welcome.show() })
         if model.config.leader == nil { welcome.show() }
-        // Started again by the Homebrew update helper: show the command, output and result of that run.
+        // Started by the Homebrew update helper: show the command, the output and the result of that run.
         if let run = HomebrewUpdate.resultDirectory(in: CommandLine.arguments, base: HomebrewUpdateRunner.defaultBase) {
-            HomebrewUpdateWindowController.shared.showResult(of: run)
+            HomebrewUpdateWindowController.shared.showRun(run)
         }
     }
 
