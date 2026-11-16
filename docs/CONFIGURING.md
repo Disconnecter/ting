@@ -61,7 +61,8 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `f13`, `option+shift+cmd+f`; never a modifier alone), `showDelay` (seconds,
   0–2), `unknownKey` (`shake` or `close`), `appearance` (`dark` or `light`),
   `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound` (booleans),
-  `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3}`).
+  `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true}`;
+  `calculator` shows the value of a query such as `2*(3+4)` first in launcha).
 
 Find an app's bundle identifier with
 `mdls -name kMDItemCFBundleIdentifier -r /Applications/Ghostty.app`.

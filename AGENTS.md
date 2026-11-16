@@ -20,7 +20,11 @@
   release checks locally.
 - Every release must be signed with Developer ID, notarized and stapled, signed
   for Sparkle, published to GitHub Releases with `Scripts/publish.sh`,
-  **installed at `/Applications/Ting.app` and restarted**. `Scripts/release.sh`
+  **installed at `/Applications/Ting.app` and restarted**. The update feed of
+  installed copies is `https://bobuk.io/apps/ting/appcast.xml`: `publish.sh`
+  copies `appcast.xml` into `../landing/public/apps/ting/`, and the release is
+  not done until the landing site with that file is deployed. Keep publishing
+  `appcast.xml` to GitHub Releases too, for Ting 0.6.1 and older. `Scripts/release.sh`
   prepares, checks and installs the release. `Scripts/install.sh` installs an
   already notarized app without rebuilding. Verify that the running process is
   from `/Applications`, not `build/` or `dist/`.

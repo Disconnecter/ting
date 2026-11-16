@@ -109,6 +109,7 @@ final class AppModel {
         leader.onRun = { [weak self] item in self?.run(item) }
         leader.onDoubleTap = { [weak self] in self?.launcha.open() }
         launchaModel.onWillOpen = { [weak self] in self?.playSound() }
+        launchaModel.onCopyValue = { [weak self] value in self?.copyValue(value) }
         launchaModel.onStartMicro = { [weak self] start in
             switch start {
             case .id(let id): self?.microFlow.start(id: id)
@@ -178,6 +179,13 @@ final class AppModel {
     }
 
     /// Puts the agent prompt on the clipboard and shows the toast.
+    /// The value of a launcha calculation goes to the clipboard.
+    func copyValue(_ value: String, pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+        toast.show("Copied \(value)")
+    }
+
     func copyAgentPrompt(pasteboard: NSPasteboard = .general) {
         AgentPromptSource.copy(AgentPromptSource.text(), to: pasteboard)
         toast.show(AgentPrompt.toast)

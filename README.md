@@ -17,12 +17,13 @@ from grime and sound-system culture: amber keycaps on graphite, `esc pull up`,
 Requires **macOS 14 or later**. Official releases are universal builds for
 **Apple Silicon and Intel**.
 
-[Release notes for Ting 0.6.1](docs/releases/v0.6.1.md): a window that shows how
-to give Ting Accessibility, with its icon to drag into System Settings.
+[Release notes for Ting 0.7.0](docs/releases/v0.7.0.md): a calculator in
+launcha, and update checks at bobuk.io.
 
-[In 0.6.0](docs/releases/v0.6.0.md), micro-apps learned to read the active app,
+[In 0.6](docs/releases/v0.6.0.md), micro-apps learned to read the active app,
 the Finder selection, the browser tab and the selected text, and to press keys
-and paste their result into the app.
+and paste their result into the app; [0.6.1](docs/releases/v0.6.1.md) shows how
+to give Ting Accessibility.
 
 [In 0.5.0](docs/releases/v0.5.0.md), micro-apps became small scripts of steps
 (shell, Python, HTTP, AI) with shared libraries, and a coding agent can set up
@@ -98,6 +99,14 @@ part of an app or micro-app name and press `Return`.
 - **Files:** only when no app or micro-app matches, launcha asks Spotlight for files in your
   home folder (not `~/Library`, hidden folders or app bundles) and opens a file
   with its usual app.
+- **Calculator:** a query of digits and an operator, such as `2*(3+4)`,
+  `1,5 × 4`, `200 + 15%`, `2^10` or `sqrt(2)`, shows its value first, above any
+  app or file; `Return` (or `⌘Return`) copies it. Both `.` and `,` are decimal
+  points; `+ - * / ^`, `× ÷`, parentheses, `mod`, percent, `pi`, `e` and the
+  functions `sqrt`, `abs`, `round`, `floor`, `ceil`, `ln`, `log`, `exp`, `sin`,
+  `cos`, `tan` (radians) work. Results keep up to 12 digits after the point.
+  Turn it off with **Calculate in launcha** in Settings › General
+  (`"calculator": false` under `launcha` in the config file).
 - **Desktop, Documents and Downloads** are not searched until you allow it, in
   launcha or in Settings. macOS may then ask you to allow Ting to access each
   folder. Desktop apps are listed after that. Until then launcha says that these
@@ -431,8 +440,9 @@ you type, and only when no app matches. It keeps its launch counts on your Mac.
 
 Ting has no accounts, analytics or servers. It opens the apps and URLs you
 configure and runs the commands of the micro-app files you approved; what such a
-command does, including network access, is up to the command. Sparkle checks this repository's public release feed for updates and
-downloads updates from GitHub. See [SECURITY.md](SECURITY.md) for the security
+command does, including network access, is up to the command. Sparkle checks
+the update feed at `https://bobuk.io/apps/ting/appcast.xml` (Ting 0.6.1 and older:
+this repository's release feed) and downloads updates from GitHub. See [SECURITY.md](SECURITY.md) for the security
 model and private vulnerability reporting.
 
 ## Develop
@@ -490,7 +500,13 @@ their `bin` directory. Then:
    ```
 
    The release is created as a draft, all assets are uploaded, and then it is
-   published, so Sparkle never sees an incomplete release.
+   published, so the feed never points at an incomplete release. The script then
+   copies `appcast.xml` into the landing site checkout (`../landing`, or
+   `LANDING`) as `public/apps/ting/appcast.xml`.
+4. Publish the landing site (see its `docs/updating.md`): the feed of installed
+   copies is `https://bobuk.io/apps/ting/appcast.xml`. The GitHub release keeps
+   its `appcast.xml` for Ting 0.6.1 and older, which still read
+   `releases/latest/download/appcast.xml`.
 
 Back up the Sparkle private key securely offline: without it, installed copies
 cannot verify future updates. Never commit or publish it.

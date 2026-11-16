@@ -1,5 +1,6 @@
-// State and logic of the launcha panel: name search over the app index, a Spotlight file
-// search only when no app matches, protected-folder consent and launch history.
+// State and logic of the launcha panel: name search over the app index, the value of a
+// calculation, a Spotlight file search only when no app matches, protected-folder consent and
+// launch history.
 // No AppKit windows here, so it can be tested without a panel.
 import Foundation
 import Observation
@@ -13,7 +14,11 @@ struct LaunchaRow: Identifiable, Equatable {
         case file
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
         case micro(candidateID: String, start: LaunchaMicroStart, isWorking: Bool)
+        /// The value of the query as a calculation. Return copies it.
+        case calculation(value: String)
     }
+
+    static let calculationID = "calculation"
 
     var id: String
     var kind: Kind
@@ -31,6 +36,11 @@ struct LaunchaRow: Identifiable, Equatable {
 
     var isMicro: Bool {
         if case .micro = kind { return true }
+        return false
+    }
+
+    var isCalculation: Bool {
+        if case .calculation = kind { return true }
         return false
     }
 
@@ -86,6 +96,12 @@ final class LaunchaModel {
     @ObservationIgnored var onWillOpen: (() -> Void)?
     /// Starts the micro-app flow for a micro-app or a broken file, after the panel closed.
     @ObservationIgnored var onStartMicro: ((LaunchaMicroStart) -> Void)?
+    /// Copies the value of a calculation, after the panel closed.
+    @ObservationIgnored var onCopyValue: ((String) -> Void)?
+    /// A query of digits and an operator shows its value first (`launcha.calculator`).
+    var calculator = true {
+        didSet { if calculator != oldValue, isOpen { recompute(keepSelection: true) } }
+    }
 
     @ObservationIgnored private let makeServices: ServiceFactory
     @ObservationIgnored private var services: Services
@@ -197,6 +213,11 @@ final class LaunchaModel {
         guard isOpen, let row = selectedRow else { return nil }
         onRequestClose?()
         close()
+        // Return and Command-Return both copy a value; it has nothing to reveal.
+        if case .calculation(let value) = row.kind {
+            onCopyValue?(value)
+            return nil
+        }
         if reveal { return opener.reveal(row.url) }
         if case .micro(let candidateID, let start, let isWorking) = row.kind {
             // The same flow as a binding: approval, parameters, result. A broken file shows its own errors.
@@ -213,7 +234,7 @@ final class LaunchaModel {
             return outcome
         case .file:
             return await opener.openFile(row.url, name: row.name)
-        case .micro:
+        case .micro, .calculation:
             return nil
         }
     }
@@ -356,6 +377,11 @@ final class LaunchaModel {
         } else {
             if spotlightQuery != nil { stopSpotlight() }
             rows = appRows
+        }
+        // A calculation comes first, above the apps or files that match the same text.
+        if calculator, let value = Calculator.evaluate(trimmed) {
+            rows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: value), name: value,
+                                   url: URL(fileURLWithPath: "/"), detail: "Return copies the result"), at: 0)
         }
         if let previous, let index = rows.firstIndex(where: { $0.id == previous }) {
             selection = index

@@ -9,7 +9,8 @@ The terms used for Ting in code, documents and the interface.
 - **selecta:** the leader menu: one key or a short sequence opens an app, a URL
   or a micro-app.
 - **launcha:** the search panel: type part of the name of an app, a micro-app or
-  a file and press `Return`.
+  a file and press `Return`. A query of digits and an operator, such as
+  `2*(3+4)`, shows its value first; `Return` copies it (the launcha calculator).
 - **binding:** an item of `config.json` with a key and exactly one of `items`
   (a group), `app`, `url` or `micro`.
 

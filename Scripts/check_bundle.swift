@@ -77,7 +77,7 @@ guard let icon = try? Data(contentsOf: resources.appendingPathComponent("Icon.ic
 require(icon.count > 8 && icon.prefix(4) == Data("icns".utf8), "invalid ICNS icon")
 
 // Sparkle: feed, key and the embedded framework.
-require(string("SUFeedURL") == "https://github.com/bobuk-io/ting/releases/latest/download/appcast.xml", "unexpected Sparkle feed URL")
+require(string("SUFeedURL") == "https://bobuk.io/apps/ting/appcast.xml", "unexpected Sparkle feed URL")
 require(string("SUPublicEDKey") == "AJCnH5OGe+uet2nuKtN2kzn5nxrCHoGo85K6b3OabA4=", "unexpected Sparkle public key")
 let sparkle = appURL.appendingPathComponent("Contents/Frameworks/Sparkle.framework")
 require(Bundle(url: sparkle)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "2.10.1",

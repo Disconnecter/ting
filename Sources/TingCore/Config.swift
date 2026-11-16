@@ -93,7 +93,7 @@ public enum Appearance: String, Codable, Sendable, CaseIterable {
 }
 
 /// Launcha settings: the name search panel.
-/// JSON: {"hotkey": Hotkey string or null, "doubleTap": Bool, "doubleTapWindow": seconds}.
+/// JSON: {"hotkey": Hotkey string or null, "doubleTap": Bool, "doubleTapWindow": seconds, "calculator": Bool}.
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct LaunchaSettings: Equatable, Sendable, Codable {
     /// Allowed range of `doubleTapWindow`. Decoding clamps to it.
@@ -105,11 +105,13 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
     public var doubleTap: Bool = true
     /// Maximum seconds between the two leader presses of a double tap.
     public var doubleTapWindow: Double = 0.3
+    /// A query of digits and an operator shows its value first. On by default.
+    public var calculator: Bool = true
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case hotkey, doubleTap, doubleTapWindow
+        case hotkey, doubleTap, doubleTapWindow, calculator
     }
 
     public init(from decoder: Decoder) throws {
@@ -120,6 +122,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
         let window = try container.decodeIfPresent(Double.self, forKey: .doubleTapWindow) ?? defaults.doubleTapWindow
         let range = LaunchaSettings.doubleTapWindowRange
         doubleTapWindow = min(max(window, range.lowerBound), range.upperBound)
+        calculator = try container.decodeIfPresent(Bool.self, forKey: .calculator) ?? defaults.calculator
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -131,6 +134,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
         }
         try container.encode(doubleTap, forKey: .doubleTap)
         try container.encode(doubleTapWindow, forKey: .doubleTapWindow)
+        try container.encode(calculator, forKey: .calculator)
     }
 }
 

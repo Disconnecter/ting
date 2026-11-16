@@ -219,7 +219,7 @@ private struct ResultList: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(rows.first?.isApp == false ? "Files" : "Apps")
+        .accessibilityLabel(rows.contains { $0.isApp || $0.isMicro } || rows.allSatisfy(\.isCalculation) ? "Apps" : "Files")
     }
 }
 
@@ -234,11 +234,17 @@ private struct ResultRow: View {
             HStack(spacing: 10) {
                 if row.isMicro {
                     MicroRowIcon(isWorking: row.isWorking)
+                } else if row.isCalculation {
+                    CalculationRowIcon()
                 } else {
                     RowIcon(url: row.url, icons: icons)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(row.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    Text(row.name)
+                        .font(row.isCalculation ? .system(size: 15, weight: .semibold, design: .monospaced)
+                                                : .system(size: 13, weight: .medium))
+                        .lineLimit(1).truncationMode(.middle)
+                        .textSelection(.disabled)
                     if !row.detail.isEmpty {
                         Text(row.detail).font(.system(size: 10.5))
                             .foregroundStyle(row.isWorking ? Color.tingMuted : Color.tingAmber)
@@ -247,7 +253,7 @@ private struct ResultRow: View {
                 }
                 Spacer(minLength: 8)
                 if selected {
-                    Image(systemName: row.isApp || row.isMicro ? "arrow.right" : "arrow.up.right")
+                    Image(systemName: row.isCalculation ? "doc.on.doc" : row.isApp || row.isMicro ? "arrow.right" : "arrow.up.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.tingAmber)
                         .accessibilityHidden(true)
@@ -267,6 +273,7 @@ private struct ResultRow: View {
 
     private var help: String {
         if row.isMicro { return row.detail.isEmpty ? row.name : "\(row.name): \(row.detail)" }
+        if row.isCalculation { return row.name }
         return row.isApp ? row.name : row.url.path
     }
 
@@ -276,6 +283,7 @@ private struct ResultRow: View {
         case .file: "\(row.name), file in \(row.detail)"
         case .micro(_, _, let isWorking):
             isWorking ? "\(row.name), micro-app" : "\(row.name), micro-app, not working. \(row.detail)"
+        case .calculation(let value): "Result \(value)"
         }
     }
 
@@ -284,7 +292,20 @@ private struct ResultRow: View {
         case .app: "Opens the app"
         case .file: "Opens the file with its usual app"
         case .micro(_, _, let isWorking): isWorking ? "Starts the micro-app" : "Shows the error of the file"
+        case .calculation: "Copies the result"
         }
+    }
+}
+
+/// A calculation: an equals sign in the amber of Ting.
+private struct CalculationRowIcon: View {
+    var body: some View {
+        Image(systemName: "equal")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(Color.tingAmber)
+            .frame(width: 24, height: 24)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color.tingAmber.opacity(0.14)))
+            .accessibilityHidden(true)
     }
 }
 

@@ -49,7 +49,8 @@ fi
 # Only release builds read the update feed; debug copies never replace themselves.
 SPARKLE_KEYS=""
 if [[ "$CONF" == release ]]; then
-  SPARKLE_KEYS="    <key>SUFeedURL</key><string>https://github.com/bobuk-io/ting/releases/latest/download/appcast.xml</string>
+  # The feed lives on bobuk.io (no cached redirect); the archives stay on GitHub Releases.
+  SPARKLE_KEYS="    <key>SUFeedURL</key><string>https://bobuk.io/apps/ting/appcast.xml</string>
     <key>SUPublicEDKey</key><string>AJCnH5OGe+uet2nuKtN2kzn5nxrCHoGo85K6b3OabA4=</string>
     <key>SUEnableAutomaticChecks</key><true/>
 "

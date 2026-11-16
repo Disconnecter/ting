@@ -359,3 +359,62 @@ final class LaunchaModelTests: XCTestCase {
         XCTAssertEqual(started.count, 2)
     }
 }
+
+extension LaunchaModelTests {
+    func testACalculationComesFirstAndReturnCopiesIt() async throws {
+        let apps = root.appendingPathComponent("Applications")
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        _ = try app("Calc 2", id: "io.bobuk.calc2", in: apps)
+        let report = root.appendingPathComponent("2+2 notes.txt")
+        try Data().write(to: report)
+        let fixture = try makeModel(files: [report])
+        let model = fixture.model
+        var copied: [String] = []
+        var closed = 0
+        model.onCopyValue = { copied.append($0) }
+        model.onRequestClose = { closed += 1 }
+        model.open()
+        try await wait("index") { model.hasIndex }
+
+        // No app matches: the value first, the files after it.
+        model.query = "2+2"
+        XCTAssertEqual(model.rows.first?.kind, .calculation(value: "4"))
+        XCTAssertEqual(model.rows.first?.name, "4")
+        try await wait("files") { model.rows.count == 2 }
+        XCTAssertEqual(model.rows.map(\.kind), [.calculation(value: "4"), .file])
+        XCTAssertEqual(model.selection, 0)
+
+        // An app whose name matches the digits comes after the value.
+        model.query = "2 * 3"
+        XCTAssertEqual(model.rows.first?.kind, .calculation(value: "6"))
+        model.query = "calc 2"
+        XCTAssertEqual(model.rows.map(\.name), ["Calc 2"], "no operator: no value")
+
+        // Plain text and lone numbers are not calculations.
+        model.query = "42"
+        XCTAssertFalse(model.rows.contains(where: \.isCalculation))
+
+        // Return copies the value and closes; nothing is opened or counted.
+        model.query = "1,5 × 4"
+        let outcome = await model.activateSelection()
+        XCTAssertNil(outcome)
+        XCTAssertEqual(copied, ["6"])
+        XCTAssertEqual(closed, 1)
+        XCTAssertTrue(fixture.opener.opened.isEmpty && fixture.opener.files.isEmpty && fixture.opener.revealed.isEmpty)
+
+        // Command-Return copies too: a value has nothing to reveal.
+        model.open()
+        model.query = "10/4"
+        _ = await model.activateSelection(reveal: true)
+        XCTAssertEqual(copied, ["6", "2.5"])
+        XCTAssertTrue(fixture.opener.revealed.isEmpty)
+
+        // Turned off in Settings: no value, at once.
+        model.open()
+        model.query = "2+2"
+        XCTAssertTrue(model.rows.first?.isCalculation == true)
+        model.calculator = false
+        XCTAssertFalse(model.rows.contains(where: \.isCalculation))
+        model.close()
+    }
+}
