@@ -38,8 +38,31 @@ import TingCore
 
     private func runner(_ install: HomebrewInstall, pid: pid_t = ProcessInfo.processInfo.processIdentifier) throws -> HomebrewUpdateRunner {
         let opener = try script("bin/open", "printf '%s\\n' \"$*\" >> '\(root.appendingPathComponent("open-calls").path)'")
-        return HomebrewUpdateRunner(install: install, tingPID: pid,
-                                    base: root.appendingPathComponent("runs"), opener: opener, pollInterval: 0.05)
+        // A fake Ting.app whose executable records how the helper started the progress viewer.
+        _ = try script("ViewerSource/Ting.app/Contents/MacOS/Ting",
+                       "printf '%s\\n' \"$*\" >> '\(root.appendingPathComponent("viewer-calls").path)'")
+        return HomebrewUpdateRunner(install: install, tingPID: pid, base: root.appendingPathComponent("runs"),
+                                    opener: opener, viewerSource: root.appendingPathComponent("ViewerSource/Ting.app"),
+                                    pollInterval: 0.05)
+    }
+
+    /// A stand-in for the viewer process: alive until the test ends it, like a window the person closes.
+    private func viewerProcess() throws -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        return process
+    }
+
+    private func attach(_ directory: URL, pid: pid_t) async throws -> (HomebrewUpdateRunner, HomebrewUpdateOutcome, [String]) {
+        let watcher = HomebrewUpdateRunner(install: nil, tingPID: pid, base: root.appendingPathComponent("runs"),
+                                           viewerSource: nil, pollInterval: 0.05)
+        var seen: [String] = []
+        let outcome = try await withCheckedThrowingContinuation { continuation in
+            watcher.watch(directory, onOutput: { seen.append($0) }, onFinish: { continuation.resume(returning: $0) })
+        }
+        return (watcher, outcome, seen)
     }
 
     private func finish(_ runner: HomebrewUpdateRunner, output: ((String) -> Void)? = nil) async throws -> HomebrewUpdateOutcome {
@@ -134,29 +157,89 @@ import TingCore
     }
 
     /// brew may stop or replace Ting while it runs. The helper sees that Ting is gone while brew
-    /// still works and opens the installed copy at once; that copy watches the same run, gets the
-    /// output that brew writes after Ting's exit and the result.
+    /// still works and starts the progress viewer from the copy in the run folder at once, not the
+    /// installed app; the viewer gets the output that brew writes after Ting's exit and the result,
+    /// and after the success hands over to the installed copy.
     @Test func homebrewProgressStaysVisibleAfterTingQuits() async throws {
         let install = try install(brew: "echo first\nsleep 1\necho second\necho '🍺  ting was successfully upgraded!'")
         let runner = try runner(install, pid: try deadPID())
         _ = runner.start(onOutput: { _ in }, onFinish: { _ in })
         let directory = try #require(runner.directory)
-        let opened = try await waitFor("open-calls")
-        #expect(opened == "\(real(install.app)) --args --homebrew-update-log \(directory.path)\n")
-        // Opened while brew still runs: no result yet, and the rest of the output is still to come.
+        let viewed = try await waitFor("viewer-calls")
+        #expect(viewed == "--homebrew-update-viewer \(directory.path)\n")
+        // Started while brew still runs: no result yet, and the rest of the output is still to come.
         #expect(HomebrewUpdateRunner.outcome(in: directory) == nil)
         #expect(!HomebrewUpdateRunner.output(in: directory).contains("second"))
+        #expect(read("open-calls").isEmpty)
 
-        let watcher = HomebrewUpdateRunner(install: nil, base: root.appendingPathComponent("runs"), pollInterval: 0.05)
-        var seen: [String] = []
-        let outcome = try await withCheckedThrowingContinuation { continuation in
-            watcher.watch(directory, onOutput: { seen.append($0) }, onFinish: { continuation.resume(returning: $0) })
-        }
+        let viewer = try viewerProcess()
+        let (watcher, outcome, seen) = try await attach(directory, pid: viewer.processIdentifier)
         #expect(outcome == .upgraded)
         #expect(seen.contains { $0.contains("second") })
         #expect(try String(contentsOf: directory.appendingPathComponent("pid"), encoding: .utf8)
-            == String(ProcessInfo.processInfo.processIdentifier))
-        watcher.acknowledge(relaunch: false)
+            == String(viewer.processIdentifier))
+        #expect(watcher.conclude(outcome, role: .viewer))
+        viewer.terminate()
+        viewer.waitUntilExit()
+        #expect(try await waitFor("open-calls") == "\(real(install.app)) --args --homebrew-update-log \(directory.path)\n")
+    }
+
+    /// brew removes the installed app and then fails to place the new one: no Ting.app exists, yet
+    /// the viewer (a copy outside the installed bundle) shows the progress and the failure.
+    @Test func homebrewFailedReplacementStaysVisible() async throws {
+        let install = try install(brew: "")
+        _ = try script("prefix/bin/brew", """
+            rm -rf '\(install.app.path)'
+            echo 'Removing old Ting.app'
+            sleep 1
+            echo 'Error: could not move the new Ting.app into place' >&2
+            exit 1
+            """)
+        let runner = try runner(install, pid: try deadPID())
+        _ = runner.start(onOutput: { _ in }, onFinish: { _ in })
+        let directory = try #require(runner.directory)
+        #expect(try await waitFor("viewer-calls") == "--homebrew-update-viewer \(directory.path)\n")
+
+        let viewer = try viewerProcess()
+        let (watcher, outcome, _) = try await attach(directory, pid: viewer.processIdentifier)
+        guard case .failed(1, let output) = outcome else { Issue.record("Expected a failure, got \(outcome)"); return }
+        #expect(output.contains("could not move the new Ting.app"))
+        #expect(!fm.fileExists(atPath: install.app.path))
+        // The viewer keeps the failure on screen until the person closes it.
+        #expect(!watcher.conclude(outcome, role: .viewer))
+        viewer.terminate()
+        viewer.waitUntilExit()
+        try await Task.sleep(nanoseconds: 800_000_000)
+        // Nothing to start: no installed copy, and the result was already seen.
+        #expect(read("open-calls").isEmpty)
+        #expect(read("viewer-calls") == "--homebrew-update-viewer \(directory.path)\n")
+    }
+
+    /// The helper starts the viewer while brew runs, but the viewer attaches only after brew is
+    /// done. It is still a recovery launch: after the success it hands over to the installed copy.
+    /// Only the copy started after brew (`.final`) never restarts.
+    @Test func homebrewLateRecoveryStillRestarts() async throws {
+        let install = try install(brew: "sleep 0.4\necho '🍺  ting was successfully upgraded!'")
+        let runner = try runner(install, pid: try deadPID())
+        _ = runner.start(onOutput: { _ in }, onFinish: { _ in })
+        let directory = try #require(runner.directory)
+        _ = try await waitFor("viewer-calls")
+        #expect(HomebrewUpdateRunner.outcome(in: directory) == nil)
+        while HomebrewUpdateRunner.outcome(in: directory) == nil { try await Task.sleep(nanoseconds: 50_000_000) }
+
+        let viewer = try viewerProcess()
+        let (watcher, outcome, _) = try await attach(directory, pid: viewer.processIdentifier)
+        #expect(outcome == .upgraded)
+        #expect(watcher.conclude(outcome, role: .viewer))
+        #expect(fm.fileExists(atPath: directory.appendingPathComponent("relaunch").path))
+        viewer.terminate()
+        viewer.waitUntilExit()
+        #expect(try await waitFor("open-calls") == "\(real(install.app)) --args --homebrew-update-log \(directory.path)\n")
+
+        #expect(!HomebrewUpdateRole.final.restarts(after: .upgraded))
+        #expect(!HomebrewUpdateRole.final.relaunchWhenDone(after: .upgraded))
+        #expect(HomebrewUpdateRole.owner.restarts(after: .upgraded))
+        #expect(!HomebrewUpdateRole.owner.restarts(after: .upToDate))
     }
 
     /// The reopened copy has no helper of its own; its Cancel still stops brew, and is no success.
@@ -207,9 +290,10 @@ import TingCore
         let install = try install(brew: "exit 0")
         let blocker = root.appendingPathComponent("not-a-folder")
         try Data("x".utf8).write(to: blocker)
-        let unpreparable = HomebrewUpdateRunner(install: install, base: blocker, pollInterval: 0.05)
+        let unpreparable = HomebrewUpdateRunner(install: install, base: blocker, viewerSource: nil, pollInterval: 0.05)
         let unstartable = HomebrewUpdateRunner(install: install, base: root.appendingPathComponent("runs"),
-                                               shell: root.appendingPathComponent("missing/sh"), pollInterval: 0.05)
+                                               shell: root.appendingPathComponent("missing/sh"), viewerSource: nil,
+                                               pollInterval: 0.05)
         for (runner, reason) in [(unpreparable, "Could not prepare the update"), (unstartable, "Could not start the update helper")] {
             let outcome = try await finish(runner)
             guard case .failed(let code, let text) = outcome else { Issue.record("Expected a failure, got \(outcome)"); continue }
