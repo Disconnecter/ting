@@ -49,3 +49,16 @@ The terms used for Ting in code, documents and the interface.
   (`~/.config/ting/micro-errors.log`), written again on each load of the folder,
   with one `file:line: message` line per problem of a micro-app file; empty when
   all files are good.
+- **check command:** `Ting --check <file.yaml> [more files]`, a mode of the Ting
+  executable (`Ting.app/Contents/MacOS/Ting`) that checks micro-app files without
+  starting Ting or writing any file. It prints one `file:line: message` line per
+  problem, with the text of the micro-app error log, or `<file>: ok`, and exits
+  with 0 (all good), 1 (a file has a problem) or 2 (a wrong call).
+- **format document:** `docs/micro-apps/FORMAT.md`, the description of the
+  micro-app format with the full text of the five examples. It ships inside the
+  app as `Ting.app/Contents/Resources/FORMAT.md`.
+- **coding agent:** a program that writes code from the person's request, such
+  as Claude Code, Codex or pi. It can write a micro-app from the format
+  document, check it with the check command and save it in the micro-apps
+  folder; it does not change `config.json`, and the person approves the file
+  and binds its key.

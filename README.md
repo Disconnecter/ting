@@ -110,11 +110,14 @@ uses `/tmp/ting-test.json.launcha-history.json` and
 A micro-app is a small tool that runs one shell command: it can ask for a few
 parameters, read the clipboard and show or copy the result. Each micro-app is one
 YAML file in a strict, checked format, described in
-[docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md) with five working
-[examples](docs/micro-apps/examples/): Format JSON, Change case, Encode / decode,
-Count words and DNS lookup. The files are meant to be written by you or by an AI
-assistant such as Claude Code; Ting has no editor for them and installs none by
-itself, so the folder starts empty.
+[docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md), which holds the full
+text of five working [examples](docs/micro-apps/examples/): Format JSON, Change
+case, Encode / decode, Count words and DNS lookup. The files are meant to be
+written by you or by a coding agent such as Claude Code, Codex or pi; Ting has no
+editor for them and installs none by itself, so the folder starts empty. The
+format document also ships inside the app, as
+`/Applications/Ting.app/Contents/Resources/FORMAT.md`, so an agent can read the
+version that matches the installed Ting.
 
 ```yaml
 format: ting.microapp/2
@@ -152,6 +155,29 @@ line per problem (it is empty when all files are good). With `TING_CONFIG` set,
 both get the config file name in front, like the launcha files:
 `TING_CONFIG=/tmp/ting-test.json` uses the folder `/tmp/ting-test.json.micro/` and
 the log `/tmp/ting-test.json.micro-errors.log`.
+
+### Checking a micro-app file
+
+The check command checks micro-app files before they go into the folder, without
+a running Ting:
+
+```sh
+/Applications/Ting.app/Contents/MacOS/Ting --check sort-lines.yaml [more files]
+```
+
+It opens no window and no menu-bar icon, does not read `config.json`, writes no
+file and works while Ting is running. It prints one `file:line: message` line per
+problem, with the same text as `micro-errors.log`, or `<file>: ok` for a good
+file. The exit code is 0 when every file is good, 1 when a file has a problem and
+2 for a wrong call (no file, an unreadable file or a name without `.yaml`), with
+the message on standard error. Given several files, it reports a duplicate id
+among them; a duplicate with a file already in the folder shows only in
+`micro-errors.log`.
+
+A coding agent writes a micro-app this way: it reads FORMAT.md, writes `<id>.yaml`
+in a temporary folder, runs the check command and fixes the file until it is
+good, then moves it into the micro-apps folder. It does not change `config.json`:
+you approve the new file at its first start and bind a key to it yourself.
 
 ### Starting a micro-app
 

@@ -47,6 +47,15 @@ latest published version.
   stands between that file and a run. Anyone who can also write the approvals
   file can run commands as you. **Keep the micro-apps folder, `config.json` and
   `~/Library/Application Support/Ting/` writable only by your user account.**
+- A micro-app file may be written by a coding agent such as Claude Code, Codex
+  or pi. The agent runs with your rights, so it can write the micro-apps folder
+  like any other program of yours; it is told not to change `config.json`, and
+  its file still needs your approval in the approval panel before the first run.
+  Read the command before you approve it, as for a file you wrote yourself.
+- The check command `Ting --check <file.yaml>` only reads the given files and
+  prints their problems. It never runs a micro-app command, opens no window,
+  does not read `config.json` and writes no file: no log, no approvals and no
+  values. A file that passes the check is not approved by it.
 - The command gets the PATH of your login shell, so whoever can change your
   shell start-up files can change which programs a micro-app runs.
 - The parameter values of the last started run of each micro-app are stored as

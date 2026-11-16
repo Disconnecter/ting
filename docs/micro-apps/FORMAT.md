@@ -2,13 +2,50 @@
 
 A micro-app is a small tool that Ting runs from a key: it runs **one shell
 command**, can ask for a few parameters, can read the clipboard and shows or
-copies the result. Each micro-app is one YAML file. Files are mostly written by
-an AI assistant such as Claude Code, so the format is strict and easy to check:
-every mistake is reported with the file name and the line.
+copies the result. Each micro-app is one YAML file. Files are written by the
+person or by a coding agent such as Claude Code, Codex or pi, so the format is
+strict and easy to check: every mistake is reported with the file name and the
+line.
 
-The five files in [`examples/`](examples/) are complete, working micro-apps for
-macOS 14 and later. Ting does not install them: copy the ones you want into the
-micro-apps folder.
+This document is complete on its own: it describes every key and rule and holds
+the full text of five working micro-apps (see [Examples](#examples)). The same
+text ships inside the app as `Ting.app/Contents/Resources/FORMAT.md`.
+
+## Writing a micro-app: step by step
+
+These steps are for whoever writes the file, a person or a coding agent.
+
+1. Read this document to the end, including the examples.
+2. Choose the micro-app id: kebab-case, such as `sort-lines` (see [File](#file)).
+3. Write the micro-app as one file named `<id>.yaml` in a new temporary folder,
+   for example one made with `mktemp -d`. Use the final file name already: the
+   id comes from it when the file has no `id` key. Do not write an unfinished
+   file into the micro-apps folder: Ting loads it at once and reports it as
+   broken.
+4. Check the file with the check command (see [How to check a file](#how-to-check-a-file)):
+
+   ```sh
+   /Applications/Ting.app/Contents/MacOS/Ting --check "$dir/sort-lines.yaml"
+   ```
+
+   Use the path of the Ting executable of this Mac when Ting is installed
+   elsewhere.
+5. Fix every reported problem and run the check command again, until it prints
+   `<file>: ok` and exits with 0.
+6. Optionally try the command the way Ting runs it (see
+   [Trying the command](#trying-the-command)).
+7. Move the good file into the micro-apps folder `~/.config/ting/micro/` (create
+   the folder when it is missing; with `TING_CONFIG` set, use the folder next to
+   that file, see [Folder](#folder)). Do not replace a file that is already
+   there unless the person asked to change that micro-app. Then read the
+   micro-app error log `~/.config/ting/micro-errors.log`: a line that starts with
+   the file name means a problem the check command could not see, such as an id
+   that another file of the folder already uses.
+8. **Do not change `config.json`**, and do not write the approvals and values in
+   `~/Library/Application Support/Ting/`. The person approves the new file in the
+   approval panel at its first start and binds a key to it themselves (in
+   **Settings › Bindings**, **+ › Micro-app**), or starts it by name from
+   launcha. Tell the person the id and the file name.
 
 ## Folder
 
@@ -63,7 +100,7 @@ characters must set one itself, for example `LC_ALL=en_US.UTF-8` or `perl -CS`.
 Only use tools that ship with macOS 14, or list the extra ones in `tools`
 (`jq`, for example, ships only with macOS 15 and later).
 
-## Example
+## All keys at a glance
 
 ```yaml
 format: ting.microapp/2          # required, exactly this text
@@ -195,14 +232,61 @@ loaded; every error is reported as `file:line: message`. The checker reports:
   a `$TING_…` or `${TING_…}` variable that is not a declared parameter; a
   declared parameter that the command never reads;
 - an `output` that is not a map, without `to`, with an empty or repeated `to`, a
-  target other than `clipboard` or `panel`, or an `as` outside the four styles.
+  target other than `clipboard` or `panel`, or an `as` outside the four styles;
+- a file larger than 256 KB, or a file that is not UTF-8 text.
 
-## Errors and the error log
+## How to check a file
 
-A broken file is not used. Ting marks it in the menu-bar menu, lists every error
-with file and line in **Settings › Advanced**, shows a short message when a change
-breaks a file, and writes the **micro-app error log** `micro-errors.log` next to
-the config file: `~/.config/ting/micro-errors.log` (with `TING_CONFIG` set, see
+There are two ways, both with the same messages: the check command, before the
+file goes into the micro-apps folder, and the micro-app error log, after.
+
+### The check command
+
+The Ting executable checks micro-app files when it is started with `--check`:
+
+```sh
+/Applications/Ting.app/Contents/MacOS/Ting --check <file.yaml> [more files]
+```
+
+It checks the given files and exits. It does not start Ting: it opens no window
+and no menu-bar icon, does not read `config.json`, writes no file (no log, no
+approvals, no values) and works while Ting is running.
+
+On standard output it prints one line per problem, `file:line: message`, with
+the same message as the micro-app error log, sorted by file and line. The file is
+written as it was given. A good file gives one line `<file>: ok`:
+
+```text
+$ Ting --check sort-lines.yaml
+sort-lines.yaml:5: param `order` is never used: the command must read `$TING_ORDER`
+sort-lines.yaml:7: params[0]: an optional param needs a `default`
+sort-lines.yaml:10: command: `$TING_ORDR` is not a declared param
+sort-lines.yaml:12: `output.to` is `clip`; it must be one of: clipboard, panel
+$ Ting --check sort-lines.yaml
+sort-lines.yaml: ok
+```
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | Every given file is good. |
+| `1` | At least one file has a problem: fix the file. |
+| `2` | A wrong call: no file given, a file that cannot be read, or a name that does not end in `.yaml`. The message and the usage line go to standard error; fix the call. |
+
+With several files, the id rules of the folder apply to the given files: of two
+files with one id, the later one by path gets the `duplicate id` problem. The
+check command does not look at the files that are already in the micro-apps
+folder; a duplicate with one of them shows only in the micro-app error log
+after the file is saved there.
+
+### The micro-app error log
+
+A broken file in the micro-apps folder is not used. Ting marks it in the
+menu-bar menu, lists every error with file and line in **Settings › Advanced**,
+shows a short message when a change breaks a file, and writes the **micro-app
+error log** `micro-errors.log` next to the config file:
+`~/.config/ting/micro-errors.log` (with `TING_CONFIG` set, see
 [Folder](#folder)). Ting writes the log again on each load of the folder. It has
 one line per problem, `file:line: message`, sorted by file and line, and it is
 empty when all files are good:
@@ -212,21 +296,22 @@ dns-lookup.yaml:14: `params[1].type` is `number`; it must be one of: text, choic
 dns-lookup.yaml:27: command: `$TING_RECORD_TYPE` is not a declared param
 ```
 
-### How to check a file (for Claude Code)
+Lines that start with the file name are the errors of that file; no such line
+means the file is good.
 
-There is no separate check command. To check a file you wrote:
+### Trying the command
 
-1. Save it as `<id>.yaml` in the micro-apps folder. Ting loads it within a
-   moment.
-2. Read `micro-errors.log`. Lines that start with your file name are its errors;
-   no such line means the file is good. Fix the file and read the log again.
-3. A good file is not run by itself: the person approves it at its first start.
-   To try the command without Ting, run it like Ting does, for example
-   `printf '%s' 'input' | TING_MODE=upper /bin/sh -c "$(cat command.sh)"`, with
-   `LANG` and `LC_*` unset.
+A good file is not run by Ting by itself: the person approves it at its first
+start. To try the command without Ting, run it as Ting does, with the clipboard
+text on stdin, each parameter as a `TING_` variable and `LANG` and `LC_*` unset,
+for example:
 
-For tests and experiments, use a temporary config with `TING_CONFIG`, so the
-person's own folder, log and approvals are not touched.
+```sh
+printf '%s' 'some text' | env -u LANG -u LC_ALL -u LC_CTYPE TING_MODE=upper /bin/sh -c "$(cat command.sh)"
+```
+
+For tests and experiments with Ting itself, use a temporary config with
+`TING_CONFIG`, so the person's own folder, log and approvals are not touched.
 
 ## Approval, bindings and state
 
@@ -234,8 +319,9 @@ Before the first run, and after any change to the file, Ting shows the approval
 panel with the name, the file and the full command; `⌘Return` approves and runs,
 `Esc` refuses. The approval is the SHA-256 of the whole file content, stored by
 micro-app id; it is not part of the file. A binding in `config.json` names the
-id: `{"key": "j", "micro": "format-json"}`. Every micro-app that is not
-`hidden: true` can also be started by name from launcha.
+id: `{"key": "j", "micro": "format-json"}`. The person adds it, in
+**Settings › Bindings** or in `config.json`; a coding agent does not. Every
+micro-app that is not `hidden: true` can also be started by name from launcha.
 
 Ting keeps its own state for micro-apps outside the folder and outside
 `config.json`, in `~/Library/Application Support/Ting/`:
@@ -283,3 +369,153 @@ Refused:
 - plain or quoted values that continue on the next line;
 - tabs in indentation;
 - duplicate keys.
+
+## Examples
+
+Five complete, working micro-apps for macOS 14 and later. Each passes the check
+command as it is. Ting does not install them: to use one, save its text under
+the file name of its heading in the micro-apps folder. The same files are in
+`docs/micro-apps/examples/` of the Ting repository.
+
+### Format JSON: `format-json.yaml`
+
+Pretty-prints the JSON of the clipboard with sorted keys, puts it back on the clipboard and shows it as code. No parameters.
+
+```yaml
+format: ting.microapp/2
+name: Format JSON
+description: Pretty-print the JSON from the clipboard, with sorted keys, and put it back.
+tools: [perl]
+
+input: clipboard
+# jq ships only with macOS 15 and later; JSON::PP is part of the system Perl.
+command: |
+  perl -MJSON::PP -0777 -ne 'my $j = JSON::PP->new->utf8->pretty->indent_length(2)->canonical->allow_nonref; print $j->encode($j->decode($_))'
+output:
+  to: [clipboard, panel]
+  as: code
+```
+
+### Change case: `change-case.yaml`
+
+Changes the case of the clipboard text, also of non-Latin letters. One optional choice parameter, so it opens as a list.
+
+```yaml
+format: ting.microapp/2
+name: Change case
+description: Change the case of the clipboard text to upper, lower or title case.
+tools: [perl]
+
+params:
+  - name: mode
+    type: choice
+    required: false
+    default: upper
+    choices: [upper, lower, title]
+    prompt: Case
+
+input: clipboard
+# perl -CS reads and writes UTF-8, so non-Latin letters change case too.
+command: |
+  case "$TING_MODE" in
+    upper) perl -CS -pe '$_ = uc' ;;
+    lower) perl -CS -pe '$_ = lc' ;;
+    title) perl -CS -pe 's/(\w)(\w*)/\u$1\L$2/g' ;;
+  esac
+output:
+  to: [clipboard, panel]
+  as: text
+```
+
+### Encode / decode: `encode-decode.yaml`
+
+Base64 or URL encoding of the clipboard text in both directions. One required choice parameter.
+
+```yaml
+format: ting.microapp/2
+name: Encode / decode
+description: Encode or decode the clipboard text as Base64 or URL encoding.
+tools: [base64, perl]
+
+params:
+  - name: mode
+    type: choice
+    required: true
+    choices: [base64-encode, base64-decode, url-encode, url-decode]
+    prompt: Mode
+
+input: clipboard
+command: |
+  case "$TING_MODE" in
+    base64-encode) base64 ;;
+    base64-decode) base64 -D ;;
+    url-encode) perl -0777 -pe 'chomp; s/([^A-Za-z0-9._~-])/sprintf("%%%02X", ord $1)/ge' ;;
+    url-decode) perl -0777 -pe 's/\+/ /g; s/%([0-9A-Fa-f]{2})/chr hex $1/ge' ;;
+  esac
+output:
+  to: [clipboard, panel]
+  as: text
+```
+
+### Count words: `count-text.yaml`
+
+Counts the words, characters and lines of the clipboard text and shows them as a markdown table in the panel only; the clipboard is left alone.
+
+```yaml
+format: ting.microapp/2
+name: Count words
+description: Count the words, characters and lines of the clipboard text.
+tools: [wc, awk]
+
+input: clipboard
+# Ting starts commands without a locale; wc counts characters, not bytes, only with UTF-8 set.
+command: |
+  LC_ALL=en_US.UTF-8 wc -lwm | awk '{ printf "| | |\n|---|---:|\n| Words | %d |\n| Characters | %d |\n| Lines | %d |\n", $2, $3, $1 }'
+output:
+  to: [panel]
+```
+
+### DNS lookup: `dns-lookup.yaml`
+
+Looks up a domain with `dig` or `whois`. A required text parameter and two optional choices, no clipboard input, console output.
+
+```yaml
+format: ting.microapp/2
+id: dns-lookup
+name: DNS lookup
+description: Look up DNS records of a domain with dig, or its owner with whois.
+tools: [dig, whois]
+
+params:
+  - name: domain
+    type: text
+    required: true
+    prompt: Domain
+  - name: tool
+    type: choice
+    required: false
+    default: dig
+    choices: [dig, whois]
+    prompt: Tool
+  - name: record
+    type: choice
+    required: false
+    default: A
+    choices: [A, AAAA, MX, TXT, NS, CNAME]
+    prompt: Record type (dig only)
+
+input: none
+# dig has no `--`, so a domain that starts with `-` is refused before it can become an option.
+command: |
+  case "$TING_DOMAIN" in
+    -*) echo "Not a domain: $TING_DOMAIN" >&2; exit 2 ;;
+  esac
+  if [ "$TING_TOOL" = whois ]; then
+    whois -- "$TING_DOMAIN"
+  else
+    dig +noall +answer "$TING_DOMAIN" "$TING_RECORD"
+  fi
+output:
+  to: [panel]
+  as: console
+```
