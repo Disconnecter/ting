@@ -351,6 +351,11 @@ final class AppModel {
         }
     }
 
+    func closeLaunchers() {
+        leader.close()
+        launcha.close()
+    }
+
     private func playSound() {
         if config.playSound { tink?.play() }
     }

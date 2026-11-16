@@ -61,6 +61,7 @@ private struct SoundList: View {
                 MonoLabel("← back", size: 9, weight: .regular, tracking: 0.5)
                 MonoLabel("esc close", size: 9, weight: .regular, tracking: 0.5)
                 Spacer()
+                LauncherMenuButton().frame(width: 18, height: 18)
             }
             .foregroundStyle(Color.tingMuted)
             .padding(.top, 10)

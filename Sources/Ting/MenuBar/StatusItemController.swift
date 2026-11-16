@@ -5,6 +5,8 @@ import TingCore
 
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
+    /// Owned by AppDelegate; launcher buttons do not extend its lifetime.
+    static weak var current: StatusItemController?
     private let model: AppModel
     private let statusItem: NSStatusItem
     /// Opens Settings / Welcome; provided by the app delegate.
@@ -17,6 +19,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.openWelcome = openWelcome
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
+        Self.current = self
         statusItem.button?.image = StatusIcon.image
         statusItem.button?.setAccessibilityLabel("Ting")
         let menu = NSMenu()
@@ -44,6 +47,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     // MARK: Menu
+
+    /// A separate menu instance uses exactly the tray's builder and action targets.
+    func popUp(from view: NSView) {
+        guard let window = view.window else { return }
+        let screenPoint = window.convertPoint(toScreen: view.convert(NSPoint(x: 0, y: view.bounds.maxY), to: nil))
+        // Release the launcher's key handling before native menu tracking starts.
+        model.closeLaunchers()
+        let menu = NSMenu()
+        menu.delegate = self
+        menuNeedsUpdate(menu)
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()

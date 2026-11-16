@@ -54,10 +54,10 @@ private struct LaunchaCard: View {
                 MonoLabel("⌘↩ reveal", size: 9, weight: .regular, tracking: 1)
                 MonoLabel("esc pull up", size: 9, weight: .regular, tracking: 1)
                 Spacer()
+                LauncherMenuButton().frame(width: 18, height: 18)
             }
             .foregroundStyle(Color.tingMuted)
             .padding(.top, 10)
-            .accessibilityHidden(true)
         }
         .foregroundStyle(Color.tingInk)
         .padding(.horizontal, 20)

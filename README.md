@@ -29,6 +29,11 @@ to give Ting Accessibility.
 (shell, Python, HTTP, AI) with shared libraries, and a coding agent can set up
 your bindings too.
 
+The small gear in the bottom-right corner of selecta and launcha opens Ting's
+menu, including Settings and Check for Updates, even when the menu-bar icon is hidden.
+
+[Release notes for Ting 0.7.3](docs/releases/v0.7.3.md).
+
 ## Install
 
 ### Homebrew
