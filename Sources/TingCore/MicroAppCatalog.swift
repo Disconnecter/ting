@@ -65,12 +65,16 @@ public struct MicroAppCatalog: Equatable, Sendable {
     }
 
     /// Like `load`, for files that are already checked (or could not be read).
-    public static func build(_ checked: [(file: String, result: Result<MicroApp, MicroAppFailure>)]) -> MicroAppCatalog {
-        build(hashed: checked.map { ($0.file, $0.result, "") })
+    /// `ownerName` gives the name that a duplicate id issue uses for the file that keeps the id;
+    /// the check command keys files by path and names the owner by its file name, as the folder does.
+    public static func build(_ checked: [(file: String, result: Result<MicroApp, MicroAppFailure>)],
+                             ownerName: (String) -> String = { $0 }) -> MicroAppCatalog {
+        build(hashed: checked.map { ($0.file, $0.result, "") }, ownerName: ownerName)
     }
 
     /// Like `build`, with the `MicroAppApprovals.hash` of each file's content.
-    public static func build(hashed checked: [(file: String, result: Result<MicroApp, MicroAppFailure>, hash: String)]) -> MicroAppCatalog {
+    public static func build(hashed checked: [(file: String, result: Result<MicroApp, MicroAppFailure>, hash: String)],
+                             ownerName: (String) -> String = { $0 }) -> MicroAppCatalog {
         var owners: [String: String] = [:]
         var entries: [MicroAppEntry] = []
         for (file, result, hash) in checked.sorted(by: { $0.file < $1.file }) {
@@ -81,7 +85,7 @@ public struct MicroAppCatalog: Equatable, Sendable {
             case .success(let app):
                 if let owner = owners[app.id] {
                     let issue = MicroAppIssue(file: file, line: 1,
-                                              message: "duplicate id `\(app.id)`: `\(owner)` already uses it; rename one of the files")
+                                              message: "duplicate id `\(app.id)`: `\(ownerName(owner))` already uses it; rename one of the files")
                     // The file itself is good, so its id, name and hidden flag are known.
                     entries.append(MicroAppEntry(file: file, app: nil, issues: [issue], contentHash: hash, explicitID: app.id,
                                                  brokenName: app.name, brokenHidden: app.hidden))

@@ -13,6 +13,8 @@ final class CheckCommandTests: XCTestCase {
 
     private struct Run { var status: Int32; var output: String; var errors: String }
 
+    /// Starts the executable and drains both pipes on their own threads, so a process that keeps
+    /// its pipes open cannot block the test; the deadline runs from the start and stops such a process.
     private func run(_ arguments: [String], environment: [String: String]) throws -> Run {
         let process = Process()
         process.executableURL = executable
@@ -22,15 +24,45 @@ final class CheckCommandTests: XCTestCase {
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         try process.run()
-        let output = out.fileHandleForReading.readDataToEndOfFile()
-        let errors = err.fileHandleForReading.readDataToEndOfFile()
+
+        let drained = DispatchGroup()
+        let output = Drain(), errors = Drain()
+        for (pipe, drain) in [(out, output), (err, errors)] {
+            drained.enter()
+            DispatchQueue.global().async {
+                drain.data = pipe.fileHandleForReading.readDataToEndOfFile()
+                drained.leave()
+            }
+        }
+
         // The app would keep running; the check returns at once.
-        let deadline = Date().addingTimeInterval(20)
-        while process.isRunning, Date() < deadline { usleep(20_000) }
-        if process.isRunning { process.terminate(); XCTFail("Ting --check did not exit") }
-        return Run(status: process.terminationStatus, output: String(decoding: output, as: UTF8.self),
-                   errors: String(decoding: errors, as: UTF8.self))
+        if exited.wait(timeout: .now() + 20) == .timedOut {
+            XCTFail("Ting --check did not exit")
+            process.terminate()
+            if exited.wait(timeout: .now() + 5) == .timedOut { kill(process.processIdentifier, SIGKILL) }
+        }
+        process.waitUntilExit()
+        // A child that inherited the pipes could keep them open; do not wait on it forever.
+        if drained.wait(timeout: .now() + 5) == .timedOut {
+            XCTFail("the output pipes of Ting --check stayed open")
+            try? out.fileHandleForReading.close()
+            try? err.fileHandleForReading.close()
+        }
+        return Run(status: process.terminationStatus, output: String(decoding: output.data, as: UTF8.self),
+                   errors: String(decoding: errors.data, as: UTF8.self))
+    }
+
+    /// The bytes one pipe gave, written by its reading thread.
+    private final class Drain: @unchecked Sendable {
+        private let lock = NSLock()
+        private var bytes = Data()
+        var data: Data {
+            get { lock.withLock { bytes } }
+            set { lock.withLock { bytes = newValue } }
+        }
     }
 
     func testCheckRunsWithoutStartingTheApp() throws {

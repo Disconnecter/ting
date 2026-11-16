@@ -74,6 +74,17 @@ private func reader(_ files: [String: String]) -> (String) throws -> Data {
         ])
     }
 
+    @Test func duplicateIDWithDirectoriesHasTheErrorLogMessage() {
+        let withID = "id: hello\n" + goodApp
+        let outcome = MicroAppCheckCommand.run(["--check", "dir/b.yaml", "dir/a.yaml"],
+                                               read: reader(["dir/a.yaml": withID, "dir/b.yaml": withID]))
+        // The micro-apps folder with the same two files gives this log.
+        let log = MicroAppCatalog.load([("a.yaml", withID), ("b.yaml", withID)]).logText
+        #expect(log == "b.yaml:1: duplicate id `hello`: `a.yaml` already uses it; rename one of the files\n")
+        #expect(outcome.exitCode == 1)
+        #expect(outcome.output == ["dir/a.yaml: ok"] + log.split(separator: "\n").map { "dir/" + $0 })
+    }
+
     @Test func noFileIsAWrongCall() {
         let outcome = MicroAppCheckCommand.run(["--check"], read: reader([:]))
         #expect(outcome.exitCode == 2)

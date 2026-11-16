@@ -39,7 +39,8 @@ public enum MicroAppCheckCommand {
     /// two files with the same id, the later one by path has the duplicate id problem.
     ///
     /// Each problem is a `file:line: message` line with the message of the micro-app error log,
-    /// sorted by file and line; a good file gives `<file>: ok`.
+    /// sorted by file and line; a good file gives `<file>: ok`. The location is the path as given;
+    /// a duplicate id message names the other file by its file name, as the error log does.
     public static func run(_ arguments: [String], read: (String) throws -> Data) -> Outcome {
         var files = arguments
         if files.first == option { files.removeFirst() }
@@ -67,7 +68,7 @@ public enum MicroAppCheckCommand {
             return Outcome(output: [], errors: errors + [usage], exitCode: exitUsage)
         }
 
-        let catalog = MicroAppCatalog.build(checked)
+        let catalog = MicroAppCatalog.build(checked) { ($0 as NSString).lastPathComponent }
         var output: [String] = []
         for entry in catalog.entries {
             if entry.issues.isEmpty {
