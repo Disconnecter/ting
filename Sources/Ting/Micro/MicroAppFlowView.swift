@@ -25,6 +25,13 @@ struct MicroAppFlowView: View {
                     ApprovalBody(app: app, file: file, onApprove: onApprove)
                 }
                 .padding(.top, 8)
+            case .form:
+                if let model = session.form {
+                Card(title: model.app.shownName, showHeader: session.showHeader, footer: formFooter(model.form)) {
+                    MicroAppFormBody(model: model, maxHeight: session.formMaxHeight)
+                }
+                .padding(.top, 8)
+                }
             case .working(let app):
                 Card(title: app.shownName, showHeader: session.showHeader, footer: ["esc stop"]) {
                     HStack(spacing: 10) {
@@ -45,6 +52,15 @@ struct MicroAppFlowView: View {
             }
         }
     }
+}
+
+private func formFooter(_ form: MicroAppForm) -> [String] {
+    if form.isSingleChoiceList { return ["↑↓ choose", "↩ run", "esc cancel"] }
+    var footer = ["↩ run"]
+    if form.visibleIndexes.count > 1 || form.hasOptionalToggle { footer.append("tab next") }
+    if form.hasOptionalToggle { footer.append("⌘O options") }
+    footer.append("esc cancel")
+    return footer
 }
 
 private struct Card<Content: View>: View {
