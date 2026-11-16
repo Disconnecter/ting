@@ -106,6 +106,12 @@ final class AppModel {
         leader.onRun = { [weak self] item in self?.run(item) }
         leader.onDoubleTap = { [weak self] in self?.launcha.open() }
         launchaModel.onWillOpen = { [weak self] in self?.playSound() }
+        launchaModel.onStartMicro = { [weak self] start in
+            switch start {
+            case .id(let id): self?.microFlow.start(id: id)
+            case .file(let file): self?.microFlow.start(file: file)
+            }
+        }
         runner.onError = { [weak self] message in self?.toast.show(message) }
         microFlow.onToast = { [weak self] message in self?.toast.show(message) }
         microFlow.folderDisplay = { [weak self] in self?.microStore.displayPath ?? "the micro-apps folder" }
@@ -142,6 +148,7 @@ final class AppModel {
     private func applyMicroApps(_ catalog: MicroAppCatalog) {
         leader.setMicroApps(catalog)
         microFlow.setCatalog(catalog)
+        launchaModel.setMicroApps(catalog.launchaCandidates(bindings: config.items), folder: microStore.folderURL)
         if microApps != catalog.entries { microApps = catalog.entries }
         if microAppIssues != catalog.issues { microAppIssues = catalog.issues }
     }
@@ -281,6 +288,8 @@ final class AppModel {
         leader.configure(next)
         launcha.configure(next)
         microFlow.configure(next)
+        // Binding labels name the micro-apps in launcha.
+        launchaModel.setMicroApps(microCatalog.launchaCandidates(bindings: next.items), folder: microStore.folderURL)
         next.appearance.apply()
         applyHotkey()
         if next.launchAtLogin != previous.launchAtLogin {

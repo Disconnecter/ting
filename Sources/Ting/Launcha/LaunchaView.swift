@@ -232,17 +232,22 @@ private struct ResultRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                RowIcon(url: row.url, icons: icons)
+                if row.isMicro {
+                    MicroRowIcon(isWorking: row.isWorking)
+                } else {
+                    RowIcon(url: row.url, icons: icons)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     if !row.detail.isEmpty {
-                        Text(row.detail).font(.system(size: 10.5)).foregroundStyle(Color.tingMuted)
+                        Text(row.detail).font(.system(size: 10.5))
+                            .foregroundStyle(row.isWorking ? Color.tingMuted : Color.tingAmber)
                             .lineLimit(1).truncationMode(.middle)
                     }
                 }
                 Spacer(minLength: 8)
                 if selected {
-                    Image(systemName: row.isApp ? "arrow.right" : "arrow.up.right")
+                    Image(systemName: row.isApp || row.isMicro ? "arrow.right" : "arrow.up.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.tingAmber)
                         .accessibilityHidden(true)
@@ -254,10 +259,46 @@ private struct ResultRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(HoverRowStyle(cornerRadius: 6))
-        .help(row.isApp ? row.name : row.url.path)
-        .accessibilityLabel(row.isApp ? "\(row.name), app" : "\(row.name), file in \(row.detail)")
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityHint(row.isApp ? "Opens the app" : "Opens the file with its usual app")
+        .accessibilityHint(accessibilityHint)
+    }
+
+    private var help: String {
+        if row.isMicro { return row.detail.isEmpty ? row.name : "\(row.name): \(row.detail)" }
+        return row.isApp ? row.name : row.url.path
+    }
+
+    private var accessibilityLabel: String {
+        switch row.kind {
+        case .app: "\(row.name), app"
+        case .file: "\(row.name), file in \(row.detail)"
+        case .micro(_, _, let isWorking):
+            isWorking ? "\(row.name), micro-app" : "\(row.name), micro-app, not working. \(row.detail)"
+        }
+    }
+
+    private var accessibilityHint: String {
+        switch row.kind {
+        case .app: "Opens the app"
+        case .file: "Opens the file with its usual app"
+        case .micro(_, _, let isWorking): isWorking ? "Starts the micro-app" : "Shows the error of the file"
+        }
+    }
+}
+
+/// A micro-app has no app icon: a terminal symbol, or a warning for a broken file.
+private struct MicroRowIcon: View {
+    let isWorking: Bool
+
+    var body: some View {
+        Image(systemName: isWorking ? "terminal" : "exclamationmark.triangle")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(isWorking ? Color.tingInk.opacity(0.75) : Color.tingAmber)
+            .frame(width: 24, height: 24)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color.tingInk.opacity(0.06)))
+            .accessibilityHidden(true)
     }
 }
 

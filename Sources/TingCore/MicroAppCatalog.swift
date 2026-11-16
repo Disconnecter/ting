@@ -12,19 +12,32 @@ public struct MicroAppEntry: Equatable, Sendable {
     public var contentHash: String
     /// For a broken file: the kebab-case `id` the checker could read from it; `nil` otherwise.
     public var explicitID: String?
+    /// For a broken file: the `name` the checker could read from it; `nil` otherwise.
+    public var brokenName: String?
+    /// For a broken file: the `hidden` value the checker could read from it; `false` otherwise.
+    public var brokenHidden: Bool
 
-    public init(file: String, app: MicroApp?, issues: [MicroAppIssue], contentHash: String = "", explicitID: String? = nil) {
+    public init(file: String, app: MicroApp?, issues: [MicroAppIssue], contentHash: String = "", explicitID: String? = nil,
+                brokenName: String? = nil, brokenHidden: Bool = false) {
         self.file = file
         self.app = app
         self.issues = issues
         self.contentHash = contentHash
         self.explicitID = explicitID
+        self.brokenName = brokenName
+        self.brokenHidden = brokenHidden
     }
 
     /// The file name without `.yaml`: the id a binding uses when the file has no `id` key.
     public var fileID: String { (file as NSString).deletingPathExtension }
 
     public var isBroken: Bool { app == nil }
+
+    /// `hidden: true` of a working micro-app, or of a broken file whose `hidden` key could be read.
+    public var isHidden: Bool { app?.hidden ?? brokenHidden }
+
+    /// The id a binding finds this file by: the micro-app id, else the kept `id`, else the file name without `.yaml`.
+    public var bindingID: String { app?.id ?? explicitID ?? fileID }
 }
 
 /// All files of the micro-apps folder, checked, with the id rules applied.
@@ -63,12 +76,15 @@ public struct MicroAppCatalog: Equatable, Sendable {
         for (file, result, hash) in checked.sorted(by: { $0.file < $1.file }) {
             switch result {
             case .failure(let failure):
-                entries.append(MicroAppEntry(file: file, app: nil, issues: failure.issues, contentHash: hash, explicitID: failure.id))
+                entries.append(MicroAppEntry(file: file, app: nil, issues: failure.issues, contentHash: hash, explicitID: failure.id,
+                                             brokenName: failure.name, brokenHidden: failure.hidden ?? false))
             case .success(let app):
                 if let owner = owners[app.id] {
                     let issue = MicroAppIssue(file: file, line: 1,
                                               message: "duplicate id `\(app.id)`: `\(owner)` already uses it; rename one of the files")
-                    entries.append(MicroAppEntry(file: file, app: nil, issues: [issue], contentHash: hash))
+                    // The file itself is good, so its name and hidden flag are known.
+                    entries.append(MicroAppEntry(file: file, app: nil, issues: [issue], contentHash: hash,
+                                                 brokenName: app.name, brokenHidden: app.hidden))
                 } else {
                     owners[app.id] = file
                     entries.append(MicroAppEntry(file: file, app: app, issues: [], contentHash: hash))
@@ -86,6 +102,13 @@ public struct MicroAppCatalog: Equatable, Sendable {
         if let entry = entries.first(where: { $0.isBroken && $0.explicitID == id }) { return .broken(entry) }
         if let entry = entries.first(where: { $0.isBroken && $0.fileID == id }) { return .broken(entry) }
         return .missing
+    }
+
+    /// What the file `file` of the folder is now: working, broken or gone.
+    public func resolve(file: String) -> MicroAppResolution {
+        guard let entry = entries.first(where: { $0.file == file }) else { return .missing }
+        if let app = entry.app { return .working(app, entry) }
+        return .broken(entry)
     }
 
     /// The name a binding shows: its label, else the micro-app's `name`, else the id.
