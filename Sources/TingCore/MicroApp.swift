@@ -137,6 +137,10 @@ public struct MicroAppFailure: Error, Equatable, Sendable, CustomStringConvertib
 public enum MicroAppChecker {
     public static let format = "ting.microapp/2"
     public static let fileExtension = "yaml"
+    /// Larger files are reported, not read.
+    public static let maxFileSize = 256 * 1024
+    public static var tooLargeMessage: String { "the file is larger than \(maxFileSize / 1024) KB" }
+    public static let notUTF8Message = "the file is not UTF-8 text"
     public static let topKeys = ["format", "id", "name", "description", "tools", "hidden", "remember", "params", "input", "command", "output"]
     public static let requiredTopKeys = ["format", "description", "input", "command", "output"]
     public static let paramKeys = ["name", "type", "required", "default", "choices", "prompt"]

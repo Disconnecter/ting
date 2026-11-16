@@ -120,10 +120,12 @@ public struct MicroAppCatalog: Equatable, Sendable {
 
     /// The text of `micro-errors.log`: one `file:line: message` line per problem; empty when all is good.
     public var logText: String {
-        issues.map { issue in
-            let message = issue.message.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
-            return "\(issue.file):\(issue.line): \(message)\n"
-        }.joined()
+        issues.map { "\($0.file):\($0.line): \(Self.logMessage($0.message))\n" }.joined()
+    }
+
+    /// A problem message as one line of the error log.
+    public static func logMessage(_ message: String) -> String {
+        message.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
     }
 
     /// The files that are broken now and were not broken the same way in `previous`: files that

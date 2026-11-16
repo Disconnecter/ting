@@ -2,7 +2,6 @@
 import AppKit
 import SwiftUI
 
-@main
 struct TingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 

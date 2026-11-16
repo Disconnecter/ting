@@ -6,7 +6,7 @@ import TingCore
 @MainActor
 final class MicroAppStore {
     /// Larger files are reported, not read.
-    nonisolated static let maxFileSize = 256 * 1024
+    nonisolated static let maxFileSize = MicroAppChecker.maxFileSize
 
     let folderURL: URL
     let logURL: URL
@@ -77,12 +77,12 @@ final class MicroAppStore {
                 (name, .failure(MicroAppFailure(issues: [MicroAppIssue(file: name, line: 1, message: message)])), hash)
             }
             let size = (try? manager.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-            if size > Self.maxFileSize { return failure("the file is larger than \(Self.maxFileSize / 1024) KB") }
+            if size > Self.maxFileSize { return failure(MicroAppChecker.tooLargeMessage) }
             do {
                 let data = try Data(contentsOf: url)
                 // The hash is of exactly the bytes that were checked, so an approval covers what runs.
                 let hash = MicroAppApprovals.hash(data)
-                guard let text = String(data: data, encoding: .utf8) else { return failure("the file is not UTF-8 text", hash: hash) }
+                guard let text = String(data: data, encoding: .utf8) else { return failure(MicroAppChecker.notUTF8Message, hash: hash) }
                 return (name, MicroAppChecker.check(text, fileName: name), hash)
             } catch {
                 return failure("cannot read the file: \(error.localizedDescription)")
