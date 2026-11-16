@@ -150,3 +150,26 @@ extension MicroAppCLITests {
         XCTAssertEqual(withLibs.end, .exited(0))
     }
 }
+
+extension MicroAppCLITests {
+    func testContextValuesAndKeysThatAreNeverSent() async throws {
+        let parsed = try MicroAppCLI.parse(["x.yaml", "--context", "app.name=Safari", "--context", "finder.selection=/a\n/b=c"])
+        XCTAssertEqual(parsed.context[MicroAppContextField(source: .app, name: "name")!], "Safari")
+        XCTAssertEqual(parsed.context[MicroAppContextField(source: .finder, name: "selection")!], "/a\n/b=c")
+        for args in [["x.yaml", "--context", "app=Safari"], ["x.yaml", "--context", "app.title=x"], ["x.yaml", "--context", "=x"],
+                     ["x.yaml", "--context", "app.name=a", "--context", "app.name=b"]] {
+            XCTAssertThrowsError(try MicroAppCLI.parse(args), "\(args)")
+        }
+
+        let url = try file("format: ting.microapp/2\ndescription: Test CLI.\ncontext: [app]\ninput: clipboard\nsteps:\n" +
+                           "  - keys: [cmd+a]\n  - paste: ${context.app.name}\n  - command: printf '%s/%s' \"$TING_CONTEXT_APP_NAME\" \"$TING_CONTEXT_APP_PID\"\n" +
+                           "output:\n  to: [app]\n")
+        let app = try MicroAppCLI.load(url.path)
+        XCTAssertThrowsError(try MicroAppCLI.validate(.init(file: url.path, context: MicroAppContext([MicroAppContextField(source: .finder, name: "folder")!: "/"])), app: app))
+        let result = try await run(["run", url.path, "--context", "app.name=Notes"])
+        XCTAssertEqual(result.end, .exited(0))
+        XCTAssertEqual(String(decoding: result.stdout, as: UTF8.self), "Notes/\n")
+        XCTAssertEqual(String(decoding: result.stderr, as: UTF8.self),
+                       "ting-micro: keys cmd+a: not sent; only Ting sends to an app\nting-micro: paste 5 characters: not sent; only Ting sends to an app\n")
+    }
+}

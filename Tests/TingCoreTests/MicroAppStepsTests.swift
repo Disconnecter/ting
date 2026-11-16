@@ -35,6 +35,7 @@ private func template(_ text: String) throws -> MicroAppTemplate {
             case .param: "upper"
             case .step: "P"
             case .keychain: "S"
+            case .context: "C"
             }
         }
         #expect(text == "q=a%20b%2F%C3%A4&k=KEY upperP S $HOME ${x}")
@@ -136,6 +137,7 @@ private func template(_ text: String) throws -> MicroAppTemplate {
             case .step: "S\"1"
             case .env: "T"
             case .keychain: ""
+            case .context: ""
             }
         }
         #expect(request.url == "https://example.com/api/a%20b?q=x%26y")

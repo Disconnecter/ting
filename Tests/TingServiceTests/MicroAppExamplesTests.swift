@@ -16,7 +16,8 @@ import TingCore
 /// stands in for the clipboard, so the user's screen, typing and clipboard are not touched. The
 /// DNS and Wikipedia examples need the network and run only with `TING_NETWORK_TESTS=1`; the AI
 /// examples cost money and run only with `TING_AI_TESTS=1` and their keys. `open` is recorded,
-/// never run, so no browser window opens.
+/// never run, so no browser window opens. The context comes from a fake reader and the keys and
+/// pasted text go to a fake keyboard, so no other app is read or typed into.
 @MainActor
 final class MicroAppExamplesTests: XCTestCase {
     private static let root = URL(fileURLWithPath: #filePath)
@@ -29,6 +30,10 @@ final class MicroAppExamplesTests: XCTestCase {
     private var toasts: [String] = []
     private var approvalsURL: URL!
     private let opened = MicroAppStepsRunnerTests.Recorder()
+    private var reader: FakeContextReader!
+    private var keyboard: FakeKeyboard!
+    private let target = MicroAppTarget(pid: 4242, bundleID: "com.apple.TextEdit", name: "TextEdit",
+                                        path: "/System/Applications/TextEdit.app")
 
     override func setUp() async throws {
         _ = NSApplication.shared
@@ -43,8 +48,9 @@ final class MicroAppExamplesTests: XCTestCase {
         catalog = store.load()
         XCTAssertEqual(catalog.issues, [])
         XCTAssertEqual(try String(contentsOf: store.logURL, encoding: .utf8), "")
-        XCTAssertEqual(catalog.apps.map(\.id), ["ask-claude", "change-case", "count-text", "dns-lookup", "encode-decode", "format-json",
-                                                "search-web", "translate-ukrainian", "translate", "wiki-summary"])
+        XCTAssertEqual(catalog.apps.map(\.id), ["app-info", "ask-claude", "change-case", "copy-page-link", "count-text", "dns-lookup",
+                                                "encode-decode", "finder-checksum", "format-json", "new-tab-search", "search-web",
+                                                "sort-selection", "translate-ukrainian", "translate", "wiki-summary"])
         XCTAssertTrue(FileManager.default.fileExists(atPath: store.librariesURL.appendingPathComponent("translate.yaml").path))
 
         var runner = MicroAppRunner()
@@ -58,9 +64,13 @@ final class MicroAppExamplesTests: XCTestCase {
         pasteboard = NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString))
         let pb = pasteboard!
         addTeardownBlock { @MainActor in pb.releaseGlobally() }
+        reader = FakeContextReader()
+        keyboard = FakeKeyboard()
+        let target = self.target
         flow = MicroAppFlowController(approvals: MicroAppApprovalStore(url: approvalsURL),
                                       values: MicroAppValueStore(url: MicroAppValueStore.defaultURL(environment: environment)),
-                                      runner: runner, pasteboard: pasteboard, presentsWindow: false)
+                                      runner: runner, pasteboard: pasteboard, presentsWindow: false,
+                                      contextReader: reader, keyboard: keyboard, frontmost: { target })
         flow.setCatalog(catalog)
         flow.onToast = { [weak self] in self?.toasts.append($0) }
         toasts = []
@@ -233,6 +243,85 @@ final class MicroAppExamplesTests: XCTestCase {
     }
 
     // MARK: The examples
+
+    private func context(_ values: [String: String]) -> MicroAppContext {
+        var context = MicroAppContext()
+        for (key, value) in values {
+            let parts = key.split(separator: ".").map(String.init)
+            context.set(MicroAppContextSource(rawValue: parts[0])!, parts[1], value)
+        }
+        return context
+    }
+
+    func testAppInfoShowsTheActiveAppAndItsWindow() async throws {
+        reader.context = context(["app.name": "TextEdit", "app.bundle": "com.apple.TextEdit", "app.path": "/System/Applications/TextEdit.app",
+                                  "window.title": "Notes.txt", "window.document": "/Users/a/Notes.txt"])
+        let seen = try await start("app-info", clipboard: "kept")
+        XCTAssertTrue(seen.approvalAsked)
+        XCTAssertEqual(reader.calls.last?.sources, [.app, .window])
+        XCTAssertEqual(reader.calls.last?.target, target)
+        XCTAssertEqual(seen.content?.style, .markdown)
+        let rows = try XCTUnwrap(seen.shown).components(separatedBy: "\n").map { $0.split(separator: "\t").map(String.init) }
+        XCTAssertEqual(rows, [["App", "TextEdit"], ["Bundle id", "com.apple.TextEdit"], ["Path", "/System/Applications/TextEdit.app"],
+                              ["Window", "Notes.txt"], ["Document", "/Users/a/Notes.txt"]])
+        XCTAssertEqual(seen.clipboard, "kept")
+        try await closeResult()
+    }
+
+    func testFinderChecksumOfTheSelectedFiles() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ting-finder-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("a file.txt")
+        try "hello\n".write(to: file, atomically: true, encoding: .utf8)
+        reader.context = context(["finder.selection": file.path + "\n" + directory.path, "finder.folder": directory.path])
+        let seen = try await start("finder-checksum", clipboard: nil)
+        XCTAssertEqual(reader.calls.last?.sources, [.finder])
+        XCTAssertEqual(seen.content?.isError, false)
+        XCTAssertEqual(seen.shown, "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03  \(file.path)\nnot a file: \(directory.path)")
+        try await closeResult()
+
+        reader.context = context([:])
+        let empty = try await start("finder-checksum", clipboard: nil)
+        XCTAssertEqual(empty.shown, "Nothing is selected in Finder.")
+        try await closeResult()
+    }
+
+    func testCopyPageLinkOfTheBrowserTab() async throws {
+        reader.context = context(["browser.url": "https://example.com/", "browser.title": "Example Domain", "browser.name": "Safari"])
+        let seen = try await start("copy-page-link", clipboard: "old")
+        XCTAssertEqual(reader.calls.last?.sources, [.browser])
+        XCTAssertEqual(seen.clipboard, "[Example Domain](https://example.com/)")
+        XCTAssertEqual(toasts.last, "Copied")
+        XCTAssertFalse(flow.isOpen)
+
+        reader.context = context([:])
+        let none = try await start("copy-page-link", clipboard: "old")
+        XCTAssertEqual(none.content?.isError, true)
+        XCTAssertEqual(none.shown, "No browser tab is open.")
+        XCTAssertEqual(none.clipboard, "old")
+        try await closeResult()
+    }
+
+    func testSortSelectionPastesTheSortedLinesIntoTheApp() async throws {
+        reader.context = context(["selection.text": "pear\napple\nfig"])
+        let seen = try await start("sort-selection", clipboard: "old")
+        XCTAssertEqual(reader.calls.last?.sources, [.selection])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(keyboard.sent.map(\.action), [.paste("apple\nfig\npear", keepOnClipboard: false)])
+        XCTAssertEqual(keyboard.sent.last?.target, target)
+        XCTAssertEqual(seen.clipboard, "old")
+        XCTAssertFalse(flow.isOpen)
+    }
+
+    func testNewTabSearchPressesKeysAndPastesTheClipboardText() async throws {
+        let seen = try await start("new-tab-search", clipboard: "  leader key launcher\n")
+        XCTAssertTrue(reader.calls.isEmpty, "the file reads no context")
+        XCTAssertEqual(keyboard.sent.map(\.action), [.keys([Hotkey(string: "cmd+t")!]), .paste("leader key launcher", keepOnClipboard: false),
+                                                    .keys([Hotkey(string: "return")!])])
+        XCTAssertEqual(seen.clipboard, "  leader key launcher\n")
+        XCTAssertFalse(flow.isOpen)
+    }
 
     private func requirePython() async throws {
         guard await MicroAppRunner.hasCommandLineTools() else { throw XCTSkip("python3 needs the Command Line Tools") }

@@ -3,7 +3,7 @@ import Foundation
 /// One step of a micro-app script. The output of a step is the input (stdin) of the next one.
 public struct MicroAppStep: Equatable, Sendable {
     public enum Kind: String, Equatable, Sendable, CaseIterable {
-        case command, python, url, ai, text, json, open, notify, call
+        case command, python, url, ai, text, json, open, notify, call, keys, paste
     }
 
     /// A `key: template` line of `env`, `query`, `headers` or `form`, in file order.
@@ -99,6 +99,10 @@ public struct MicroAppStep: Equatable, Sendable {
         case notify(message: MicroAppTemplate, title: MicroAppTemplate?)
         /// Runs the steps of a library; the step's `params` are the library's params.
         case call(MicroAppLibrary)
+        /// Presses keys in the app where the micro-app started, one after another.
+        case keys([Hotkey])
+        /// Pastes the text into the app where the micro-app started, then puts the clipboard back.
+        case paste(MicroAppTemplate)
     }
 
     /// `a-z`, `0-9` and `_`; later steps read the output as `${steps.ID}` or `$TING_STEP_ID`.
@@ -141,8 +145,13 @@ public struct MicroAppStep: Equatable, Sendable {
         case .open: .open
         case .notify: .notify
         case .call: .call
+        case .keys: .keys
+        case .paste: .paste
         }
     }
+
+    /// `keys` and `paste` steps send input to the app where the micro-app started.
+    public var sendsInput: Bool { kind == .keys || kind == .paste }
 
     /// Command and python steps run a program; only they can stream their input.
     public var runsProgram: Bool { kind == .command || kind == .python }
@@ -156,7 +165,7 @@ public struct MicroAppStep: Equatable, Sendable {
         if let stdin { result.append(stdin) }
         result += env.map(\.value) + params.map(\.value)
         switch action {
-        case .command, .python, .json, .call:
+        case .command, .python, .json, .call, .keys:
             break
         case .url(let u):
             result.append(u.url)
@@ -175,6 +184,8 @@ public struct MicroAppStep: Equatable, Sendable {
             result += [target] + [app].compactMap { $0 }
         case .notify(let message, let title):
             result += [message] + [title].compactMap { $0 }
+        case .paste(let text):
+            result.append(text)
         }
         return result
     }

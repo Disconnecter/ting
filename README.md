@@ -17,8 +17,9 @@ from grime and sound-system culture: amber keycaps on graphite, `esc pull up`,
 Requires **macOS 14 or later**. Official releases are universal builds for
 **Apple Silicon and Intel**.
 
-[Release notes for Ting 0.5.1](docs/releases/v0.5.1.md): faster menu opening
-and app switching, preloaded app icons, and aligned keycaps.
+[Release notes for Ting 0.6.0](docs/releases/v0.6.0.md): micro-apps read the
+active app, the Finder selection, the browser tab and the selected text, and can
+press keys and paste their result into the app.
 
 [In 0.5.0](docs/releases/v0.5.0.md), micro-apps became small scripts of steps
 (shell, Python, HTTP, AI) with shared libraries, and a coding agent can set up
@@ -113,16 +114,20 @@ uses `/tmp/ting-test.json.launcha-history.json` and
 ## Micro-apps
 
 A micro-app is a small tool: it can ask for a few parameters, read the
-clipboard and show or copy the result. Its work is one shell command or a short
+clipboard and what you were working on (the active app, the files selected in
+Finder, the browser tab, the selected text), show or copy the result, paste it
+into the app or press keys there. Its work is one shell command or a short
 script of **steps**: shell or Python code, HTTP requests, questions to OpenAI,
 Anthropic or a compatible server (Ollama, LM Studio, OpenRouter), text templates,
-JSON fields, opening a URL and notifications. The output of each step is the
-input of the next one, as in a shell pipe. Each micro-app is one YAML file in a
-strict, checked format, described in
+JSON fields, opening a URL, notifications, key presses and pasted text. The
+output of each step is the input of the next one, as in a shell pipe. Each
+micro-app is one YAML file in a strict, checked format, described in
 [docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md), which holds the full
-text of ten working [examples](docs/micro-apps/examples/): Format JSON, Change
-case, Encode / decode, Count words, DNS lookup, Wikipedia summary, Search the
-web, Translate, Translate to Ukrainian and Ask Claude. Shared steps live once in
+text of fifteen working [examples](docs/micro-apps/examples/): Format JSON,
+Change case, Encode / decode, Count words, DNS lookup, Wikipedia summary, Search
+the web, Translate, Translate to Ukrainian, Ask Claude, About the active app,
+Checksum of Finder files, Copy page link, Sort selected lines and Search in a
+new tab. Shared steps live once in
 a **library**, `micro/libs/NAME.yaml`: a micro-app runs it as a step
 (`- call: translate` with `params:`) or inherits it and changes single keys
 (`inherit: translate`, then `steps: - id: translate` with new `params`), so
@@ -172,6 +177,35 @@ of the files: export them in your shell start-up file or add them to the
 keychain. While a micro-app runs, the panel shows which step runs and the output
 of the last step while it comes, such as an AI answer word by word.
 
+### Context and sending to the app
+
+A micro-app lists in `context:` what Ting reads when it starts, and Ting reads
+only that: `app` (name, bundle id, path), `finder` (the selected files and the
+folder of the front Finder window), `browser` (URL and title of the front tab in
+Safari, Chrome, Arc, Brave, Edge or Vivaldi), `selection` (the selected text) and
+`window` (the title and document of the front window). Steps read them as
+`${context.finder.selection}` or `$TING_CONTEXT_FINDER_SELECTION`. A `keys` step
+presses keys in the app that was in front (`keys: [cmd+a, return]`), a `paste`
+step pastes text there, and `output.to: [app]` pastes the result, for example in
+place of the selected text. Ting puts the clipboard back after it pastes.
+
+```yaml
+context: [selection]
+input: none
+steps:
+  - command: LC_ALL=en_US.UTF-8 sort
+    stdin: ${context.selection.text}
+output:
+  to: [app]
+```
+
+Ting asks macOS for a permission only when a micro-app needs it: **Automation**
+for Finder or the browser (macOS asks once per app), and **Accessibility** for
+the selected text, the window, key presses and pasted text (turn on Ting in
+System Settings › Privacy & Security › Accessibility). The selected text comes
+from Accessibility; when an app does not give it, Ting presses `⌘C` there and
+puts the clipboard back.
+
 Ting loads every `*.yaml` file of the `micro/` folder next to the config file
 (`~/.config/ting/micro/`) and loads it again when a file is added, changed or removed. A missing folder simply
 means no micro-apps. When two files have the same id, the first by file name
@@ -201,7 +235,9 @@ Ting's panels, touches the clipboard or reads/writes config, approvals or
 remembered values. `run` explicitly authorizes execution of the named file;
 only run trusted scripts. It uses the terminal environment and current folder.
 `open` and `notify` require `--allow-effects`; shell/Python and HTTP/AI still
-have full rights. `Ctrl-C` stops the run and its child processes. See
+have full rights. It reads no context: `--context app.name=Safari` gives a
+value, the others are empty. `keys` and `paste` steps never send anything there;
+they print a note on stderr. `Ctrl-C` stops the run and its child processes. See
 [console usage](docs/micro-apps/FORMAT.md#checking-and-running).
 
 ### Checking a micro-app file
@@ -268,7 +304,8 @@ instead of starting anything. Every micro-app can also be started by name from
 `hidden: true`.
 
 - **Approval:** before the first run, and again after any change of the file,
-  the approval panel shows the name, the file and the full command. `⌘Return`
+  the approval panel shows the name, the file, what it reads of the context,
+  whether it sends keys or text to the app, and the full command. `⌘Return`
   approves and runs, `Esc` refuses; `Return` alone does nothing. Ting stores the
   SHA-256 of the approved file content by micro-app id in
   `~/Library/Application Support/Ting/micro-approvals.json` (with `TING_CONFIG`
@@ -297,9 +334,14 @@ instead of starting anything. Every micro-app can also be started by name from
 - **Running:** after `Return` the same panel shows that the command runs. `Esc` stops it silently and
   leaves the clipboard as it was. After 60 seconds Ting stops the command and
   shows "stopped after 60 s" with the output that came before.
+- **Context:** a micro-app with `context:` reads it before the parameter panel,
+  from the app that was in front when you pressed the key. When a permission is
+  missing, the panel says what to allow and nothing runs.
 - **Result:** `output.to: [panel]` shows stdout in the result panel;
   `[clipboard]` copies it and shows "Copied"; both do both, with a "Copied" note
-  in the panel. An empty result copies nothing and shows "No output". A failing command always opens
+  in the panel. `[app]` pastes it into the app that was in front and puts the
+  clipboard back; `[clipboard, app]` pastes it and leaves it on the clipboard.
+  When Ting cannot paste, the result stays on the clipboard and the panel says why. An empty result copies nothing and shows "No output". A failing command always opens
   the result panel with an error mark, the exit code, stderr and stdout, and
   copies nothing. Output longer than 1 MB is cut, with a note. In the result
   panel you can scroll and select text; `⌘C` copies the selection, `Return`

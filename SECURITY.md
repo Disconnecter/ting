@@ -21,9 +21,10 @@ latest published version.
 
 ## Security model
 
-- Ting registers one global hotkey with the standard macOS hotkey API. It does
-  not request Accessibility or Input Monitoring permission and does not observe
-  keystrokes outside its own leader menu.
+- Ting registers one global hotkey with the standard macOS hotkey API. It never
+  requests Input Monitoring permission and does not observe keystrokes outside its
+  own leader menu. It asks for Accessibility and Automation (Apple Events to
+  Finder or a browser) only when an approved micro-app needs them, see below.
 - Bindings and settings are stored in `~/.config/ting/config.json`. Anyone who can
   write that file can make Ting open any app or URL when you press a binding, or
   bind a key to a micro-app id. `config.json` holds no code.
@@ -44,6 +45,20 @@ latest published version.
   before Ting reads a keychain item the first time. Read the URLs, headers and
   `ai` steps of a file before you approve it. Keep API keys out of micro-app
   files: use the environment or the keychain.
+- A micro-app reads the context of its start only when its file lists it in
+  `context:`, and the approval panel names it: the active app, the files selected
+  in Finder (Automation for Finder), the URL and title of the browser tab
+  (Automation for the browser), the selected text and the front window
+  (Accessibility). The steps can send these values to a server like any other
+  input. To read the selected text where Accessibility gives none, Ting presses
+  `⌘C` in that app and puts the clipboard back.
+- A micro-app with `keys` or `paste` steps, or `output.to: [app]`, sends key
+  presses and text to the app that was in front at its start; the approval panel
+  says so. With Accessibility granted to Ting, such a file can do in that app
+  what you can do with the keyboard, for example type a command into a terminal.
+  Ting sends nothing when that app is no longer in front or when a password field
+  holds the keyboard. Accessibility stays granted to Ting for every approved
+  micro-app: approve key-sending files as carefully as code.
 - A micro-app can call or inherit library files from `micro/libs/`. The approval
   covers the micro-app with every library it uses: the approval panel shows
   their text, and a change of a library asks again for every micro-app that uses
@@ -51,9 +66,9 @@ latest published version.
 - Ting stores the SHA-256 of each approved file by micro-app id in
   `~/Library/Application Support/Ting/micro-approvals.json`; any change of the
   file asks again, before any parameter is asked. `config.json` only names a
-  micro-app id. Parameters reach shell and Python code only as `TING_*`
-  environment variables and the clipboard only as stdin, never as text pasted
-  into the code. `${…}` variables are replaced only in the other keys of a step
+  micro-app id. Parameters and context values reach shell and Python code only as
+  `TING_*` environment variables and the clipboard only as stdin, never as text
+  pasted into the code. `${…}` variables are replaced only in the other keys of a step
   (URLs, headers, bodies, prompts, texts).
 - Anyone who can write the micro-apps folder can offer a command; the approval
   stands between that file and a run. Anyone who can also write the approvals
@@ -68,8 +83,9 @@ latest published version.
   authorization to execute that file; it bypasses the GUI approval store and
   never changes that store. It uses the terminal environment and current
   directory, does not read or write the clipboard, and sends the result to
-  stdout. `open` and `notify` require `--allow-effects`, but this is not a
-  sandbox: code and HTTP/AI calls still have your full rights. Run only trusted
+  stdout. It reads no context (only values given with `--context`) and never
+  sends keys or text to an app. `open` and `notify` require `--allow-effects`,
+  but this is not a sandbox: code and HTTP/AI calls still have your full rights. Run only trusted
   files. `ting-micro check` is read-only, like `Ting --check`.
 - The check command `Ting --check <file.yaml>` only reads the given files and
   prints their problems. It never runs a micro-app step, opens no window,

@@ -1,5 +1,6 @@
 import TingRuntime
-// One micro-app start: approval panel → parameter panel → working state → result (panel, clipboard or both).
+// One micro-app start: approval panel → context → parameter panel → working state → result (panel,
+// clipboard, the app or a mix).
 // Only one flow is open at a time; a new start closes the open one and stops its command.
 import AppKit
 import SwiftUI
@@ -114,6 +115,16 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private let runner: MicroAppRunner
     /// The clipboard: stdin of `input: clipboard` and the `clipboard` target.
     private let pasteboard: NSPasteboard
+    /// Reads the `context` of a micro-app.
+    private let contextReader: MicroAppContextReading
+    /// Sends `keys`, `paste` and the `app` output to the app where the micro-app started.
+    private let keyboard: MicroAppKeyboardSending
+    /// The app in front, read at each start.
+    private let frontmost: @MainActor () -> MicroAppTarget?
+    /// The app that was in front when the open flow started.
+    private var target: MicroAppTarget?
+    /// The context of the open flow, read before its parameter panel.
+    private var context = MicroAppContext()
     /// `false` builds the panel with its real views and key handling but never puts it on screen
     /// or gives it keyboard focus. For tests, so the user's screen and typing are not touched.
     private let presentsWindow: Bool
@@ -125,12 +136,17 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private var pendingHash = ""
 
     init(approvals: MicroAppApprovalStore? = nil, values: MicroAppValueStore? = nil, runner: MicroAppRunner = MicroAppRunner(),
-         pasteboard: NSPasteboard = .general, presentsWindow: Bool = true) {
+         pasteboard: NSPasteboard = .general, presentsWindow: Bool = true, contextReader: MicroAppContextReading? = nil,
+         keyboard: MicroAppKeyboardSending? = nil, frontmost: (@MainActor () -> MicroAppTarget?)? = nil) {
         self.approvals = approvals ?? MicroAppApprovalStore()
         self.values = values ?? MicroAppValueStore()
         self.runner = runner
         self.pasteboard = pasteboard
         self.presentsWindow = presentsWindow
+        let real = MicroAppKeyboard(pasteboard: pasteboard)
+        self.keyboard = keyboard ?? real
+        self.contextReader = contextReader ?? MicroAppContextReader(copySelection: { await real.copySelection(from: $0) })
+        self.frontmost = frontmost ?? { MicroAppTarget.frontmost() }
     }
 
     var isOpen: Bool { session.state != .closed }
@@ -148,6 +164,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     /// Starts the micro-app bound as `id`. A missing or broken micro-app shows its error and starts nothing.
     func start(id: String) {
         close()
+        target = frontmost()
         approvals.load()
         begin(MicroAppStartStep.first(id: id, catalog: catalog, approvals: approvals.approvals, folder: folderDisplay()),
               title: id)
@@ -157,6 +174,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     /// own errors, or goes through the normal start when the file works by now.
     func start(file: String) {
         close()
+        target = frontmost()
         approvals.load()
         begin(MicroAppStartStep.first(file: file, catalog: catalog, approvals: approvals.approvals, folder: folderDisplay()),
               title: file)
@@ -171,7 +189,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             let file = catalog.resolve(app.id).entryFile ?? "\(app.id).yaml"
             show(.approval(app, file: (folderDisplay() as NSString).appendingPathComponent(file)))
         case .run(let app):
-            askParameters(app)
+            prepare(app)
         }
     }
 
@@ -194,7 +212,38 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         } catch {
             onToast?("Cannot save the approval: \(error.localizedDescription)")
         }
-        askParameters(app)
+        prepare(app)
+    }
+
+    /// Reads the context the micro-app lists, then asks its parameters. The context is of the
+    /// app in front: an open approval panel is hidden first.
+    private func prepare(_ app: MicroApp) {
+        pendingHash = ""
+        context = MicroAppContext()
+        let sources = app.requiredContext
+        guard !sources.isEmpty else { return askParameters(app) }
+        if panel?.isVisible == true {
+            // The state first: hiding the panel resigns its key status.
+            session.state = .closed
+            panel?.orderOut(nil)
+        }
+        generation += 1
+        let current = generation
+        let reader = contextReader
+        let target = self.target
+        task = Task { [weak self] in
+            let result: Result<MicroAppContext, Error>
+            do { result = .success(try await reader.read(sources, target: target)) } catch { result = .failure(error) }
+            guard let self, self.generation == current, !Task.isCancelled else { return }
+            self.task = nil
+            switch result {
+            case .success(let context):
+                self.context = context
+                self.askParameters(app)
+            case .failure(let error):
+                self.present(MicroAppResultPlan.error(title: app.shownName, message: error.localizedDescription))
+            }
+        }
     }
 
     /// The parameter panel, the same for every start way. A micro-app without parameters runs at once.
@@ -225,7 +274,13 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         pendingHash = ""
         show(.working(app))
         let stdin = app.input == .clipboard ? (pasteboard.string(forType: .string) ?? "") : nil
-        let runner = self.runner
+        var runner = self.runner
+        let target = self.target
+        let context = self.context
+        runner.keyboard = { [weak self] action in
+            guard let self else { throw CancellationError() }
+            try await self.deliver(action, to: target, generation: current)
+        }
         let progress: @Sendable (MicroAppRunProgress) -> Void = { [weak self] progress in
             // The main queue keeps the order of the updates.
             DispatchQueue.main.async {
@@ -236,18 +291,28 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             }
         }
         task = Task { [weak self] in
-            let result = await runner.run(app, values: values, stdin: stdin, progress: progress)
+            let result = await runner.run(app, values: values, stdin: stdin, context: context, progress: progress)
             guard let self, self.generation == current, !Task.isCancelled else { return }
             self.task = nil
             self.present(MicroAppResultPlan.make(app: app, result: result, outputLimit: runner.outputLimit,
-                                                 timeLimit: runner.timeLimit(for: app)))
+                                                 timeLimit: runner.timeLimit(for: app)), title: app.shownName)
         }
     }
 
-    private func present(_ plan: MicroAppResultPlan) {
+    /// A `keys` or `paste` step: the panel goes away until the result, so the keys reach the app.
+    private func deliver(_ action: MicroAppKeyboardAction, to target: MicroAppTarget?, generation current: Int) async throws {
+        guard generation == current else { throw CancellationError() }
+        panel?.orderOut(nil)
+        try await keyboard.send(action, to: target)
+    }
+
+    private func present(_ plan: MicroAppResultPlan, title: String = "Ting") {
         if let text = plan.clipboard {
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
+        }
+        if let text = plan.app {
+            return paste(text, keepOnClipboard: plan.clipboard != nil, plan: plan, title: title)
         }
         switch plan.show {
         case .nothing:
@@ -257,6 +322,29 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             onToast?(message)
         case .panel(let content):
             show(.result(content))
+        }
+    }
+
+    /// The `app` output: the panel closes and the result goes into the app. When that fails, the
+    /// result stays on the clipboard and the error says so.
+    private func paste(_ text: String, keepOnClipboard: Bool, plan: MicroAppResultPlan, title: String) {
+        let target = self.target
+        close()
+        let keyboard = self.keyboard
+        let current = generation
+        Task { [weak self] in
+            do {
+                try await keyboard.send(.paste(text, keepOnClipboard: keepOnClipboard), to: target)
+                guard let self, self.generation == current, case .toast(let message) = plan.show else { return }
+                self.onToast?(message)
+            } catch {
+                guard let self, self.generation == current else { return }
+                if !keepOnClipboard {
+                    self.pasteboard.clearContents()
+                    self.pasteboard.setString(text, forType: .string)
+                }
+                self.present(MicroAppResultPlan.error(title: title, message: "\(error.localizedDescription) The result is on the clipboard."))
+            }
         }
     }
 

@@ -59,17 +59,20 @@ public struct MicroAppLibrary: Equatable, Sendable {
     public var description: String
     public var tools: [String]
     public var params: [MicroApp.Param]
+    /// The context its steps read: its own `context` and that of the libraries it calls.
+    public var context: [MicroAppContextSource]
     public var steps: [MicroAppStep]
     /// This library and every library it uses, without repeats, in the order they were found.
     public var sources: [MicroAppLibrarySource]
 
     public init(name: String, file: String, description: String, tools: [String] = [], params: [MicroApp.Param] = [],
-                steps: [MicroAppStep], sources: [MicroAppLibrarySource] = []) {
+                context: [MicroAppContextSource] = [], steps: [MicroAppStep], sources: [MicroAppLibrarySource] = []) {
         self.name = name
         self.file = file
         self.description = description
         self.tools = tools
         self.params = params
+        self.context = context
         self.steps = steps
         self.sources = sources
     }

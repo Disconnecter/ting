@@ -99,10 +99,14 @@ public struct MicroAppResultPlan: Equatable, Sendable {
 
     /// The text that replaces the clipboard; `nil` leaves the clipboard as it was.
     public var clipboard: String?
+    /// The text Ting pastes into the app where the micro-app started; `nil` pastes nothing. With
+    /// `clipboard` the text stays on the clipboard, else the clipboard is put back.
+    public var app: String?
     public var show: Show
 
-    public init(clipboard: String? = nil, show: Show) {
+    public init(clipboard: String? = nil, app: String? = nil, show: Show) {
         self.clipboard = clipboard
+        self.app = app
         self.show = show
     }
 
@@ -139,7 +143,9 @@ public struct MicroAppResultPlan: Equatable, Sendable {
     /// - success: `panel` shows stdout in the output style; `clipboard` replaces the clipboard and
     ///   shows the "Copied" toast; both show the panel with a "Copied" note;
     /// - success with empty stdout: the clipboard stays as it was; a panel target shows the panel
-    ///   with the "No output" note, a clipboard-only micro-app shows the toast "No output";
+    ///   with the "No output" note, a micro-app without the panel shows the toast "No output";
+    /// - `app` pastes stdout into the app where the micro-app started, without a toast unless it
+    ///   also goes to the clipboard ("Copied") or was cut;
     /// - failure and timeout: always the result panel as console text (stderr, then stdout) with an
     ///   error mark and the exit code or "stopped after 60 s"; nothing goes to the clipboard;
     /// - a cut stdout or stderr adds the cut note;
@@ -177,14 +183,20 @@ public struct MicroAppResultPlan: Equatable, Sendable {
             if app.output.targets.isEmpty { return MicroAppResultPlan(show: .nothing) }
             let toPanel = app.output.targets.contains(.panel)
             let toClipboard = app.output.targets.contains(.clipboard)
+            let toApp = app.output.targets.contains(.app)
             let text = output.stdout
             if text.isEmpty {
                 guard toPanel else { return MicroAppResultPlan(show: .toast(noOutputNote)) }
                 return MicroAppResultPlan(show: .panel(MicroAppPanelContent(title: title, text: "", style: app.output.style,
                                                                             isError: false, notes: [noOutputNote] + cut(output))))
             }
-            // Console text goes to the clipboard without its escape codes.
-            let clipboard = toClipboard ? (app.output.style == .console ? ConsoleText.plain(text) : text) : nil
+            // Console text goes to the clipboard and the app without its escape codes.
+            let plain = app.output.style == .console ? ConsoleText.plain(text) : text
+            let clipboard = toClipboard ? plain : nil
+            if toApp {
+                let notes = (toClipboard ? [copiedNote] : []) + cut(output)
+                return MicroAppResultPlan(clipboard: clipboard, app: plain, show: notes.isEmpty ? .nothing : .toast(notes.joined(separator: ", ")))
+            }
             guard toPanel else {
                 let toast = ([copiedNote] + cut(output)).joined(separator: ", ")
                 return MicroAppResultPlan(clipboard: clipboard, show: .toast(toast))

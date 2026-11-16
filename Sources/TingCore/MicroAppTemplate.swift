@@ -1,12 +1,14 @@
 import Foundation
 
 /// A value that a template can read: `${input}`, `${params.NAME}`, `${steps.ID}`,
-/// `${keychain.SERVICE}` or an environment variable `${NAME}`.
+/// `${context.SOURCE.FIELD}`, `${keychain.SERVICE}` or an environment variable `${NAME}`.
 public enum MicroAppVariable: Hashable, Sendable, CustomStringConvertible {
     /// The input of the step: the output of the step before it, or the micro-app input for the first step.
     case input
     case param(String)
     case step(String)
+    /// A value of the context of the start, such as `context.app.name`.
+    case context(MicroAppContextField)
     /// A generic password of the login keychain, found by its service name.
     case keychain(String)
     /// A variable of the user's login-shell environment.
@@ -17,6 +19,7 @@ public enum MicroAppVariable: Hashable, Sendable, CustomStringConvertible {
         case .input: "input"
         case .param(let name): "params.\(name)"
         case .step(let id): "steps.\(id)"
+        case .context(let field): "context.\(field)"
         case .keychain(let service): "keychain.\(service)"
         case .env(let name): name
         }
@@ -147,6 +150,17 @@ public struct MicroAppTemplate: Equatable, Sendable, CustomStringConvertible {
                     return .failure(ParseError(lineOffset: offset(open), message: "`${\(name)}`: a step id uses only a-z, 0-9 and `_`"))
                 }
                 variable = .step(String(id))
+            } else if name.hasPrefix("context.") {
+                let parts = name.dropFirst("context.".count).split(separator: ".", omittingEmptySubsequences: false)
+                guard parts.count == 2, let source = MicroAppContextSource(rawValue: String(parts[0])) else {
+                    return .failure(ParseError(lineOffset: offset(open), message:
+                        "`${\(name)}`: write `${context.SOURCE.FIELD}`, such as `${context.app.name}`; the sources are \(MicroAppContextSource.listed)"))
+                }
+                guard let field = MicroAppContextField(source: source, name: String(parts[1])) else {
+                    return .failure(ParseError(lineOffset: offset(open), message:
+                        "`${\(name)}`: `\(source.rawValue)` has the fields \(source.fields.joined(separator: ", "))"))
+                }
+                variable = .context(field)
             } else if name.hasPrefix("keychain.") {
                 let service = name.dropFirst("keychain.".count)
                 guard isKeychainService(service) else {
@@ -158,7 +172,7 @@ public struct MicroAppTemplate: Equatable, Sendable, CustomStringConvertible {
                 variable = .env(name)
             } else {
                 return .failure(ParseError(lineOffset: offset(open), message:
-                    "`${\(inner)}` is not a variable; use `${input}`, `${params.NAME}`, `${steps.ID}`, `${keychain.SERVICE}` or an environment variable such as `${OPENAI_API_KEY}`"))
+                    "`${\(inner)}` is not a variable; use `${input}`, `${params.NAME}`, `${steps.ID}`, `${context.SOURCE.FIELD}`, `${keychain.SERVICE}` or an environment variable such as `${OPENAI_API_KEY}`"))
             }
             var filters: [MicroAppFilter] = []
             for raw in pieces.dropFirst() {

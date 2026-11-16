@@ -80,6 +80,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSHighResolutionCapable</key><true/>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Grigory Bakunov. 0BSD license.</string>
+    <key>NSAppleEventsUsageDescription</key><string>Ting reads the Finder selection or the browser tab for the micro-apps that ask for it.</string>
 ${SPARKLE_KEYS}    <key>BuildTimestamp</key><string>${BUILD_TIMESTAMP}</string>
     <key>GitCommit</key><string>${GIT_COMMIT}</string>
 </dict>
@@ -198,13 +199,15 @@ DEFAULT_ENTITLEMENTS="$ENTITLEMENTS_DIR/${APP_NAME}.entitlements"
 mkdir -p "$ENTITLEMENTS_DIR"
 
 APP_ENTITLEMENTS=${APP_ENTITLEMENTS:-$DEFAULT_ENTITLEMENTS}
-if [[ ! -f "$APP_ENTITLEMENTS" ]]; then
+if [[ "$APP_ENTITLEMENTS" == "$DEFAULT_ENTITLEMENTS" ]]; then
+  # Written on every build, so an older file in .build never drops an entitlement.
+  # Apple Events: the Finder and browser context of micro-apps (the hardened runtime needs it).
   cat > "$APP_ENTITLEMENTS" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Add entitlements here if needed. -->
+    <key>com.apple.security.automation.apple-events</key><true/>
 </dict>
 </plist>
 PLIST

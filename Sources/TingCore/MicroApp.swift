@@ -12,6 +12,8 @@ public struct MicroApp: Equatable, Sendable {
 
     public enum OutputTarget: String, Equatable, Sendable, CaseIterable {
         case clipboard, panel
+        /// Pasted into the app where the micro-app started.
+        case app
     }
 
     /// How the result panel shows stdout.
@@ -70,6 +72,8 @@ public struct MicroApp: Equatable, Sendable {
     /// Offer the last used parameter values next time (default `true`).
     public var remember: Bool
     public var params: [Param]
+    /// The parts of the context the file reads (`context:`), in file order.
+    public var context: [MicroAppContextSource]
     public var input: Input
     /// The shell code of a `command` file, exactly as written; `nil` for a `steps` file.
     public var command: String?
@@ -87,7 +91,8 @@ public struct MicroApp: Equatable, Sendable {
 
     /// A micro-app of one shell command.
     public init(id: String, name: String? = nil, description: String, tools: [String] = [], hidden: Bool = false, remember: Bool = true,
-                params: [Param] = [], input: Input, command: String, output: Output, timeLimit: TimeInterval = MicroAppRunRules.timeLimit) {
+                params: [Param] = [], context: [MicroAppContextSource] = [], input: Input, command: String, output: Output,
+                timeLimit: TimeInterval = MicroAppRunRules.timeLimit) {
         self.id = id
         self.name = name
         self.description = description
@@ -95,6 +100,7 @@ public struct MicroApp: Equatable, Sendable {
         self.hidden = hidden
         self.remember = remember
         self.params = params
+        self.context = context
         self.input = input
         self.command = command
         self.steps = [MicroAppStep(action: .command(command))]
@@ -105,7 +111,7 @@ public struct MicroApp: Equatable, Sendable {
 
     /// A micro-app of steps.
     public init(id: String, name: String? = nil, description: String, tools: [String] = [], hidden: Bool = false, remember: Bool = true,
-                params: [Param] = [], input: Input, steps: [MicroAppStep], output: Output,
+                params: [Param] = [], context: [MicroAppContextSource] = [], input: Input, steps: [MicroAppStep], output: Output,
                 timeLimit: TimeInterval = MicroAppRunRules.timeLimit, source: String = "") {
         self.id = id
         self.name = name
@@ -114,6 +120,7 @@ public struct MicroApp: Equatable, Sendable {
         self.hidden = hidden
         self.remember = remember
         self.params = params
+        self.context = context
         self.input = input
         self.command = nil
         self.steps = steps
@@ -137,6 +144,20 @@ public struct MicroApp: Equatable, Sendable {
         var result = tools
         for tool in steps.requiredTools where !result.contains(tool) { result.append(tool) }
         return result
+    }
+
+    /// The context the run needs: the file's own `context` and that of every library it calls,
+    /// in documentation order.
+    public var requiredContext: [MicroAppContextSource] {
+        var sources = Set(context)
+        for step in allSteps { if case .call(let library) = step.action { sources.formUnion(library.context) } }
+        return sources.sorted()
+    }
+
+    /// `true` when a step (also of a called library) or the output sends input to the app
+    /// where the micro-app started.
+    public var sendsInput: Bool {
+        output.targets.contains(.app) || allSteps.contains(where: \.sendsInput)
     }
 
     /// The name shown in menus: `name`, or the id when the file has no name.
@@ -192,9 +213,9 @@ public enum MicroAppChecker {
     public static var tooLargeMessage: String { "the file is larger than \(maxFileSize / 1024) KB" }
     public static let notUTF8Message = "the file is not UTF-8 text"
     public static let topKeys = ["format", "inherit", "id", "name", "description", "tools", "hidden", "remember", "timeout", "params",
-                                 "input", "command", "steps", "output"]
+                                 "context", "input", "command", "steps", "output"]
     /// The keys of a library file (`libs/NAME.yaml`).
-    public static let libraryKeys = ["format", "description", "tools", "timeout", "params", "input", "steps", "output"]
+    public static let libraryKeys = ["format", "description", "tools", "timeout", "params", "context", "input", "steps", "output"]
     public static let requiredTopKeys = ["format", "description", "input"]
     /// The longest `timeout` a file can ask for, in seconds.
     public static let maxTimeLimit = 300
@@ -205,8 +226,10 @@ public enum MicroAppChecker {
         .command: ["env"], .python: ["env"],
         .url: ["method", "query", "headers", "body", "form"],
         .ai: ["provider", "model", "key", "system", "base_url", "temperature", "max_tokens"],
-        .text: [], .json: [], .open: ["app"], .notify: ["title"], .call: [],
+        .text: [], .json: [], .open: ["app"], .notify: ["title"], .call: [], .keys: [], .paste: [],
     ]
+    /// The most key presses of one `keys` step.
+    public static let maxKeyPresses = 100
     public static let paramKeys = ["name", "type", "required", "default", "choices", "prompt"]
     public static let paramTypes = ["text", "choice"]
     public static let outputKeys = ["to", "as"]
@@ -240,7 +263,7 @@ public enum MicroAppChecker {
             var sources = [source]
             sources.addMissing(app.libraries)
             return .success(MicroAppLibrary(name: source.name, file: source.file, description: app.description, tools: app.tools,
-                                            params: app.params, steps: app.steps, sources: sources))
+                                            params: app.params, context: app.requiredContext, steps: app.steps, sources: sources))
         }
     }
 
@@ -284,6 +307,11 @@ public enum MicroAppChecker {
         !s.isEmpty && s.allSatisfy { $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "_") }
     }
 
+    /// `context` and names that start with `context_`: their `TING_CONTEXT_…` variables belong to Ting.
+    public static func isReservedParamName(_ s: String) -> Bool {
+        s == "context" || s.hasPrefix("context_")
+    }
+
     public static func isToolName(_ s: String) -> Bool {
         !s.isEmpty && s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "._+-".contains($0)) }
     }
@@ -307,6 +335,8 @@ public enum MicroAppChecker {
         var usedLibraries: [MicroAppLibrarySource] = []
         /// Set while the merged text of an `inherit` file is checked: the line of `inherit` and the library file.
         var inherited: (line: Int, file: String)?
+        /// The sources of the file's `context` list, known before its steps are checked.
+        var declaredContext: [MicroAppContextSource] = []
 
         init(file: String) { self.file = file }
 
@@ -473,6 +503,7 @@ public enum MicroAppChecker {
                 if let seconds = seconds(e.value, "timeout", max: MicroAppChecker.maxTimeLimit) { timeLimit = seconds } else { timeOK = false }
             }
             let params = top["params"].map { checkParams($0.value) } ?? []
+            if let e = top["context"] { declaredContext = checkContext(e.value) }
             var input = top["input"].flatMap { oneOf($0.value, "input", MicroApp.Input.allCases.map(\.rawValue)) }.flatMap(MicroApp.Input.init)
             if isLibrary && top["input"] == nil { input = MicroApp.Input.none }
 
@@ -504,6 +535,11 @@ public enum MicroAppChecker {
                         : "param `\(p.param.name)` is never used: a step must read `${params.\(p.param.name)}` or `$\(p.param.environmentName)`")
                 }
             }
+            if let e = top["context"], top["command"] != nil || top["steps"] != nil {
+                for source in declaredContext where !usage.context.contains(source) {
+                    fail(e.keyLine, "context `\(source.rawValue)` is never used: a step must read `${context.\(source.rawValue).…}` or `$\(MicroAppContextField.environmentPrefix)\(source.rawValue.uppercased())_…`")
+                }
+            }
             var output: MicroApp.Output? = MicroApp.Output(targets: [])
             if let e = top["output"] { output = checkOutput(e.value, keyLine: e.keyLine) }
 
@@ -511,11 +547,12 @@ public enum MicroAppChecker {
             guard let id, let description, let input, let steps, let output, timeOK, issues.isEmpty else { return nil }
             if let command {
                 return MicroApp(id: id, name: name, description: description, tools: tools, hidden: hidden, remember: remember,
-                                params: kept.map(\.param), input: input, command: command, output: output, timeLimit: timeLimit)
+                                params: kept.map(\.param), context: declaredContext, input: input, command: command, output: output,
+                                timeLimit: timeLimit)
             }
             return MicroApp(id: id, name: name, description: description, tools: tools, hidden: hidden, remember: remember,
-                            params: kept.map(\.param), input: input, steps: steps, output: output, timeLimit: timeLimit,
-                            source: text)
+                            params: kept.map(\.param), context: declaredContext, input: input, steps: steps, output: output,
+                            timeLimit: timeLimit, source: text)
         }
 
         /// A file with `inherit`: its library and the file merged, then checked as one micro-app.
@@ -556,6 +593,34 @@ public enum MicroAppChecker {
             return String(file.dropLast(suffix.count))
         }
 
+        // MARK: Context
+
+        /// The `context` list: known sources, each once.
+        mutating func checkContext(_ node: YAMLNode) -> [MicroAppContextSource] {
+            guard let items = list(node, "context") else { return [] }
+            var result: [MicroAppContextSource] = []
+            for item in items {
+                guard let raw = oneOf(item, "context", MicroAppContextSource.allCases.map(\.rawValue)),
+                      let source = MicroAppContextSource(rawValue: raw) else { continue }
+                if result.contains(source) {
+                    fail(item.line, "`context`: `\(raw)` is listed twice")
+                } else {
+                    result.append(source)
+                }
+            }
+            return result
+        }
+
+        /// A context field that a step reads: it counts as used when its source is in `context`.
+        mutating func useContext(_ field: MicroAppContextField, shown: String, what: String, line: Int, usage: inout Usage) -> Bool {
+            if declaredContext.contains(field.source) {
+                usage.context.insert(field.source)
+                return true
+            }
+            fail(line, "\(what): `\(shown)` needs `\(field.source.rawValue)` in the `context` list")
+            return false
+        }
+
         // MARK: Params
 
         struct CheckedParam {
@@ -576,6 +641,9 @@ public enum MicroAppChecker {
                 if let e = keys["name"], let value = string(e.value, "\(what).name") {
                     if !MicroAppChecker.isParamName(value) {
                         fail(e.value.line, "\(what): name `\(value)` may only use a-z, 0-9 and `_`")
+                        ok = false
+                    } else if MicroAppChecker.isReservedParamName(value) {
+                        fail(e.value.line, "\(what): names that start with `context` belong to Ting: `$TING_CONTEXT_…` holds the context")
                         ok = false
                     } else if let first = seen[value] {
                         fail(e.value.line, "\(what): param `\(value)` is already declared on line \(first)")
@@ -659,6 +727,7 @@ public enum MicroAppChecker {
         /// What the steps read: param names, from the code (`$TING_NAME`) and the templates (`${params.NAME}`).
         struct Usage {
             var params: Set<String> = []
+            var context: Set<MicroAppContextSource> = []
         }
 
         mutating func checkCommand(_ node: YAMLNode, params: [CheckedParam], usage: inout Usage, what: String = "command",
@@ -681,6 +750,7 @@ public enum MicroAppChecker {
                 ("${steps.", "read a step output as `\"$TING_STEP_ID\"`"),
                 ("${input", "the input of the step is its stdin"),
                 ("${keychain.", "put the secret into a variable with `env:` and read that variable"),
+                ("${context.", "read a context value as `\"$TING_CONTEXT_SOURCE_FIELD\"`, such as `\"$TING_CONTEXT_APP_NAME\"`"),
             ]
             for (prefix, hint) in hints {
                 if let range = command.range(of: prefix) {
@@ -716,6 +786,18 @@ public enum MicroAppChecker {
                 let nameEnd = code[range.upperBound...].firstIndex { !($0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_")) } ?? code.endIndex
                 let variable = String(code[range.lowerBound..<nameEnd])
                 if localVariables.contains(variable) { continue }
+                if variable.hasPrefix(MicroAppContextField.environmentPrefix) {
+                    guard !reported.contains(variable) else { continue }
+                    let shown = needsDollar ? "$\(variable)" : variable
+                    let at = line(of: s, at: range.lowerBound)
+                    if let field = MicroAppContextField(environmentName: variable) {
+                        if !useContext(field, shown: shown, what: what, line: at, usage: &usage) { reported.insert(variable) }
+                    } else {
+                        reported.insert(variable)
+                        fail(at, "\(what): `\(shown)` is not a context value; write `$TING_CONTEXT_SOURCE_FIELD`, such as `$TING_CONTEXT_APP_NAME`")
+                    }
+                    continue
+                }
                 if let name = byVariable[variable] {
                     usage.params.insert(name)
                     continue
@@ -830,8 +912,12 @@ public enum MicroAppChecker {
             var stepParams: [MicroAppStep.Field] = []
             if let e = keys["params"] {
                 stepParams = fields(e.value, "\(what).params", ctx: &ctx, usage: &usage)
-                for (field, entryLine) in zip(stepParams, fieldLines(e.value)) where !MicroAppChecker.isParamName(field.name) {
-                    fail(entryLine, "\(what).params: `\(field.name)` may only use a-z, 0-9 and `_`")
+                for (field, entryLine) in zip(stepParams, fieldLines(e.value)) {
+                    if !MicroAppChecker.isParamName(field.name) {
+                        fail(entryLine, "\(what).params: `\(field.name)` may only use a-z, 0-9 and `_`")
+                    } else if kind != .call && MicroAppChecker.isReservedParamName(field.name) {
+                        fail(entryLine, "\(what).params: names that start with `context` belong to Ting")
+                    }
                 }
                 if kind != .call { ctx.locals = Set(stepParams.map(\.name)) }
             }
@@ -899,12 +985,50 @@ public enum MicroAppChecker {
                 if let name = string(value, k), let library = library(name, line: value.line) {
                     let argumentLines = keys["params"].map { fieldLines($0.value) } ?? []
                     checkArguments(stepParams, lines: argumentLines, library: library, what: what, line: line)
+                    // The library reads its own context; the same source in this file's list counts as used.
+                    usage.context.formUnion(library.context)
                     action = .call(library)
                 }
+            case .keys:
+                action = checkKeys(value, what: k).map { .keys($0) }
+            case .paste:
+                action = template(value, k, oneLine: false, ctx: &ctx, usage: &usage).map { .paste($0) }
             }
             guard issues.count == before, let action else { return nil }
             return MicroAppStep(id: id, action: action, stdin: stdin, env: env, timeLimit: stepTime, stream: stream, params: stepParams,
                                 line: line)
+        }
+
+        /// The key presses of a `keys` step: one `cmd+s`, or a one-line list such as `[cmd+a, delete]`.
+        mutating func checkKeys(_ node: YAMLNode, what: String) -> [Hotkey]? {
+            let items: [YAMLNode]
+            switch node {
+            case .scalar: items = [node]
+            case .sequence(let list, _): items = list
+            default:
+                fail(node.line, "`\(what)` must be a key press such as `cmd+s`, or a list such as `[cmd+a, delete]`")
+                return nil
+            }
+            if items.isEmpty {
+                fail(node.line, "`\(what)` must not be empty")
+                return nil
+            }
+            if items.count > MicroAppChecker.maxKeyPresses {
+                fail(node.line, "`\(what)` has more than \(MicroAppChecker.maxKeyPresses) key presses")
+                return nil
+            }
+            var result: [Hotkey] = []
+            var ok = true
+            for item in items {
+                guard let text = string(item, what) else { ok = false; continue }
+                guard let hotkey = Hotkey(string: text.trimmingCharacters(in: .whitespaces)), hotkey.isValid else {
+                    fail(item.line, "`\(what)`: `\(text)` is not a key press; write modifiers (ctrl, option, shift, cmd) and one key joined by `+`, such as `cmd+s`, `shift+tab` or `return`")
+                    ok = false
+                    continue
+                }
+                result.append(hotkey)
+            }
+            return ok ? result : nil
         }
 
         /// The `params` of a `call` step: known to the library, every required one given, a
@@ -1052,6 +1176,8 @@ public enum MicroAppChecker {
                             fail(at, "\(what): `${steps.\(id)}` is not an earlier step; give that step `id: \(id)`")
                             ok = false
                         }
+                    case .context(let field):
+                        if !useContext(field, shown: "${context.\(field)}", what: what, line: at, usage: &usage) { ok = false }
                     case .input, .env, .keychain:
                         break
                     }
@@ -1130,7 +1256,11 @@ public enum MicroAppChecker {
                     ok = false
                 }
             } else {
-                fail(keyLine, "`output` needs `to`: a list of `clipboard`, `panel` or both")
+                fail(keyLine, "`output` needs `to`: a list of `clipboard`, `panel` or `app`")
+                ok = false
+            }
+            if targets.contains(.app) && targets.contains(.panel), let e = keys["to"] {
+                fail(e.value.line, "`output.to`: `app` and `panel` cannot be together: Ting pastes the result into the app, and the panel would take its place")
                 ok = false
             }
             var style = MicroApp.OutputStyle.markdown

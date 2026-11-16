@@ -27,12 +27,22 @@ The terms used for Ting in code, documents and the interface.
   user, with the clipboard on stdin when `input: clipboard`; the same as one
   `command` step.
 - **step:** one part of a micro-app script, under `steps`: `command`, `python`,
-  `url`, `ai`, `text`, `json`, `open` or `notify`. The output of a step is the
+  `url`, `ai`, `text`, `json`, `open`, `notify`, `keys`, `paste` or `call`. The output of a step is the
   input of the next one; the output of the last step is the result.
 - **variable:** a `${…}` value in a step key other than code: `${input}`,
-  `${params.NAME}`, `${steps.ID}`, an environment variable `${NAME}` or a
-  keychain item `${keychain.SERVICE}`, with optional filters (`|url`, `|json`,
-  `|trim`, `|base64`).
+  `${params.NAME}`, `${steps.ID}`, `${context.SOURCE.FIELD}`, an environment
+  variable `${NAME}` or a keychain item `${keychain.SERVICE}`, with optional
+  filters (`|url`, `|json`, `|trim`, `|base64`).
+- **context:** what Ting reads at the start of a micro-app that lists it in
+  `context:`: `app`, `finder`, `browser`, `selection` and `window`. Steps read it
+  as `${context.SOURCE.FIELD}`, code as `$TING_CONTEXT_SOURCE_FIELD`.
+- **target app:** the app that was in front when a micro-app started. The
+  context is read from it, and `keys`, `paste` and the `app` output go to it.
+- **keys step:** a step `keys: cmd+s` or `keys: [cmd+a, delete]` that presses
+  keys in the target app.
+- **paste step:** a step `paste: TEXT` that pastes text into the target app
+  through the clipboard and puts the clipboard back.
+- **app output:** `output.to: [app]`: the result is pasted into the target app.
 - **library:** a file `libs/NAME.yaml` in the micro-apps folder, format
   `ting.microlib/1`, with steps that several micro-apps share. It is not a
   micro-app of its own.

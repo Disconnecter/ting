@@ -52,6 +52,22 @@ let helperArchitectures = architectures(helper)
 require(!helperArchitectures.isEmpty && helperArchitectures == architectures(appURL.appendingPathComponent("Contents/MacOS/Ting")),
         "ting-micro architectures differ from Ting")
 
+// Micro-apps read the Finder selection and the browser tab with Apple Events.
+require(!(string("NSAppleEventsUsageDescription") ?? "").isEmpty, "NSAppleEventsUsageDescription is missing")
+func entitlements(_ app: URL) -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    process.arguments = ["-d", "--entitlements", "-", "--xml", app.path]
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = FileHandle.nullDevice
+    do { try process.run() } catch { return "" }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    return String(decoding: data, as: UTF8.self)
+}
+require(entitlements(appURL).contains("com.apple.security.automation.apple-events"), "the Apple Events entitlement is missing")
+
 // App icon.
 require(string("CFBundleIconFile") == "Icon", "unexpected app icon reference")
 guard let icon = try? Data(contentsOf: resources.appendingPathComponent("Icon.icns")) else {

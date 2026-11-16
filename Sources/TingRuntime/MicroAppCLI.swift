@@ -9,7 +9,8 @@ package enum MicroAppCLI {
     Usage:
       ting-micro check [--libs DIR] FILE.yaml [FILE.yaml ...]
       ting-micro check-config [CONFIG.json]
-      ting-micro run FILE.yaml [--param NAME=VALUE ...] [--input TEXT] [--timeout SECONDS] [--libs DIR] [--verbose] [--allow-effects]
+      ting-micro run FILE.yaml [--param NAME=VALUE ...] [--context SOURCE.FIELD=VALUE ...] [--input TEXT] [--timeout SECONDS]
+                     [--libs DIR] [--verbose] [--allow-effects]
 
     check-config reads config.json (default: $TING_CONFIG, else ~/.config/ting/config.json) and
     reports format errors, binding problems and micro bindings to ids that the micro-apps folder
@@ -20,6 +21,9 @@ package enum MicroAppCLI {
     Input: piped stdin, or --input TEXT; empty when stdin is a terminal.
     Output: the final result on stdout; diagnostics and optional step progress on stderr.
     YAML output.to is ignored: the clipboard is never read or changed.
+    Context: run never reads the active app, Finder, the browser or the selection. --context gives
+    a value, such as --context app.name=Safari; every other value of the file's context is empty.
+    keys and paste steps never send anything: each prints a note on stderr and passes its input on.
     --allow-effects permits open and notify steps (disabled by default).
     Shell/Python and HTTP/AI steps run with your full rights and may change files or cost money.
     Environment variables come from this terminal, not a second login shell.
@@ -31,6 +35,7 @@ package enum MicroAppCLI {
     struct Options: Equatable {
         var file: String
         var params: [String: String] = [:]
+        var context = MicroAppContext()
         var input: String?
         var timeout: TimeInterval?
         var verbose = false
@@ -56,7 +61,7 @@ package enum MicroAppCLI {
             case "--libs":
                 guard i < args.count else { throw UsageError("--libs needs a folder") }
                 options.libs = args[i]; i += 1
-            case "--param", "--input", "--timeout":
+            case "--param", "--context", "--input", "--timeout":
                 guard i < args.count else { throw UsageError("\(flag) needs a value") }
                 let value = args[i]; i += 1
                 switch flag {
@@ -67,6 +72,19 @@ package enum MicroAppCLI {
                     let name = String(value[..<eq])
                     guard options.params[name] == nil else { throw UsageError("duplicate parameter `\(name)`") }
                     options.params[name] = String(value[value.index(after: eq)...])
+                case "--context":
+                    guard let eq = value.firstIndex(of: "="), eq != value.startIndex else {
+                        throw UsageError("--context needs SOURCE.FIELD=VALUE, such as app.name=Safari")
+                    }
+                    let name = String(value[..<eq])
+                    let parts = name.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+                    guard parts.count == 2, let source = MicroAppContextSource(rawValue: parts[0]),
+                          let field = MicroAppContextField(source: source, name: parts[1]) else {
+                        let known = MicroAppContextField.all.map(\.description).joined(separator: ", ")
+                        throw UsageError("unknown context value `\(name)`; use one of: \(known)")
+                    }
+                    guard options.context.values[field] == nil else { throw UsageError("duplicate context value `\(name)`") }
+                    options.context[field] = String(value[value.index(after: eq)...])
                 case "--input":
                     guard options.input == nil else { throw UsageError("--input was given twice") }
                     options.input = value
@@ -107,6 +125,10 @@ package enum MicroAppCLI {
             if case .choice(let choices) = param.kind, let value, !choices.contains(value) {
                 throw UsageError("parameter `\(param.name)` must be one of: \(choices.joined(separator: ", "))")
             }
+        }
+        let sources = app.requiredContext
+        for field in options.context.values.keys.sorted(by: { $0.description < $1.description }) where !sources.contains(field.source) {
+            throw UsageError("the file does not read `\(field.source.rawValue)`: add it to `context:` or leave out --context \(field)")
         }
         if !options.allowEffects, let step = app.allSteps.first(where: { $0.kind == .open || $0.kind == .notify }) {
             throw UsageError("`\(step.kind.rawValue)` requires --allow-effects; no steps were run")
@@ -162,6 +184,8 @@ package enum MicroAppCLI {
             runner.timeLimit = options.timeout
             // CLI runs in the current folder, like other console programs.
             runner.workingDirectory = FileManager.default.currentDirectoryPath
+            // Keys and text would go to this terminal: the console tool only says what Ting would send.
+            runner.keyboard = { action in err("ting-micro: \(action.summary): not sent; only Ting sends to an app\n") }
             let verbose = options.verbose
             let progress: (@Sendable (MicroAppRunProgress) -> Void)?
             if verbose {
@@ -170,7 +194,7 @@ package enum MicroAppCLI {
                 }
             } else { progress = nil }
             let task = Task<MicroAppRunResult, Never> {
-                await runner.run(app, values: options.params, stdin: input, progress: progress)
+                await runner.run(app, values: options.params, stdin: input, context: options.context, progress: progress)
             }
             // Dispatch signal handlers cancel the task, which stops child process groups and HTTP.
             signal(SIGINT, SIG_IGN)

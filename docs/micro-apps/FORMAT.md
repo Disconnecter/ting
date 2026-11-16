@@ -1,11 +1,13 @@
 # Micro-app format (`ting.microapp/2`)
 
 A micro-app is a small tool that Ting runs from a key. It can ask for
-parameters, read the clipboard, and show or copy its result. Its work is one
-shell command or a list of **steps**: shell or Python code, HTTP requests, AI
-calls, text templates, JSON fields, opening a URL and notifications. The output
-of each step is the input of the next one, like a shell pipe. Steps that several
-micro-apps share live once in a **library**.
+parameters, read the clipboard and the **context** of the start (the active app,
+the Finder selection, the browser tab, the selected text), show or copy its
+result, paste it into the app or press keys there. Its work is one shell command
+or a list of **steps**: shell or Python code, HTTP requests, AI calls, text
+templates, JSON fields, opening a URL, notifications, key presses and pasted
+text. The output of each step is the input of the next one, like a shell pipe.
+Steps that several micro-apps share live once in a **library**.
 
 This document is for whoever writes micro-apps, a person or a coding agent such
 as Claude Code, Codex or pi. It is complete on its own and ships inside the app
@@ -70,7 +72,7 @@ input: none                      # required: clipboard | none
 command: |                       # one shell command, or `steps:` (exactly one of them)
   dig +noall +answer "$TING_DOMAIN" "$TING_RECORD"
 output:                          # optional; without it nothing is shown or copied
-  to: [panel]                    # clipboard, panel or both
+  to: [panel]                    # clipboard, panel, app; app not with panel
   as: console                    # markdown (default) | console | text | code
 ```
 
@@ -78,13 +80,19 @@ output:                          # optional; without it nothing is shown or copi
   the first by file name works, the second is broken.
 - `name`, `description` and `prompt` are one line. `hidden`, `remember` and
   `required` are `true` or `false`, not `yes` or `"true"`.
-- A file may also have `inherit: LIBRARY` (see [Inheriting a library](#inheriting-a-library)).
+- A file may also have `inherit: LIBRARY` (see [Inheriting a library](#inheriting-a-library))
+  and `context: [SOURCE, …]` (see [Context](#context)).
 - Every param must be read by some step. Required params are always shown in
   the parameter panel, optional ones behind `⌘O`. Remembered values are stored as
   plain text: never use a remembered param for a secret.
 - `output.as`: `markdown` shows headings, lists, bold, italic, code, quotes and
   tables; `console` shows ANSI colours; `text` is plain; `code` is monospaced.
   Errors always show as console text.
+- `output.to: [app]` pastes the result into the app that was in front at the
+  start, as a [`paste` step](#keys-and-paste) does, and puts the clipboard back;
+  `[clipboard, app]` leaves the result on the clipboard. `app` cannot go with
+  `panel`. When Ting cannot paste, the result goes to the clipboard and the panel
+  says why.
 
 ## How a micro-app runs
 
@@ -108,11 +116,48 @@ output:                          # optional; without it nothing is shown or copi
   `Esc` stops the run. While it runs, the panel names the running step and shows
   the output of the last step while it comes.
 
+## Context
+
+`context` lists what Ting reads at the moment the micro-app starts, before its
+parameter panel: the app the person worked in and what was selected there.
+Ting reads nothing else.
+
+```yaml
+context: [app, finder]
+```
+
+| Source | Values | Needs |
+|---|---|---|
+| `app` | `name`, `bundle` (the bundle id), `path` (of the `.app`) and `pid` of the active app | nothing |
+| `finder` | `selection`: the items selected in the front Finder window (or on the Desktop), one path per line; `folder`: the folder of that window, or the Desktop | Automation for Finder |
+| `browser` | `url` and `title` of the front tab, `name` of the browser: the active app when it is a browser, else the browser that was active last | Automation for that browser |
+| `selection` | `text`: the text selected in the active app | Accessibility |
+| `window` | `title` of the front window of the active app and its `document`: a file path, or a URL | Accessibility |
+
+- Steps read a value as `${context.SOURCE.FIELD}`, such as `${context.app.name}`;
+  code reads `$TING_CONTEXT_SOURCE_FIELD`, such as `"$TING_CONTEXT_FINDER_SELECTION"`.
+  Every source that a step reads must be in `context`, and every source in
+  `context` must be read. Param names that start with `context` are not allowed.
+- The Finder selection comes from the front Finder window also when another app
+  is active. Paths have no `/` at the end. The browsers are Safari, Chrome, Arc,
+  Brave, Edge, Vivaldi and Chromium; Firefox cannot tell its tab.
+- Ting reads the selected text with Accessibility. When the app does not give it
+  (many terminals, Electron apps, web pages), Ting presses ⌘C in the app and puts
+  the clipboard back. In an editor that copies the whole line when nothing is
+  selected, the text is then that line.
+- A value that Ting cannot read is empty: no Finder or browser window, nothing
+  selected. macOS asks the person once to allow Ting to control Finder or the
+  browser. Without that, or without the Accessibility permission (System
+  Settings › Privacy & Security › Accessibility), the micro-app does not start
+  and the panel says what to allow.
+- The approval panel shows what the micro-app reads. A library lists its own
+  `context`; a micro-app that calls it needs no `context` for it.
+
 ## Steps
 
 `steps` is a list. The **kind key** of a step says what it does and holds its main
-value: `command`, `python`, `url`, `ai`, `text`, `json`, `open`, `notify` or
-`call`. Exactly one kind key per step. Every step can also have:
+value: `command`, `python`, `url`, `ai`, `text`, `json`, `open`, `notify`, `keys`,
+`paste` or `call`. Exactly one kind key per step. Every step can also have:
 
 | Key | Value |
 |---|---|
@@ -195,6 +240,27 @@ The answer streams into the panel word by word.
 | `open: https://x.org/?q=${input\|url}` | Opens a URL or a file (`/…` or `~/…`); `app: Safari` picks the app. Passes its input on. |
 | `notify: Done` | Shows a notification; `title:` optional. Passes its input on. |
 
+### `keys` and `paste`
+
+```yaml
+  - keys: cmd+t                  # one key press
+  - paste: ${input|trim}         # text, through the clipboard
+  - keys: [cmd+a, return]        # several, one after another
+```
+
+They go to the app that was in front at the start; Ting's panel closes first.
+Both pass their input on.
+
+- `keys` writes modifiers (`ctrl`, `option`, `shift`, `cmd`) and one key joined by
+  `+`: a letter, digit or sign, `return`, `tab`, `space`, `escape`, `delete`,
+  `forwarddelete`, `left`, `right`, `up`, `down`, `home`, `end`, `pageup`,
+  `pagedown` or `f1` to `f20`. A list holds up to 100 key presses. A letter, digit
+  or sign is the key that types it in the person's Latin layout.
+- `paste` puts its text on the clipboard, presses ⌘V and puts the old clipboard
+  back a moment later. Empty text pastes nothing.
+- Both need the Accessibility permission. When the app is no longer in front, or
+  a password field holds the keyboard, the step fails and sends nothing.
+
 ### Variables
 
 Every value of a step except shell and Python code can hold variables:
@@ -204,6 +270,7 @@ Every value of a step except shell and Python code can hold variables:
 | `${input}` | The step's input, without final line breaks. |
 | `${params.NAME}` | A param of the step or of the file. |
 | `${steps.ID}` | The output of an earlier step, without final line breaks. |
+| `${context.SOURCE.FIELD}` | A value of the [context](#context), such as `${context.app.name}`. |
 | `${NAME}` | A login-shell variable; unset fails the step. |
 | `${keychain.SERVICE}` | A generic password of the login keychain. Add one with `security add-generic-password -s SERVICE -a "$USER" -w`. |
 
@@ -231,7 +298,7 @@ steps:
 ```
 
 Keys: `format` (exactly `ting.microlib/1`), `description` and `steps` (required),
-`tools`, `timeout`, `params`, `input`, `output` (optional; `input`, `output` and
+`tools`, `timeout`, `params`, `context`, `input`, `output` (optional; `input`, `output` and
 `timeout` matter only to files that inherit it). A library can call other
 libraries, up to 8 levels deep, never itself. A micro-app is approved together
 with its libraries: a change of a library asks the person again for every
@@ -280,7 +347,7 @@ per language; use `call` to reuse steps inside other steps.
 ```sh
 MICRO=/Applications/Ting.app/Contents/MacOS/ting-micro
 "$MICRO" check [--libs DIR] FILE.yaml [more files]
-"$MICRO" run FILE.yaml [--param NAME=VALUE ...] [--input TEXT] [--timeout S] [--libs DIR] [--verbose] [--allow-effects]
+"$MICRO" run FILE.yaml [--param NAME=VALUE ...] [--context SOURCE.FIELD=VALUE ...] [--input TEXT] [--timeout S] [--libs DIR] [--verbose] [--allow-effects]
 ```
 
 `check` prints `file:line: message` per problem, or `<file>: ok`; exit code 0 for
@@ -293,8 +360,11 @@ result.
 `run` runs the file without the panels: input from stdin or `--input`, the result
 on stdout, errors and `--verbose` progress on stderr. It never touches the
 clipboard, the config or the approvals; it uses the terminal's environment and
-current folder. `open` and `notify` steps need `--allow-effects`. Exit codes: 0,
-1 (failed), 2 (wrong call), 124 (timeout), 130 (stopped).
+current folder. `open` and `notify` steps need `--allow-effects`. It reads no
+context: `--context app.name=Safari` gives a value, and every other value of the
+file's context is empty. `keys` and `paste` steps never send anything; each
+prints a note on stderr and passes its input on. Exit codes: 0, 1 (failed), 2
+(wrong call), 124 (timeout), 130 (stopped).
 
 ## YAML subset
 
@@ -311,7 +381,8 @@ with `@`, `` ` `` or `%`.
 
 Each example passes `check` as it is. They are also in
 `docs/micro-apps/examples/` of the Ting repository. The Python examples need the
-Command Line Tools; the translate and Claude examples need an API key.
+Command Line Tools; the translate and Claude examples need an API key; the
+context examples need the permissions of their sources.
 
 ### Format JSON: `format-json.yaml`
 
@@ -508,6 +579,116 @@ description: Search the web for the clipboard text in the default browser.
 input: clipboard
 steps:
   - open: https://duckduckgo.com/?q=${input|trim|url}
+```
+
+### About the active app: `app-info.yaml`
+
+The `app` and `window` context in a markdown table.
+
+```yaml
+format: ting.microapp/2
+name: About the active app
+description: Show the name, bundle id and path of the active app, and the title and document of its front window.
+
+context: [app, window]
+input: none
+steps:
+  - text: |
+      | | |
+      |---|---|
+      | App | ${context.app.name} |
+      | Bundle id | ${context.app.bundle} |
+      | Path | ${context.app.path} |
+      | Window | ${context.window.title} |
+      | Document | ${context.window.document} |
+output:
+  to: [panel]
+  as: markdown
+```
+
+### Checksum of Finder files: `finder-checksum.yaml`
+
+The Finder selection in shell code, one path per line.
+
+```yaml
+format: ting.microapp/2
+name: Checksum of Finder files
+description: Show the SHA-256 checksum of each file selected in Finder.
+tools: [shasum]
+
+context: [finder]
+input: none
+# One selected path per line; folders get a note instead of a checksum.
+command: |
+  if [ -z "$TING_CONTEXT_FINDER_SELECTION" ]; then
+    echo "Nothing is selected in Finder."
+    exit 0
+  fi
+  printf '%s\n' "$TING_CONTEXT_FINDER_SELECTION" | while IFS= read -r file; do
+    if [ -f "$file" ]; then shasum -a 256 "$file"; else echo "not a file: $file"; fi
+  done
+output:
+  to: [panel]
+  as: console
+```
+
+### Copy page link: `copy-page-link.yaml`
+
+The browser tab as a Markdown link on the clipboard; an error without a tab.
+
+```yaml
+format: ting.microapp/2
+name: Copy page link
+description: Copy the front browser tab as a Markdown link.
+
+context: [browser]
+input: none
+command: |
+  if [ -z "$TING_CONTEXT_BROWSER_URL" ]; then
+    echo "No browser tab is open." >&2
+    exit 1
+  fi
+  printf '[%s](%s)' "${TING_CONTEXT_BROWSER_TITLE:-$TING_CONTEXT_BROWSER_URL}" "$TING_CONTEXT_BROWSER_URL"
+output:
+  to: [clipboard]
+```
+
+### Sort selected lines: `sort-selection.yaml`
+
+The selected text as the `stdin` of a step; `output.to: [app]` pastes the
+sorted lines in place of the selection.
+
+```yaml
+format: ting.microapp/2
+name: Sort selected lines
+description: Sort the lines of the selected text and put them in place of the selection.
+tools: [sort]
+
+context: [selection]
+input: none
+steps:
+  # The selected text is the input of the step; UTF-8 sorts non-Latin letters too.
+  - command: LC_ALL=en_US.UTF-8 sort
+    stdin: ${context.selection.text}
+output:
+  to: [app]
+```
+
+### Search in a new tab: `new-tab-search.yaml`
+
+`keys` and `paste` steps: a new tab, the clipboard text, Return.
+
+```yaml
+format: ting.microapp/2
+name: Search in a new tab
+description: Open a new tab in the front browser and search there for the clipboard text.
+
+input: clipboard
+steps:
+  # The key presses and the text go to the app that was in front, here a browser.
+  - keys: cmd+t
+  - paste: ${input|trim}
+  - keys: return
 ```
 
 ### Translate library: `libs/translate.yaml`

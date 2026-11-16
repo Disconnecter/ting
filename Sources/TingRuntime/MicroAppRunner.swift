@@ -230,6 +230,9 @@ package struct MicroAppRunner: Sendable {
     package var notify: @Sendable (_ title: String, _ message: String) async throws -> Void = { try await MicroAppNotifier.post(title: $0, message: $1) }
     /// Opens the URL or file of an `open` step (with an app name, or `nil`).
     package var open: (@Sendable (_ target: String, _ app: String?) async throws -> Void)?
+    /// Sends the key presses of a `keys` step and the text of a `paste` step to the app where the
+    /// micro-app started. `nil`: such a step fails, because only Ting can send them.
+    package var keyboard: (@Sendable (MicroAppKeyboardAction) async throws -> Void)?
     /// `true` when `/usr/bin/python3` is a real Python, not the stub that asks for the Command Line Tools.
     package var commandLineToolsInstalled: @Sendable () async -> Bool = { await MicroAppRunner.hasCommandLineTools() }
 
@@ -239,7 +242,7 @@ package struct MicroAppRunner: Sendable {
     /// Runs `app` with parameter values by name and an optional stdin text. `progress` hears which
     /// step runs and, once the last step runs and the result goes to the panel, its output so far.
     /// Cancelling the task stops the running step (and its program) and gives `.cancelled`.
-    package func run(_ app: MicroApp, values: [String: String] = [:], stdin: String? = nil,
+    package func run(_ app: MicroApp, values: [String: String] = [:], stdin: String? = nil, context: MicroAppContext = MicroAppContext(),
              progress: (@Sendable (MicroAppRunProgress) -> Void)? = nil) async -> MicroAppRunResult {
         let path = await self.path()
         let base: [String: String]
@@ -257,6 +260,7 @@ package struct MicroAppRunner: Sendable {
         let limit = timeLimit(for: app)
         var pipeline = MicroAppPipeline(runner: self, app: app, path: path, base: base,
                                         params: MicroAppRunRules.paramValues(app.params, values: values),
+                                        context: context, contextEnvironment: context.environment(for: app.requiredContext),
                                         deadline: Date().addingTimeInterval(limit), limit: limit, progress: progress)
         let result = await pipeline.run(stdin: Data((stdin ?? "").utf8))
         return app.command == nil ? result : Self.commandResult(result, shell: shell)
@@ -301,6 +305,10 @@ struct MicroAppPipeline: Sendable {
     let base: [String: String]
     /// The values of the params by name; inside a step also its own `params`.
     var params: [String: String]
+    /// The context of the start, the same for every step and library.
+    let context: MicroAppContext
+    /// `TING_CONTEXT_…` of every source the micro-app and its libraries read.
+    let contextEnvironment: [String: String]
     let deadline: Date
     let limit: TimeInterval
     let progress: (@Sendable (MicroAppRunProgress) -> Void)?
@@ -308,12 +316,15 @@ struct MicroAppPipeline: Sendable {
     var outputs: [String: String] = [:]
 
     init(runner: MicroAppRunner, app: MicroApp, path: String, base: [String: String], params: [String: String],
+         context: MicroAppContext = MicroAppContext(), contextEnvironment: [String: String] = [:],
          deadline: Date, limit: TimeInterval, progress: (@Sendable (MicroAppRunProgress) -> Void)?) {
         self.runner = runner
         self.app = app
         self.path = path
         self.base = base
         self.params = params
+        self.context = context
+        self.contextEnvironment = contextEnvironment
         self.deadline = deadline
         self.limit = limit
         self.progress = progress
@@ -428,6 +439,8 @@ struct MicroAppPipeline: Sendable {
             return params[name] ?? ""
         case .step(let id):
             return outputs[id] ?? ""
+        case .context(let field):
+            return context[field]
         case .env(let name):
             guard let value = base[name] else {
                 throw MicroAppStepError.failed("error", "`${\(name)}` is not set: add it to the environment of your login shell and reload the micro-apps folder")
@@ -485,6 +498,7 @@ struct MicroAppPipeline: Sendable {
         }
         var nested = MicroAppPipeline(runner: runner, app: inner, path: path, base: base,
                                       params: MicroAppRunRules.paramValues(library.params, values: arguments),
+                                      context: context, contextEnvironment: contextEnvironment,
                                       deadline: Date().addingTimeInterval(budget.seconds), limit: budget.seconds, progress: mapped)
         let result = await nested.run(stdin: stepInput)
         switch result {
@@ -562,6 +576,15 @@ struct MicroAppPipeline: Sendable {
         case .call:
             // `runStep` runs a call before it gets here.
             break
+        case .keys(let keys):
+            try await withDeadline(budget) { try await deliver(.keys(keys)) }
+            output.write(stepInput)
+        case .paste(let template):
+            let text = try render(template, input: stepInput)
+            if !text.isEmpty {
+                try await withDeadline(budget) { try await deliver(.paste(text, keepOnClipboard: false)) }
+            }
+            output.write(stepInput)
         case .ai(let aiStep):
             let request: MicroAppHTTPRequest
             do {
@@ -573,10 +596,26 @@ struct MicroAppPipeline: Sendable {
         }
     }
 
+    /// Sends a `keys` or `paste` step through the runner's keyboard.
+    private func deliver(_ action: MicroAppKeyboardAction) async throws {
+        guard let keyboard = runner.keyboard else {
+            throw MicroAppStepError.failed("not sent", "only Ting sends key presses and pasted text to an app")
+        }
+        do {
+            try await keyboard(action)
+        } catch let error as MicroAppStepError {
+            throw error
+        } catch is CancellationError {
+            throw MicroAppStepError(reason: .cancelled)
+        } catch {
+            throw MicroAppStepError.failed("not sent", error.localizedDescription)
+        }
+    }
+
     private func runProgram(_ step: MicroAppStep, executable: String, arguments: [String], code: String, input: Data,
                             source: MicroAppByteChannel?, output: MicroAppByteChannel,
                             budget: (seconds: TimeInterval, total: Bool)) async throws {
-        var extra: [String: String] = [:]
+        var extra = contextEnvironment
         // Only the step outputs the code reads: a large output in every variable could stop the start.
         for (id, value) in outputs {
             let name = MicroAppStep.environmentName(forStep: id)

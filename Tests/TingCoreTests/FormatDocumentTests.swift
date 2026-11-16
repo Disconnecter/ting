@@ -80,8 +80,9 @@ private func refusedBlocks(of markdown: String, examples: [(name: String, text: 
 
     @Test func holdsEveryExampleWordForWord() throws {
         let examples = try examples()
-        #expect(examples.map(\.name) == ["ask-claude.yaml", "change-case.yaml", "count-text.yaml", "dns-lookup.yaml",
-                                         "encode-decode.yaml", "format-json.yaml", "libs/translate.yaml", "search-web.yaml",
+        #expect(examples.map(\.name) == ["app-info.yaml", "ask-claude.yaml", "change-case.yaml", "copy-page-link.yaml", "count-text.yaml",
+                                         "dns-lookup.yaml", "encode-decode.yaml", "finder-checksum.yaml", "format-json.yaml",
+                                         "libs/translate.yaml", "new-tab-search.yaml", "search-web.yaml", "sort-selection.yaml",
                                          "translate-ukrainian.yaml", "translate.yaml", "wiki-summary.yaml"])
         let text = try document()
         let blocks = yamlBlocks(of: text)

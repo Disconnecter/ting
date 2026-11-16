@@ -43,10 +43,11 @@ output:
 """
 
 @Suite struct MicroAppExampleTests {
-    static let names = ["ask-claude.yaml", "change-case.yaml", "count-text.yaml", "dns-lookup.yaml", "encode-decode.yaml",
-                        "format-json.yaml", "search-web.yaml", "translate-ukrainian.yaml", "translate.yaml", "wiki-summary.yaml"]
+    static let names = ["app-info.yaml", "ask-claude.yaml", "change-case.yaml", "copy-page-link.yaml", "count-text.yaml",
+                        "dns-lookup.yaml", "encode-decode.yaml", "finder-checksum.yaml", "format-json.yaml", "new-tab-search.yaml",
+                        "search-web.yaml", "sort-selection.yaml", "translate-ukrainian.yaml", "translate.yaml", "wiki-summary.yaml"]
 
-    @Test func examplesFolderHasExactlyTheTen() throws {
+    @Test func examplesFolderHasExactlyTheFifteen() throws {
         #expect(exampleLibraries.sources.keys.sorted() == ["translate"])
         let files = try FileManager.default.contentsOfDirectory(atPath: examplesDirectory.path)
             .filter { $0.hasSuffix(".yaml") }.sorted()

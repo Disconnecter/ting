@@ -140,6 +140,18 @@ private struct ApprovalBody: View {
                         Text(app.tools.joined(separator: ", ")).font(.system(size: 12, design: .monospaced))
                     }
                 }
+                if !app.requiredContext.isEmpty {
+                    GridRow {
+                        MonoLabel("reads", size: 9, weight: .regular).foregroundStyle(Color.tingMuted)
+                        Text(app.requiredContext.map(\.summary).joined(separator: ", ")).font(.system(size: 12))
+                    }
+                }
+                if app.sendsInput {
+                    GridRow {
+                        MonoLabel("sends", size: 9, weight: .regular).foregroundStyle(Color.tingMuted)
+                        Text("key presses and text to the app in front").font(.system(size: 12))
+                    }
+                }
             }
             MonoLabel(app.command == nil ? "file" : "command", size: 9, weight: .regular).foregroundStyle(Color.tingMuted).padding(.top, 4)
             SelectableText(text: app.approvalText, monospaced: true, takesFocus: false)
