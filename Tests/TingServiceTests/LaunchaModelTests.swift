@@ -311,7 +311,7 @@ final class LaunchaModelTests: XCTestCase {
         ])
         let folder = root.appendingPathComponent("micro")
         model.setMicroApps(catalog.launchaCandidates(bindings: []), folder: folder)
-        var started: [String] = []
+        var started: [LaunchaMicroStart] = []
         model.onStartMicro = { started.append($0) }
         var willOpen = 0
         model.onWillOpen = { willOpen += 1 }
@@ -334,7 +334,7 @@ final class LaunchaModelTests: XCTestCase {
 
         var outcome = await model.activateSelection()
         XCTAssertEqual(outcome, .opened)
-        XCTAssertEqual(started, ["format-json"])
+        XCTAssertEqual(started, [.id("format-json")])
         XCTAssertFalse(model.isOpen)
         XCTAssertEqual(willOpen, 0, "the micro-app flow is not an app open")
         XCTAssertTrue(fixture.opener.opened.isEmpty)
@@ -347,7 +347,7 @@ final class LaunchaModelTests: XCTestCase {
         try await wait("broken row") { model.rows.count == 1 }
         outcome = await model.activateSelection()
         XCTAssertEqual(outcome, .failed)
-        XCTAssertEqual(started, ["format-json", "broken-json"])
+        XCTAssertEqual(started, [.id("format-json"), .file("broken-json.yaml")])
 
         // ⌘↩ shows the file in Finder and starts nothing.
         model.open()

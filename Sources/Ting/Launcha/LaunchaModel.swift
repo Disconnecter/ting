@@ -12,7 +12,7 @@ struct LaunchaRow: Identifiable, Equatable {
         case app(candidateID: String)
         case file
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
-        case micro(candidateID: String, microID: String, isWorking: Bool)
+        case micro(candidateID: String, start: LaunchaMicroStart, isWorking: Bool)
     }
 
     var id: String
@@ -84,8 +84,8 @@ final class LaunchaModel {
     @ObservationIgnored var onRequestClose: (() -> Void)?
     /// Called just before an app or file opens (not for a reveal in Finder).
     @ObservationIgnored var onWillOpen: (() -> Void)?
-    /// Starts the micro-app flow for a micro-app id, after the panel closed.
-    @ObservationIgnored var onStartMicro: ((String) -> Void)?
+    /// Starts the micro-app flow for a micro-app or a broken file, after the panel closed.
+    @ObservationIgnored var onStartMicro: ((LaunchaMicroStart) -> Void)?
 
     @ObservationIgnored private let makeServices: ServiceFactory
     @ObservationIgnored private var services: Services
@@ -198,9 +198,9 @@ final class LaunchaModel {
         onRequestClose?()
         close()
         if reveal { return opener.reveal(row.url) }
-        if case .micro(let candidateID, let microID, let isWorking) = row.kind {
-            // The same flow as a binding: approval, parameters, result. A broken file shows its error.
-            onStartMicro?(microID)
+        if case .micro(let candidateID, let start, let isWorking) = row.kind {
+            // The same flow as a binding: approval, parameters, result. A broken file shows its own errors.
+            onStartMicro?(start)
             guard isWorking else { return .failed }
             await record(.opened, id: candidateID)
             return .opened
@@ -332,7 +332,7 @@ final class LaunchaModel {
         let appRows = matches.compactMap { match -> LaunchaRow? in
             if let micro = microByID[match.candidate.id] {
                 return LaunchaRow(id: micro.id,
-                                  kind: .micro(candidateID: micro.id, microID: micro.microID, isWorking: micro.isWorking),
+                                  kind: .micro(candidateID: micro.id, start: micro.start, isWorking: micro.isWorking),
                                   name: match.candidate.name, url: folder.appendingPathComponent(micro.file),
                                   detail: micro.problem.map { "Not working: \($0)" } ?? micro.description)
             }

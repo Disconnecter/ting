@@ -83,7 +83,8 @@ part of an app or micro-app name and press `Return`.
   is the binding label, else the micro-app's `name`, else the id. `Return` starts
   the same flow as its binding: approval, parameters, result; `⌘Return` shows
   its file in Finder. A broken file is listed as not working with its first
-  error, and starting it shows the error.
+  error (by its `name` when that key is valid, and left out when it has a valid
+  `hidden: true`), and starting it shows the errors of that file.
 - **Files:** only when no app or micro-app matches, launcha asks Spotlight for files in your
   home folder (not `~/Library`, hidden folders or app bundles) and opens a file
   with its usual app.

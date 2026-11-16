@@ -133,12 +133,26 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     func start(id: String) {
         close()
         approvals.load()
-        switch MicroAppStartStep.first(id: id, catalog: catalog, approvals: approvals.approvals, folder: folderDisplay()) {
+        begin(MicroAppStartStep.first(id: id, catalog: catalog, approvals: approvals.approvals, folder: folderDisplay()),
+              title: id)
+    }
+
+    /// Starts the file `file` of the folder, as launcha starts a broken file: shows that file's
+    /// own errors, or goes through the normal start when the file works by now.
+    func start(file: String) {
+        close()
+        approvals.load()
+        begin(MicroAppStartStep.first(file: file, catalog: catalog, approvals: approvals.approvals, folder: folderDisplay()),
+              title: file)
+    }
+
+    private func begin(_ step: MicroAppStartStep, title: String) {
+        switch step {
         case .error(let message):
-            present(MicroAppResultPlan.error(title: id, message: message))
+            present(MicroAppResultPlan.error(title: title, message: message))
         case .approve(let app, let hash):
             pendingHash = hash
-            let file = catalog.resolve(id).entryFile ?? "\(app.id).yaml"
+            let file = catalog.resolve(app.id).entryFile ?? "\(app.id).yaml"
             show(.approval(app, file: (folderDisplay() as NSString).appendingPathComponent(file)))
         case .run(let app):
             askParameters(app)

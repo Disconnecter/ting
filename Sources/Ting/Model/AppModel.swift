@@ -106,7 +106,12 @@ final class AppModel {
         leader.onRun = { [weak self] item in self?.run(item) }
         leader.onDoubleTap = { [weak self] in self?.launcha.open() }
         launchaModel.onWillOpen = { [weak self] in self?.playSound() }
-        launchaModel.onStartMicro = { [weak self] id in self?.microFlow.start(id: id) }
+        launchaModel.onStartMicro = { [weak self] start in
+            switch start {
+            case .id(let id): self?.microFlow.start(id: id)
+            case .file(let file): self?.microFlow.start(file: file)
+            }
+        }
         runner.onError = { [weak self] message in self?.toast.show(message) }
         microFlow.onToast = { [weak self] message in self?.toast.show(message) }
         microFlow.folderDisplay = { [weak self] in self?.microStore.displayPath ?? "the micro-apps folder" }

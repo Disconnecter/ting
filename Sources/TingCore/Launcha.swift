@@ -64,11 +64,18 @@ public struct LaunchaCandidate: Hashable, Sendable, Identifiable {
 
 // MARK: - Micro-app candidates
 
+/// What a launcha start of a micro-app candidate hands to the micro-app flow.
+public enum LaunchaMicroStart: Hashable, Sendable {
+    /// A working micro-app: the same start as a binding to this id.
+    case id(String)
+    /// A broken file: show this file's own errors (or start it, if it works by now).
+    case file(String)
+}
+
 /// A micro-app as launcha lists it: the searchable candidate and what the row shows.
 public struct LaunchaMicroCandidate: Equatable, Sendable, Identifiable {
     public var candidate: LaunchaCandidate
-    /// The id a start passes to the micro-app flow.
-    public var microID: String
+    public var start: LaunchaMicroStart
     /// The file name in the micro-apps folder, such as `dns-lookup.yaml`.
     public var file: String
     /// The `description` of a working micro-app; empty for a broken file.
@@ -76,9 +83,9 @@ public struct LaunchaMicroCandidate: Equatable, Sendable, Identifiable {
     /// Why a broken file does not work, in one line; `nil` for a working micro-app.
     public var problem: String?
 
-    public init(candidate: LaunchaCandidate, microID: String, file: String, description: String, problem: String?) {
+    public init(candidate: LaunchaCandidate, start: LaunchaMicroStart, file: String, description: String, problem: String?) {
         self.candidate = candidate
-        self.microID = microID
+        self.start = start
         self.file = file
         self.description = description
         self.problem = problem
@@ -88,13 +95,22 @@ public struct LaunchaMicroCandidate: Equatable, Sendable, Identifiable {
     public var isWorking: Bool { problem == nil }
 }
 
+extension LaunchaCandidate {
+    /// Candidate of a broken micro-app file. Identity is "micro-file:" + the file name, so it
+    /// never collides with a working micro-app or another broken file that claims the same id.
+    public static func brokenMicroFile(_ file: String, name: String) -> LaunchaCandidate {
+        LaunchaCandidate(id: "micro-file:" + file, name: name, target: .micro(file))
+    }
+}
+
 extension MicroAppCatalog {
-    /// The micro-apps launcha lists, in file-name order: every working micro-app except those
-    /// with `hidden: true`, and every broken file (it cannot say it is hidden), as not working.
+    /// The micro-apps launcha lists, in file-name order: every file of the folder except those
+    /// with `hidden: true`. A working micro-app starts by its id; a broken file is listed as not
+    /// working and starts by its file name, so its own errors are shown, also when its `id`
+    /// collides with another file. A broken file counts as hidden when its `hidden` key could be read.
     /// Bindings do not matter for the list. The name is the label of the first `micro` binding
-    /// to the id that has a label (depth-first), else the micro-app's `name`, else the id.
-    /// A broken file uses the id a binding finds it by (its kept `id`, else the file name
-    /// without `.yaml`); it is left out when a working micro-app or an earlier file owns that id.
+    /// (depth-first) with a label that finds this file, else the `name` key (also of a broken
+    /// file, when it could be read), else the id.
     public func launchaCandidates(bindings items: [Item]) -> [LaunchaMicroCandidate] {
         var labels: [String: String] = [:]
         for binding in BindingTree.flatten(items) {
@@ -102,24 +118,31 @@ extension MicroAppCatalog {
                 labels[id] = binding.item.label
             }
         }
-        let owned = Set(apps.map(\.id))
-        var seen: Set<String> = []
-        var result: [LaunchaMicroCandidate] = []
-        for entry in entries {
-            if let app = entry.app {
-                guard !app.hidden, seen.insert(app.id).inserted else { continue }
-                let name = bindingName(label: labels[app.id] ?? "", id: app.id)
-                result.append(LaunchaMicroCandidate(candidate: .micro(id: app.id, name: name), microID: app.id,
-                                                    file: entry.file, description: app.description, problem: nil))
-            } else {
-                let id = entry.explicitID ?? entry.fileID
-                guard !owned.contains(id), seen.insert(id).inserted else { continue }
-                let problem = entry.issues.first.map { "line \($0.line): \($0.message)" } ?? "the file has errors"
-                result.append(LaunchaMicroCandidate(candidate: .micro(id: id, name: labels[id] ?? id), microID: id,
-                                                    file: entry.file, description: "", problem: problem))
+        /// The label of a binding whose id finds `entry`.
+        func label(for entry: MicroAppEntry) -> String? {
+            let ids = [entry.bindingID, entry.explicitID, entry.fileID].compactMap { $0 }
+            for id in ids {
+                guard let label = labels[id] else { continue }
+                switch resolve(id) {
+                case .working(_, let found), .broken(let found): if found.file == entry.file { return label }
+                case .missing: continue
+                }
             }
+            return nil
         }
-        return result
+        return entries.compactMap { entry in
+            guard !entry.isHidden else { return nil }
+            let id = entry.bindingID
+            if let app = entry.app {
+                let name = label(for: entry) ?? app.shownName
+                return LaunchaMicroCandidate(candidate: .micro(id: app.id, name: name), start: .id(app.id),
+                                             file: entry.file, description: app.description, problem: nil)
+            }
+            let name = label(for: entry) ?? entry.brokenName ?? id
+            let problem = entry.issues.first.map { "line \($0.line): \($0.message)" } ?? "the file has errors"
+            return LaunchaMicroCandidate(candidate: .brokenMicroFile(entry.file, name: name), start: .file(entry.file),
+                                         file: entry.file, description: "", problem: problem)
+        }
     }
 }
 

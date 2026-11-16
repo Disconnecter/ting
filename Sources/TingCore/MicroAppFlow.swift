@@ -199,4 +199,17 @@ public enum MicroAppStartStep: Equatable, Sendable {
         }
         return approvals.isApproved(id: app.id, hash: entry.contentHash) ? .run(app) : .approve(app, hash: entry.contentHash)
     }
+
+    /// The first step of a start of the file `file` of the folder, as launcha starts a broken
+    /// file: its own errors, or the normal start when the file works by now.
+    public static func first(file: String, catalog: MicroAppCatalog, approvals: MicroAppApprovals, folder: String) -> MicroAppStartStep {
+        switch catalog.resolve(file: file) {
+        case .working(let app, _):
+            return first(id: app.id, catalog: catalog, approvals: approvals, folder: folder)
+        case .broken(let entry):
+            return .error(MicroAppResolution.broken(entry).problem(id: entry.bindingID, folder: folder) ?? "Micro-app \(file) has errors")
+        case .missing:
+            return .error("Micro-app file `\(file)` not found in \(folder)")
+        }
+    }
 }
