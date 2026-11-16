@@ -1,3 +1,4 @@
+@testable import TingRuntime
 import AppKit
 import XCTest
 import TingCore
@@ -75,7 +76,7 @@ final class MicroAppFlowTests: XCTestCase {
         try approvals.approve(id: app.id, hash: hash)
         let result = await runner().run(app, stdin: #"{"b":1,"a":[1,2]}"#)
         let plan = MicroAppResultPlan.make(app: app, result: result)
-        XCTAssertEqual(plan.clipboard, "{\n  \"a\" : [\n    1,\n    2\n  ],\n  \"b\" : 1\n}")
+        XCTAssertEqual(plan.clipboard, "{\n  \"a\": [\n    1,\n    2\n  ],\n  \"b\": 1\n}")
         guard case .panel(let content) = plan.show else { return XCTFail("expected the result panel") }
         XCTAssertEqual(content.notes, ["Copied"])
         XCTAssertEqual(content.style, .code)

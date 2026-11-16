@@ -5,6 +5,12 @@ import Darwin
 import Foundation
 import TingCore
 
+/// Bytes that reach a program's stdin while it runs, such as the output of the step before it.
+protocol ChildProcessStdinSource: AnyObject, Sendable {
+    /// The bytes that came since the last call, and `true` once no more will come. Never blocks.
+    func takeAvailable() -> (data: Data, finished: Bool)
+}
+
 struct ChildProcessRequest: Sendable {
     var executable: String
     /// Without the program name; `executable` becomes `argv[0]`.
@@ -14,6 +20,10 @@ struct ChildProcessRequest: Sendable {
     var stdin: Data = Data()
     var timeLimit: TimeInterval
     var outputLimit: Int = MicroAppRunRules.outputLimit
+    /// More stdin after `stdin`, while it comes; `nil` closes stdin after `stdin`.
+    var stdinSource: ChildProcessStdinSource?
+    /// Each stdout chunk as it comes, also past the limit.
+    var onStdout: (@Sendable (Data) -> Void)?
 }
 
 struct ChildProcessOutcome: Sendable {
@@ -100,8 +110,9 @@ enum ChildProcess {
         var outcome = ChildProcessOutcome(end: .exited(0))
         var stdinFD: Int32 = inPipe[1], stdoutFD: Int32 = outPipe[0], stderrFD: Int32 = errPipe[0]
         var stdinOffset = 0
-        let stdinBytes = [UInt8](request.stdin)
-        if stdinBytes.isEmpty { close(stdinFD); stdinFD = -1 }
+        var stdinBytes = [UInt8](request.stdin)
+        var stdinFinished = request.stdinSource == nil
+        if stdinBytes.isEmpty && stdinFinished { close(stdinFD); stdinFD = -1 }
 
         let deadline = Date().addingTimeInterval(request.timeLimit)
         var stopReason: ChildProcessOutcome.End?
@@ -110,12 +121,14 @@ enum ChildProcess {
         var drainUntil: Date?
         var buffer = [UInt8](repeating: 0, count: 65_536)
 
-        func readAvailable(_ fd: inout Int32, into data: inout Data, cut: inout Bool) {
+        func readAvailable(_ fd: inout Int32, into data: inout Data, cut: inout Bool, onChunk: (@Sendable (Data) -> Void)? = nil) {
             while fd >= 0 {
                 let n = read(fd, &buffer, buffer.count)
                 if n > 0 {
+                    let chunk = Data(buffer[0..<n])
+                    onChunk?(chunk)
                     // Past the limit the bytes are read and dropped, so the program is never blocked.
-                    if MicroAppRunRules.append(Data(buffer[0..<n]), to: &data, limit: request.outputLimit) { cut = true }
+                    if MicroAppRunRules.append(chunk, to: &data, limit: request.outputLimit) { cut = true }
                 } else if n == 0 || (errno != EAGAIN && errno != EINTR) {
                     close(fd); fd = -1
                 } else {
@@ -158,24 +171,38 @@ enum ChildProcess {
                 }
             }
 
+            // More stdin from the source, while the program reads it.
+            if !stdinFinished, let source = request.stdinSource {
+                let (more, finished) = source.takeAvailable()
+                if stdinFD >= 0 {
+                    if stdinOffset > 0 && stdinOffset == stdinBytes.count { stdinBytes = []; stdinOffset = 0 }
+                    stdinBytes.append(contentsOf: more)
+                }
+                stdinFinished = finished
+            }
+
             var fds: [pollfd] = []
             if stdoutFD >= 0 { fds.append(pollfd(fd: stdoutFD, events: Int16(POLLIN), revents: 0)) }
             if stderrFD >= 0 { fds.append(pollfd(fd: stderrFD, events: Int16(POLLIN), revents: 0)) }
-            if stdinFD >= 0 { fds.append(pollfd(fd: stdinFD, events: Int16(POLLOUT), revents: 0)) }
+            if stdinFD >= 0 && stdinOffset < stdinBytes.count { fds.append(pollfd(fd: stdinFD, events: Int16(POLLOUT), revents: 0)) }
             _ = poll(&fds, nfds_t(fds.count), tick)
 
-            readAvailable(&stdoutFD, into: &outcome.stdout, cut: &outcome.stdoutCut)
+            readAvailable(&stdoutFD, into: &outcome.stdout, cut: &outcome.stdoutCut, onChunk: request.onStdout)
             readAvailable(&stderrFD, into: &outcome.stderr, cut: &outcome.stderrCut)
 
             if stdinFD >= 0 {
                 if exitCode != nil {
                     close(stdinFD); stdinFD = -1
                 } else {
-                    let n = stdinBytes.withUnsafeBufferPointer { p in
-                        write(stdinFD, p.baseAddress! + stdinOffset, p.count - stdinOffset)
+                    var failed = false
+                    if stdinOffset < stdinBytes.count {
+                        let n = stdinBytes.withUnsafeBufferPointer { p in
+                            write(stdinFD, p.baseAddress! + stdinOffset, p.count - stdinOffset)
+                        }
+                        if n > 0 { stdinOffset += n }
+                        failed = n < 0 && errno != EAGAIN && errno != EINTR
                     }
-                    if n > 0 { stdinOffset += n }
-                    if stdinOffset >= stdinBytes.count || (n < 0 && errno != EAGAIN && errno != EINTR) {
+                    if failed || (stdinOffset >= stdinBytes.count && stdinFinished) {
                         close(stdinFD); stdinFD = -1
                     }
                 }

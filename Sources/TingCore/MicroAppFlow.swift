@@ -20,6 +20,16 @@ public struct MicroAppApprovals: Equatable, Sendable, Codable {
         SHA256.hash(data: content).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// The approval hash of a micro-app file with the libraries it uses: any change of the file or
+    /// of one of the libraries gives another hash.
+    public static func hash(_ fileHash: String, libraries: [MicroAppLibrarySource]) -> String {
+        var text = fileHash
+        for library in libraries.sorted(by: { $0.name < $1.name }) {
+            text += "\n" + library.name + "\n" + hash(Data(library.text.utf8))
+        }
+        return hash(Data(text.utf8))
+    }
+
     /// `true` only when `id` was approved with exactly this content hash. Any change of the file,
     /// even a comment or a space, asks again. An empty hash (an unread file) is never approved.
     public func isApproved(id: String, hash: String) -> Bool {
@@ -142,12 +152,12 @@ public struct MicroAppResultPlan: Equatable, Sendable {
         func cut(_ output: MicroAppRunOutput) -> [String] {
             output.stdoutCut || output.stderrCut ? [cutNote(limit: outputLimit)] : []
         }
-        func errorPanel(_ output: MicroAppRunOutput, note: String) -> MicroAppResultPlan {
+        func errorPanel(_ output: MicroAppRunOutput, note: String, step: String? = nil) -> MicroAppResultPlan {
             let text = [output.stderr, output.stdout]
                 .map { MicroAppRunRules.removingEndNewlines($0) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
-            let notes = [note] + cut(output) + (text.isEmpty ? [noOutputNote] : [])
+            let notes = [step, note].compactMap { $0 } + cut(output) + (text.isEmpty ? [noOutputNote] : [])
             return MicroAppResultPlan(show: .panel(MicroAppPanelContent(title: title, text: text, style: .console,
                                                                         isError: true, notes: notes)))
         }
@@ -160,7 +170,11 @@ public struct MicroAppResultPlan: Equatable, Sendable {
             return errorPanel(output, note: "exit \(code)")
         case .timeout(let output):
             return errorPanel(output, note: timeoutNote(seconds: timeLimit))
+        case .stepFailed(let failure):
+            return errorPanel(failure.output, note: failure.note, step: failure.count > 1 ? failure.stepNote : nil)
         case .success(let output):
+            // A micro-app without `output`: nothing is shown or copied.
+            if app.output.targets.isEmpty { return MicroAppResultPlan(show: .nothing) }
             let toPanel = app.output.targets.contains(.panel)
             let toClipboard = app.output.targets.contains(.clipboard)
             let text = output.stdout

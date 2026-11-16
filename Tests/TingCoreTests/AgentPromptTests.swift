@@ -36,16 +36,20 @@ import Testing
 
     @Test func withTheBundledDocumentThePartsComeInOrder() throws {
         let text = AgentPrompt.text(formatDocument: document, link: link, microAppsFolder: folder, executable: executable)
+        let micro = (executable as NSString).deletingLastPathComponent + "/ting-micro"
         let parts = [
-            "format document at `\(document)`",
-            "use \(link) instead",
+            "guide `\(AgentPrompt.guide(forFormat: document))`",
+            "use \(AgentPrompt.guideLink(forFormatLink: link)) instead",
+            "format document `\(document)`",
             "one file named `<id>.yaml`",
             "temporary folder",
-            "`'\(executable)' --check <file>`",
+            "`'\(micro)' check --libs '\(folder)/libs' <file>`",
             "no problem",
             "micro-apps folder `\(folder)`",
             "mv <file> '\(folder)'/",
-            "Do not change config.json",
+            "Change config.json only for the bindings and settings I ask for",
+            "`'\(micro)' check-config`",
+            "Never put API keys into files",
         ]
         var position = text.startIndex
         for part in parts {
@@ -57,19 +61,20 @@ import Testing
         let linkAt = try #require(text.range(of: link)).lowerBound
         #expect(documentAt < linkAt)
         // The last line is open for the person's task.
-        #expect(lines(text).last == "The micro-app I want: ")
+        #expect(lines(text).last == "My task: ")
         #expect(!text.hasSuffix("\n"))
+        #expect(AgentPrompt.guideLink(forFormatLink: link) == "https://raw.githubusercontent.com/bobuk-io/ting/v0.4.0/docs/CONFIGURING.md")
     }
 
     @Test func withoutTheBundledDocumentOnlyTheLinkIsNamed() {
         let text = AgentPrompt.text(formatDocument: nil, link: link, microAppsFolder: folder, executable: executable)
-        #expect(text.contains("format document at \(link)."))
+        #expect(text.contains("format document \(link)."))
+        #expect(text.contains("guide \(AgentPrompt.guideLink(forFormatLink: link)) and follow it"))
         #expect(!text.contains("FORMAT.md`"))
         #expect(!text.contains("Resources"))
         #expect(!text.contains("cannot be read"))
-        #expect(text.contains("'\(executable)' --check <file>"))
-        #expect(text.contains("Do not change config.json"))
-        #expect(lines(text).last == "The micro-app I want: ")
+        #expect(text.contains("check-config"))
+        #expect(lines(text).last == "My task: ")
     }
 
     @Test func pathsWithSpacesAreQuotedInCommands() {
@@ -79,7 +84,7 @@ import Testing
         let text = AgentPrompt.text(formatDocument: spacedDocument, link: link,
                                     microAppsFolder: spacedFolder, executable: spaced)
         #expect(text.contains("`\(spacedDocument)`"))
-        #expect(text.contains("`'\(spaced)' --check <file>`"))
+        #expect(text.contains("`'/Users/some one/Apps/My Ting.app/Contents/MacOS/ting-micro' check --libs '\(spacedFolder)/libs' <file>`"))
         #expect(text.contains("`mkdir -p '\(spacedFolder)' && mv <file> '\(spacedFolder)'/`"))
     }
 

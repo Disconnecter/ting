@@ -39,6 +39,9 @@ final class MicroAppStore {
         return configURL.deletingLastPathComponent().appendingPathComponent("micro", isDirectory: true)
     }
 
+    /// `libs/` inside the micro-apps folder: the library files.
+    var librariesURL: URL { folderURL.appendingPathComponent(MicroAppLibraries.folderName, isDirectory: true) }
+
     var displayPath: String { Self.display(folderURL) }
     var logDisplayPath: String { Self.display(logURL) }
 
@@ -51,7 +54,9 @@ final class MicroAppStore {
     @discardableResult
     func load() -> MicroAppCatalog {
         onLoad?()
-        catalog = MicroAppCatalog.build(hashed: readFiles())
+        let libraries = MicroAppLibraries.read(folder: librariesURL)
+        catalog = MicroAppCatalog.build(hashed: readFiles(libraries: libraries))
+        catalog.libraryIssues = MicroAppCatalog.checkLibraries(libraries)
         writeLog()
         return catalog
     }
@@ -72,7 +77,7 @@ final class MicroAppStore {
 
     // MARK: Private
 
-    private func readFiles() -> [(file: String, result: Result<MicroApp, MicroAppFailure>, hash: String)] {
+    private func readFiles(libraries: MicroAppLibraries) -> [(file: String, result: Result<MicroApp, MicroAppFailure>, hash: String)] {
         let manager = FileManager.default
         guard let names = try? manager.contentsOfDirectory(atPath: folderURL.path) else { return [] }
         return names.filter(Self.isMicroAppFile).compactMap { name in
@@ -89,7 +94,7 @@ final class MicroAppStore {
                 // The hash is of exactly the bytes that were checked, so an approval covers what runs.
                 let hash = MicroAppApprovals.hash(data)
                 guard let text = String(data: data, encoding: .utf8) else { return failure(MicroAppChecker.notUTF8Message, hash: hash) }
-                return (name, MicroAppChecker.check(text, fileName: name), hash)
+                return (name, MicroAppChecker.check(text, fileName: name, libraries: libraries), hash)
             } catch {
                 return failure("cannot read the file: \(error.localizedDescription)")
             }
@@ -121,6 +126,11 @@ final class MicroAppStore {
         // Each file, for in-place saves that do not touch the folder.
         if let names = try? FileManager.default.contentsOfDirectory(atPath: folderURL.path) {
             paths += names.filter(Self.isMicroAppFile).map { folderURL.appendingPathComponent($0).path }
+        }
+        // The libraries folder and its files: a change of a library changes the micro-apps that use it.
+        paths.append(librariesURL.path)
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: librariesURL.path) {
+            paths += names.filter(Self.isMicroAppFile).map { librariesURL.appendingPathComponent($0).path }
         }
         sources = paths.compactMap(makeSource)
     }

@@ -1,3 +1,4 @@
+@testable import TingRuntime
 import Darwin
 import XCTest
 import TingCore

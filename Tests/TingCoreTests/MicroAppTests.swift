@@ -12,8 +12,11 @@ private func loadExample(_ name: String) throws -> String {
     try String(contentsOf: examplesDirectory.appendingPathComponent(name), encoding: .utf8)
 }
 
+/// The libraries of the examples, `docs/micro-apps/examples/libs/`.
+private let exampleLibraries = MicroAppLibraries.read(folder: examplesDirectory.appendingPathComponent("libs"))
+
 private func check(_ text: String, file: String = "sample.yaml") -> Result<MicroApp, MicroAppFailure> {
-    MicroAppChecker.check(text, fileName: file)
+    MicroAppChecker.check(text, fileName: file, libraries: exampleLibraries)
 }
 
 private func app(_ text: String, file: String = "sample.yaml") throws -> MicroApp {
@@ -40,9 +43,11 @@ output:
 """
 
 @Suite struct MicroAppExampleTests {
-    static let names = ["change-case.yaml", "count-text.yaml", "dns-lookup.yaml", "encode-decode.yaml", "format-json.yaml"]
+    static let names = ["ask-claude.yaml", "change-case.yaml", "count-text.yaml", "dns-lookup.yaml", "encode-decode.yaml",
+                        "format-json.yaml", "search-web.yaml", "translate-ukrainian.yaml", "translate.yaml", "wiki-summary.yaml"]
 
-    @Test func examplesFolderHasExactlyTheFive() throws {
+    @Test func examplesFolderHasExactlyTheTen() throws {
+        #expect(exampleLibraries.sources.keys.sorted() == ["translate"])
         let files = try FileManager.default.contentsOfDirectory(atPath: examplesDirectory.path)
             .filter { $0.hasSuffix(".yaml") }.sorted()
         #expect(files == Self.names)
@@ -53,7 +58,9 @@ output:
         if case .failure(let f) = result { Issue.record("\(f)") }
         let app = try result.get()
         #expect(app.id == String(name.dropLast(5)))
-        #expect(!app.command.isEmpty)
+        #expect(!app.steps.isEmpty)
+        // No example needs Perl any more.
+        #expect(!(try loadExample(name)).contains("perl"))
     }
 
     @Test func dnsLookupModel() throws {
@@ -74,21 +81,27 @@ output:
     @Test func countTextDefaultsToMarkdown() throws {
         let a = try app(try loadExample("count-text.yaml"), file: "count-text.yaml")
         #expect(a.output.style == .markdown)
-        #expect(a.command.contains(#"printf "| | |\n|---|---:|\n| Words | %d |"#))
-        #expect(a.command.contains("$2, $3, $1"))
+        #expect((a.command ?? "").contains(#"printf "| | |\n|---|---:|\n| Words | %d |"#))
+        #expect((a.command ?? "").contains("$2, $3, $1"))
     }
 
-    @Test func encodeDecodeKeepsShellCode() throws {
+    @Test func encodeDecodeKeepsPythonCode() throws {
         let a = try app(try loadExample("encode-decode.yaml"), file: "encode-decode.yaml")
-        #expect(a.command == #"""
-        case "$TING_MODE" in
-          base64-encode) base64 ;;
-          base64-decode) base64 -D ;;
-          url-encode) perl -0777 -pe 'chomp; s/([^A-Za-z0-9._~-])/sprintf("%%%02X", ord $1)/ge' ;;
-          url-decode) perl -0777 -pe 's/\+/ /g; s/%([0-9A-Fa-f]{2})/chr hex $1/ge' ;;
-        esac
+        #expect(a.command == nil)
+        #expect(a.requiredTools == ["python3"])
+        guard case .python(let code) = a.steps.first?.action else { Issue.record("not a python step"); return }
+        #expect(code.hasPrefix("import base64, os, sys, urllib.parse\n"))
+        #expect(code.contains("    result = urllib.parse.unquote_plus(text)\n"))
+    }
 
-        """#)
+    @Test func wikiSummaryModel() throws {
+        let a = try app(try loadExample("wiki-summary.yaml"), file: "wiki-summary.yaml")
+        #expect(a.steps.map(\.kind) == [.url, .json, .json, .text])
+        #expect(a.steps.map(\.id) == ["page", "extract", nil, nil])
+        #expect(a.steps[2].stdin?.variables == [.step("page")])
+        #expect(a.source == (try loadExample("wiki-summary.yaml")))
+        #expect(a.approvalText == a.source)
+        #expect(a.output == MicroApp.Output(targets: [.panel], style: .markdown))
     }
 }
 
@@ -343,7 +356,7 @@ output:
         #expect(has(found, line: 15, "`{domain}` templates are not allowed"))
         #expect(has(found, line: 15, "`$TING_RECORD_TYPE` is not a declared param"))
         #expect(has(found, line: 15, "`$TING_DOMAN` is not a declared param"))
-        #expect(has(found, line: 16, "unknown key `steps`"))
+        #expect(has(found, line: 16, "either `command` or `steps`, not both"))
         #expect(has(found, line: 19, "`output.to` is `file`"))
         #expect(has(found, line: 20, "`output.as` is `html`"))
         #expect(found.allSatisfy { $0.file == "broken.yaml" })
@@ -356,8 +369,7 @@ output:
         ("description: d\ninput: none\ncommand: x\noutput:\n  to: [panel]\n", 1, "missing required key `format`"),
         ("format: ting.microapp/2\ninput: none\ncommand: x\noutput:\n  to: [panel]\n", 1, "missing required key `description`"),
         ("format: ting.microapp/2\ndescription: d\ncommand: x\noutput:\n  to: [panel]\n", 1, "missing required key `input`"),
-        ("format: ting.microapp/2\ndescription: d\ninput: none\noutput:\n  to: [panel]\n", 1, "missing required key `command`"),
-        ("format: ting.microapp/2\ndescription: d\ninput: none\ncommand: x\n", 1, "missing required key `output`"),
+        ("format: ting.microapp/2\ndescription: d\ninput: none\noutput:\n  to: [panel]\n", 1, "missing required key `steps` (or `command`"),
         ("format: ting.microapp/2\nid: Say_Hi\ndescription: d\ninput: none\ncommand: x\noutput:\n  to: [panel]\n", 2, "kebab-case"),
         ("format: ting.microapp/2\nname:\ndescription: d\ninput: none\ncommand: x\noutput:\n  to: [panel]\n", 2, "`name` must be a text value"),
         ("format: ting.microapp/2\ndescription: |\n  two\n  lines\ninput: none\ncommand: x\noutput:\n  to: [panel]\n", 2, "`description` must be one line"),

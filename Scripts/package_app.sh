@@ -138,10 +138,12 @@ install_binary() {
 }
 
 install_binary "$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
+install_binary "ting-micro" "$APP/Contents/MacOS/ting-micro"
 if [[ "$CONF" == release ]]; then
   # Remove STABS/debug-map object paths before signing. Runtime Swift metadata
   # and symbols required by the executable are preserved.
   xcrun strip -S "$APP/Contents/MacOS/$APP_NAME"
+  xcrun strip -S "$APP/Contents/MacOS/ting-micro"
 fi
 
 # Ship the app's license and notices with every binary distribution.
@@ -151,6 +153,8 @@ done
 
 # The micro-app format document, read by coding agents from the installed app.
 cp "$ROOT/docs/micro-apps/FORMAT.md" "$APP/Contents/Resources/FORMAT.md"
+# The guide for changing Ting with a coding agent.
+cp "$ROOT/docs/CONFIGURING.md" "$APP/Contents/Resources/CONFIGURING.md"
 
 # Bundle app resources (if any).
 APP_RESOURCES_DIR="$ROOT/Sources/$APP_NAME/Resources"
@@ -226,6 +230,9 @@ sign_frameworks() {
   done
 }
 sign_frameworks
+
+# Sign the console helper before sealing the enclosing app (also hardened in releases).
+codesign "${CODESIGN_ARGS[@]}" --identifier io.bobuk.ting.micro "$APP/Contents/MacOS/ting-micro"
 
 codesign "${CODESIGN_ARGS[@]}" \
   --entitlements "$APP_ENTITLEMENTS" \

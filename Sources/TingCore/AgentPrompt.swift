@@ -1,7 +1,8 @@
 import Foundation
 
 /// The agent prompt: a ready English text for a coding agent (Claude Code, Codex, pi, …) that
-/// says how to write one micro-app. The person adds their own task after its last line.
+/// says how to change Ting: micro-apps, libraries and bindings. The person adds their own task
+/// after its last line.
 ///
 /// Pure logic: the menu item, the Settings button and `Ting --agent-prompt` all give these values
 /// and get the same text.
@@ -21,30 +22,46 @@ public enum AgentPrompt {
         "https://raw.githubusercontent.com/bobuk-io/ting/v\(version)/docs/micro-apps/FORMAT.md"
     }
 
+    /// The guide for configuring Ting, next to FORMAT.md in the app or in the repository.
+    public static func guide(forFormat path: String) -> String {
+        (path as NSString).deletingLastPathComponent + "/CONFIGURING.md"
+    }
+
+    /// The link of the guide: `docs/CONFIGURING.md` at the same tag as the format link.
+    public static func guideLink(forFormatLink link: String) -> String {
+        link.replacingOccurrences(of: "docs/micro-apps/FORMAT.md", with: "docs/CONFIGURING.md")
+    }
+
     /// The text of the prompt.
     /// - Parameters:
     ///   - formatDocument: the absolute path of FORMAT.md inside Ting.app, or nil when it is not there.
+    ///     The guide CONFIGURING.md is next to it.
     ///   - link: the fallback link of the format document, see `formatLink(version:)`.
     ///   - microAppsFolder: the absolute path of the micro-apps folder.
-    ///   - executable: the absolute path of the Ting executable.
+    ///   - executable: the absolute path of the Ting executable; `ting-micro` is next to it.
     public static func text(formatDocument: String?, link: String, microAppsFolder: String, executable: String) -> String {
+        let guideLink = guideLink(forFormatLink: link)
         let read: String
         if let formatDocument {
-            read = "1. Read the Ting micro-app format document at `\(formatDocument)`. If that file cannot be read, use \(link) instead."
+            read = "1. Read the guide `\(guide(forFormat: formatDocument))` and follow it; if it cannot be read, use \(guideLink) instead. " +
+                "For micro-apps it points to the format document `\(formatDocument)` (or \(link))."
         } else {
-            read = "1. Read the Ting micro-app format document at \(link)."
+            read = "1. Read the guide \(guideLink) and follow it. For micro-apps it points to the format document \(link)."
         }
         let folder = shellQuoted(microAppsFolder)
+        let micro = shellQuoted((executable as NSString).deletingLastPathComponent + "/ting-micro")
+        let libs = shellQuoted(microAppsFolder + "/libs")
         return [
-            "Write a Ting micro-app for me. Ting is a leader-key launcher for macOS; a micro-app is one YAML file that Ting runs as a small tool.",
+            "Change my Ting setup. Ting is a leader-key launcher for macOS: key bindings live in config.json, and small tools (micro-apps) are YAML files.",
             "",
             read,
-            "2. Write the micro-app as one file named `<id>.yaml`, where `<id>` is its kebab-case id, in a temporary folder (not in the micro-apps folder).",
-            "3. Check it with `\(shellQuoted(executable)) --check <file>` and fix the file until the check reports no problem (`<file>: ok`, exit code 0).",
+            "2. Write each micro-app as one file named `<id>.yaml`, where `<id>` is its kebab-case id, in a temporary folder (not in the micro-apps folder).",
+            "3. Check it with `\(micro) check --libs \(libs) <file>` and fix the file until the check reports no problem (`<file>: ok`, exit code 0).",
             "4. Move the good file into the micro-apps folder `\(microAppsFolder)`, for example `mkdir -p \(folder) && mv <file> \(folder)/`.",
-            "5. Do not change config.json or any other Ting file. I approve the micro-app at its first start and bind a key to it myself.",
+            "5. Change config.json only for the bindings and settings I ask for, and check it with `\(micro) check-config` until it reports ok.",
+            "6. Never put API keys into files and never change ~/Library/Application Support/Ting/. I approve each new micro-app at its first start.",
             "",
-            "The micro-app I want: ",
+            "My task: ",
         ].joined(separator: "\n")
     }
 

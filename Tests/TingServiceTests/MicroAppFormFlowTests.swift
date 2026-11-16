@@ -1,3 +1,4 @@
+@testable import TingRuntime
 import SwiftUI
 import XCTest
 import TingCore

@@ -20,9 +20,9 @@ enum TingMain {
 
     /// Reads the given files, prints the result and returns the exit code.
     static func runCheck(_ arguments: [String]) -> Int32 {
-        let outcome = MicroAppCheckCommand.run(arguments) { path in
+        let outcome = MicroAppCheckCommand.run(arguments, read: { path in
             try Data(contentsOf: URL(fileURLWithPath: path))
-        }
+        }, libraries: { MicroAppLibraries.read(folder: MicroAppCheckCommand.libraryFolder(for: $0)) })
         for line in outcome.output { print(line) }
         if !outcome.errors.isEmpty {
             FileHandle.standardError.write(Data(outcome.errors.map { $0 + "\n" }.joined().utf8))

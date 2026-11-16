@@ -33,13 +33,22 @@ struct MicroAppFlowView: View {
                 }
             case .working(let app):
                 Card(title: app.shownName, showHeader: session.showHeader, footer: ["esc stop"]) {
-                    HStack(spacing: 10) {
-                        ProgressView().controlSize(.small)
-                        Text("Running \(app.shownName)…").font(.system(size: 13))
-                        Spacer()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 10) {
+                            ProgressView().controlSize(.small)
+                            Text("Running \(app.shownName)…").font(.system(size: 13))
+                            Spacer()
+                            if let progress = session.progress, progress.count > 1 {
+                                MonoLabel(progress.label, size: 9, tracking: 1).foregroundStyle(Color.tingAmber)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .accessibilityElement(children: .combine)
+                        if let live = session.progress?.liveOutput, !live.isEmpty {
+                            LiveOutput(text: live, style: app.output.style)
+                        }
                     }
-                    .padding(.vertical, 12)
-                    .accessibilityElement(children: .combine)
+                    .padding(.vertical, 8)
                 }
                 .padding(.top, 8)
             case .result(let content):
@@ -132,8 +141,8 @@ private struct ApprovalBody: View {
                     }
                 }
             }
-            MonoLabel("command", size: 9, weight: .regular).foregroundStyle(Color.tingMuted).padding(.top, 4)
-            SelectableText(text: app.command, monospaced: true, takesFocus: false)
+            MonoLabel(app.command == nil ? "file" : "command", size: 9, weight: .regular).foregroundStyle(Color.tingMuted).padding(.top, 4)
+            SelectableText(text: app.approvalText, monospaced: true, takesFocus: false)
                 .frame(height: commandHeight)
                 .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
             HStack {
@@ -147,7 +156,7 @@ private struct ApprovalBody: View {
 
     /// Grows with the command, then scrolls.
     private var commandHeight: CGFloat {
-        let lines = app.command.split(separator: "\n", omittingEmptySubsequences: false).count
+        let lines = app.approvalText.split(separator: "\n", omittingEmptySubsequences: false).count
         return min(300, max(44, CGFloat(lines) * 16 + 16))
     }
 }
@@ -191,6 +200,32 @@ private struct ResultBody: View {
     }
 }
 
+/// The output of the last step while it comes, kept scrolled to its end.
+private struct LiveOutput: View {
+    let text: String
+    let style: MicroApp.OutputStyle
+
+    var body: some View {
+        let rendered = MicroAppOutputRenderer.render(text, style: style)
+        SelectableText(text: rendered, plainText: text, takesFocus: false, followsEnd: true)
+            .frame(height: height(rendered))
+            .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityLabel("output so far")
+    }
+
+    /// Grows with the text up to the height of the result panel, then scrolls.
+    private func height(_ rendered: NSAttributedString) -> CGFloat {
+        let measured: CGFloat
+        if rendered.length <= 20_000 {
+            measured = ceil(rendered.boundingRect(with: NSSize(width: SelectableText.textWidth, height: .greatestFiniteMagnitude),
+                                                  options: [.usesLineFragmentOrigin, .usesFontLeading]).height)
+        } else {
+            measured = 440
+        }
+        return min(440, max(44, measured + 20))
+    }
+}
+
 /// Read-only, selectable, scrolling text: ⌘C copies the selection as plain text (the whole plain
 /// text when nothing is selected), ⌘A selects all.
 private struct SelectableText: NSViewRepresentable {
@@ -198,14 +233,17 @@ private struct SelectableText: NSViewRepresentable {
     let plainText: String
     /// The text view becomes the first responder, so ⌘C and the arrow keys reach it at once.
     let takesFocus: Bool
+    /// A new text scrolls to the end, not to the beginning: for output that grows.
+    var followsEnd = false
 
     /// The width the text gets inside the card: the card minus its padding, the inset and the line padding.
     static let textWidth: CGFloat = 580 - 40 - 12 - 10
 
-    init(text: NSAttributedString, plainText: String, takesFocus: Bool) {
+    init(text: NSAttributedString, plainText: String, takesFocus: Bool, followsEnd: Bool = false) {
         self.text = text
         self.plainText = plainText
         self.takesFocus = takesFocus
+        self.followsEnd = followsEnd
     }
 
     init(text: String, monospaced: Bool, takesFocus: Bool) {
@@ -246,7 +284,7 @@ private struct SelectableText: NSViewRepresentable {
         view.plainText = plainText
         if let storage = view.textStorage, !storage.isEqual(to: text) {
             storage.setAttributedString(text)
-            view.scrollToBeginningOfDocument(nil)
+            if followsEnd { view.scrollToEndOfDocument(nil) } else { view.scrollToBeginningOfDocument(nil) }
         }
         if takesFocus {
             DispatchQueue.main.async {

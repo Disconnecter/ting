@@ -1,3 +1,4 @@
+import TingRuntime
 // One micro-app start: approval panel → parameter panel → working state → result (panel, clipboard or both).
 // Only one flow is open at a time; a new start closes the open one and stops its command.
 import AppKit
@@ -85,8 +86,13 @@ final class MicroAppFlowSession {
     }
 
     var state: State = .closed {
-        didSet { if case .form = state {} else { form = nil } }
+        didSet {
+            if case .form = state {} else { form = nil }
+            if case .working = state {} else { progress = nil }
+        }
     }
+    /// The running step and the live output of the last step; set only while `state` is `.working`.
+    var progress: MicroAppRunProgress?
     /// The open parameter panel; set only while `state` is `.form`.
     var form: MicroAppFormModel?
     var showHeader = true
@@ -220,12 +226,21 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         show(.working(app))
         let stdin = app.input == .clipboard ? (pasteboard.string(forType: .string) ?? "") : nil
         let runner = self.runner
+        let progress: @Sendable (MicroAppRunProgress) -> Void = { [weak self] progress in
+            // The main queue keeps the order of the updates.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.generation == current, case .working = self.session.state else { return }
+                    self.session.progress = progress
+                }
+            }
+        }
         task = Task { [weak self] in
-            let result = await runner.run(app, values: values, stdin: stdin)
+            let result = await runner.run(app, values: values, stdin: stdin, progress: progress)
             guard let self, self.generation == current, !Task.isCancelled else { return }
             self.task = nil
             self.present(MicroAppResultPlan.make(app: app, result: result, outputLimit: runner.outputLimit,
-                                                 timeLimit: runner.timeLimit))
+                                                 timeLimit: runner.timeLimit(for: app)))
         }
     }
 

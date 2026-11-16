@@ -16,15 +16,20 @@ let package = Package(
             name: "TingCore",
             path: "Sources/TingCore",
             swiftSettings: [.swiftLanguageMode(.v5)]),
+        // Shared execution engine for the app and the console tool.
+        .target(name: "TingRuntime", dependencies: ["TingCore"],
+                swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(name: "ting-micro", dependencies: ["TingRuntime"], path: "Sources/TingMicroCLI",
+                          swiftSettings: [.swiftLanguageMode(.v5)]),
         // The menu-bar app (AppKit + SwiftUI + Carbon).
         .executableTarget(
             name: "Ting",
-            dependencies: ["TingCore", .product(name: "Sparkle", package: "Sparkle")],
+            dependencies: ["TingCore", "TingRuntime", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/Ting",
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(
             name: "TingServiceTests",
-            dependencies: ["Ting", "TingCore"],
+            dependencies: ["Ting", "TingCore", "TingRuntime"],
             path: "Tests/TingServiceTests",
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(

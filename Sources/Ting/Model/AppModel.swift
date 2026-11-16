@@ -1,3 +1,4 @@
+import TingRuntime
 // App state shared by the status menu, Welcome and Settings. Views read it and call its methods;
 // file IO, hotkeys and actions live in the services it owns.
 import AppKit

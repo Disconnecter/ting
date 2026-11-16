@@ -33,6 +33,25 @@ if let env = try? String(contentsOf: root.appendingPathComponent("version.env"),
     require(string("CFBundleVersion") == values["BUILD_NUMBER"], "build number differs from version.env")
 }
 
+// The console helper is a native executable, not a script. It must match the app architectures.
+let helper = appURL.appendingPathComponent("Contents/MacOS/ting-micro")
+require(FileManager.default.isExecutableFile(atPath: helper.path), "ting-micro executable is missing")
+func architectures(_ binary: URL) -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/lipo")
+    process.arguments = ["-archs", binary.path]
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    do { try process.run() } catch { return "" }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else { return "" }
+    return String(decoding: data, as: UTF8.self).split(whereSeparator: \.isWhitespace).sorted().joined(separator: " ")
+}
+let helperArchitectures = architectures(helper)
+require(!helperArchitectures.isEmpty && helperArchitectures == architectures(appURL.appendingPathComponent("Contents/MacOS/Ting")),
+        "ting-micro architectures differ from Ting")
+
 // App icon.
 require(string("CFBundleIconFile") == "Icon", "unexpected app icon reference")
 guard let icon = try? Data(contentsOf: resources.appendingPathComponent("Icon.icns")) else {
@@ -63,4 +82,7 @@ guard let source = try? Data(contentsOf: root.appendingPathComponent("docs/micro
     exit(1)
 }
 require(shipped == source, "FORMAT.md differs from docs/micro-apps/FORMAT.md")
+require(FileManager.default.contents(atPath: resources.appendingPathComponent("CONFIGURING.md").path)
+            == FileManager.default.contents(atPath: root.appendingPathComponent("docs/CONFIGURING.md").path),
+        "CONFIGURING.md is missing or differs from docs/CONFIGURING.md")
 print("BUNDLE_CHECK_PASSED: \(string("CFBundleShortVersionString") ?? "?") (\(string("CFBundleVersion") ?? "?"))")

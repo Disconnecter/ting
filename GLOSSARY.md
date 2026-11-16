@@ -16,13 +16,34 @@ The terms used for Ting in code, documents and the interface.
 ## Micro-apps
 
 - **micro-app:** a small tool that Ting runs: one YAML file in the micro-apps
-  folder (`~/.config/ting/micro/`) that declares its parameters and exactly one
-  shell command. The format is described in `docs/micro-apps/FORMAT.md`.
+  folder (`~/.config/ting/micro/`) that declares its parameters and either one
+  shell command or a list of steps. The format is described in
+  `docs/micro-apps/FORMAT.md`.
 - **parameter:** a value the micro-app asks for, declared under `params`, of type
-  `text` or `choice`, required or optional. The command reads it as the
-  environment variable `TING_` + the upper-case name.
+  `text` or `choice`, required or optional. Code reads it as the environment
+  variable `TING_` + the upper-case name; the other keys of a step as
+  `${params.NAME}`.
 - **command:** the one shell command of a micro-app, run with `/bin/sh -c` as the
-  user, with the clipboard on stdin when `input: clipboard`.
+  user, with the clipboard on stdin when `input: clipboard`; the same as one
+  `command` step.
+- **step:** one part of a micro-app script, under `steps`: `command`, `python`,
+  `url`, `ai`, `text`, `json`, `open` or `notify`. The output of a step is the
+  input of the next one; the output of the last step is the result.
+- **variable:** a `${…}` value in a step key other than code: `${input}`,
+  `${params.NAME}`, `${steps.ID}`, an environment variable `${NAME}` or a
+  keychain item `${keychain.SERVICE}`, with optional filters (`|url`, `|json`,
+  `|trim`, `|base64`).
+- **library:** a file `libs/NAME.yaml` in the micro-apps folder, format
+  `ting.microlib/1`, with steps that several micro-apps share. It is not a
+  micro-app of its own.
+- **call step:** a step `call: NAME` that runs the steps of a library with its
+  `params`.
+- **inherit:** the key of a micro-app made of a library with the file's keys over
+  it; changes of `steps` name a library step by its `id`.
+- **step params:** `params:` of one step: values that step reads as
+  `${params.NAME}` and `$TING_NAME`; for a `call` step, the library's params.
+- **streaming step:** a `command` or `python` step with `stream: true`; it runs
+  together with the step before it and reads its output while it comes.
 - **micro-app id:** the kebab-case name a micro-app is known by: the `id` key of
   the file, or, without it, the file name without `.yaml`. Two files with one id:
   the first by file name works, the second is broken.
@@ -33,7 +54,8 @@ The terms used for Ting in code, documents and the interface.
   the SHA-256 of the whole file, stored by micro-app id in
   `micro-approvals.json`. Any change of the file asks again.
 - **approval panel:** the panel that shows the name, the file and the full
-  command of a new or changed micro-app; `⌘Return` approves and runs, `Esc`
+  command (or, for a steps file, the whole file text) of a new or changed
+  micro-app; `⌘Return` approves and runs, `Esc`
   refuses.
 - **parameter panel:** the one form that asks for all parameters of a
   micro-app before the run, in file order; it also shows that the command runs.

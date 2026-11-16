@@ -1,9 +1,10 @@
+@testable import TingRuntime
 import AppKit
 import XCTest
 import TingCore
 @testable import Ting
 
-/// The five example micro-apps of `docs/micro-apps/examples/` from start to result through the
+/// The example micro-apps of `docs/micro-apps/examples/` from start to result through the
 /// app's real flow panel. The store loads them from a temporary micro-apps folder next to a
 /// temporary `TING_CONFIG` file. The flow controller builds its real panel (the SwiftUI views,
 /// the NSTextField of each parameter, the result text view), and every step is a real key event
@@ -13,7 +14,9 @@ import TingCore
 ///
 /// The panel is never put on screen and never takes keyboard focus, and a private pasteboard
 /// stands in for the clipboard, so the user's screen, typing and clipboard are not touched. The
-/// DNS example needs the network and runs only with `TING_NETWORK_TESTS=1`.
+/// DNS and Wikipedia examples need the network and run only with `TING_NETWORK_TESTS=1`; the AI
+/// examples cost money and run only with `TING_AI_TESTS=1` and their keys. `open` is recorded,
+/// never run, so no browser window opens.
 @MainActor
 final class MicroAppExamplesTests: XCTestCase {
     private static let root = URL(fileURLWithPath: #filePath)
@@ -25,6 +28,7 @@ final class MicroAppExamplesTests: XCTestCase {
     private var pasteboard: NSPasteboard!
     private var toasts: [String] = []
     private var approvalsURL: URL!
+    private let opened = MicroAppStepsRunnerTests.Recorder()
 
     override func setUp() async throws {
         _ = NSApplication.shared
@@ -39,12 +43,16 @@ final class MicroAppExamplesTests: XCTestCase {
         catalog = store.load()
         XCTAssertEqual(catalog.issues, [])
         XCTAssertEqual(try String(contentsOf: store.logURL, encoding: .utf8), "")
-        XCTAssertEqual(catalog.apps.map(\.id), ["change-case", "count-text", "dns-lookup", "encode-decode", "format-json"])
+        XCTAssertEqual(catalog.apps.map(\.id), ["ask-claude", "change-case", "count-text", "dns-lookup", "encode-decode", "format-json",
+                                                "search-web", "translate-ukrainian", "translate", "wiki-summary"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.librariesURL.appendingPathComponent("translate.yaml").path))
 
         var runner = MicroAppRunner()
         let path = await UserPATH.shared()
         runner.path = { path }
         runner.timeLimit = 30
+        let opened = self.opened
+        runner.open = { target, app in opened.add(target + (app.map { " with " + $0 } ?? "")) }
         approvalsURL = MicroAppApprovalStore.defaultURL(environment: environment)
         XCTAssertEqual(approvalsURL.path, config.path + ".micro-approvals.json")
         pasteboard = NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString))
@@ -168,7 +176,7 @@ final class MicroAppExamplesTests: XCTestCase {
         if case .approval(let app, _) = flow.session.state {
             seen.approvalAsked = true
             seen.approvalCommand = try shownTexts().first
-            XCTAssertEqual(seen.approvalCommand, app.command, "the approval panel shows the full command")
+            XCTAssertEqual(seen.approvalCommand, app.approvalText, "the approval panel shows the full command or file")
             try await press(.enter) // ↩ alone does nothing in the approval panel.
             guard case .approval = flow.session.state else { XCTFail("↩ must not approve"); return seen }
             try await press(.commandReturn)
@@ -224,11 +232,16 @@ final class MicroAppExamplesTests: XCTestCase {
         XCTAssertFalse(flow.isOpen)
     }
 
-    // MARK: The five examples
+    // MARK: The examples
+
+    private func requirePython() async throws {
+        guard await MicroAppRunner.hasCommandLineTools() else { throw XCTSkip("python3 needs the Command Line Tools") }
+    }
 
     func testFormatJSONClipboardAndPanel() async throws {
+        try await requirePython()
         let input = #"{"b":1,"a":[1,2],"имя":"Ёж"}"#
-        let pretty = "{\n  \"a\" : [\n    1,\n    2\n  ],\n  \"b\" : 1,\n  \"имя\" : \"Ёж\"\n}"
+        let pretty = "{\n  \"a\": [\n    1,\n    2\n  ],\n  \"b\": 1,\n  \"имя\": \"Ёж\"\n}"
         let seen = try await start("format-json", clipboard: input)
         XCTAssertTrue(seen.approvalAsked)
         XCTAssertTrue(FileManager.default.fileExists(atPath: approvalsURL.path))
@@ -249,6 +262,7 @@ final class MicroAppExamplesTests: XCTestCase {
     }
 
     func testChangeCaseWithCyrillicText() async throws {
+        try await requirePython()
         let text = "привет, мир! hello WORLD ёлка"
         let expected = ["upper": "ПРИВЕТ, МИР! HELLO WORLD ЁЛКА",
                         "lower": "привет, мир! hello world ёлка",
@@ -266,6 +280,7 @@ final class MicroAppExamplesTests: XCTestCase {
     }
 
     func testEncodeDecodeAllFourModes() async throws {
+        try await requirePython()
         let text = "Привет, world & a=1/2?"
         let base64 = Data(text.utf8).base64EncodedString()
         let url = "%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%2C%20world%20%26%20a%3D1%2F2%3F"
@@ -344,6 +359,45 @@ final class MicroAppExamplesTests: XCTestCase {
         XCTAssertEqual(flow.session.form?.missing, 0)
         try await press(.escape)
         XCTAssertFalse(flow.isOpen)
+    }
+
+    func testSearchWebOpensTheSearchAndShowsNothing() async throws {
+        let seen = try await start("search-web", clipboard: " ёж & co\n")
+        XCTAssertTrue(seen.approvalAsked)
+        XCTAssertNil(seen.content, "a micro-app without output shows no panel")
+        XCTAssertFalse(flow.isOpen)
+        XCTAssertEqual(opened.all, ["https://duckduckgo.com/?q=%D1%91%D0%B6%20%26%20co"])
+        XCTAssertEqual(seen.clipboard, " ёж & co\n")
+    }
+
+    func testWikiSummary() async throws {
+        guard ProcessInfo.processInfo.environment["TING_NETWORK_TESTS"] == "1" else {
+            throw XCTSkip("needs the network; run with TING_NETWORK_TESTS=1")
+        }
+        let seen = try await start("wiki-summary", clipboard: "Vienna\n")
+        XCTAssertEqual(seen.content?.isError, false, seen.shown ?? "")
+        XCTAssertTrue(seen.shown?.contains("Austria") == true, seen.shown ?? "")
+        XCTAssertTrue(seen.content?.text.hasSuffix("https://en.wikipedia.org/wiki/Vienna") == true, seen.content?.text ?? "")
+        try await closeResult()
+    }
+
+    func testAIExamples() async throws {
+        guard ProcessInfo.processInfo.environment["TING_AI_TESTS"] == "1" else {
+            throw XCTSkip("calls paid AI APIs; run with TING_AI_TESTS=1")
+        }
+        let env = await UserPATH.sharedEnvironment().variables ?? [:]
+        if env["OPENAI_API_KEY"] != nil {
+            let seen = try await start("translate", clipboard: "Guten Morgen", [.optionalOpen, .choose("English")])
+            XCTAssertEqual(seen.content?.isError, false, seen.shown ?? "")
+            XCTAssertTrue(seen.clipboard?.lowercased().contains("good morning") == true, seen.clipboard ?? "")
+            try await closeResult()
+        }
+        if (try? MicroAppKeychain.password(service: "anthropic")) != nil {
+            let seen = try await start("ask-claude", clipboard: "2 + 2", [.type("What is the result? Answer with the number only.")])
+            XCTAssertEqual(seen.content?.isError, false, seen.shown ?? "")
+            XCTAssertTrue(seen.shown?.contains("4") == true, seen.shown ?? "")
+            try await closeResult()
+        }
     }
 
     func testReadmeExampleIsAGoodFile() throws {

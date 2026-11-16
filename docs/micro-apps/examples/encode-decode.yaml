@@ -1,7 +1,6 @@
 format: ting.microapp/2
 name: Encode / decode
 description: Encode or decode the clipboard text as Base64 or URL encoding.
-tools: [base64, perl]
 
 params:
   - name: mode
@@ -11,13 +10,20 @@ params:
     prompt: Mode
 
 input: clipboard
-command: |
-  case "$TING_MODE" in
-    base64-encode) base64 ;;
-    base64-decode) base64 -D ;;
-    url-encode) perl -0777 -pe 'chomp; s/([^A-Za-z0-9._~-])/sprintf("%%%02X", ord $1)/ge' ;;
-    url-decode) perl -0777 -pe 's/\+/ /g; s/%([0-9A-Fa-f]{2})/chr hex $1/ge' ;;
-  esac
+steps:
+  - python: |
+      import base64, os, sys, urllib.parse
+      text = sys.stdin.read()
+      mode = os.environ["TING_MODE"]
+      if mode == "base64-encode":
+          result = base64.b64encode(text.encode()).decode()
+      elif mode == "base64-decode":
+          result = base64.b64decode("".join(text.split()), validate=True).decode()
+      elif mode == "url-encode":
+          result = urllib.parse.quote(text.rstrip("\n"), safe="~")
+      else:
+          result = urllib.parse.unquote_plus(text)
+      sys.stdout.write(result)
 output:
   to: [clipboard, panel]
   as: text

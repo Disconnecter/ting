@@ -17,8 +17,9 @@ from grime and sound-system culture: amber keycaps on graphite, `esc pull up`,
 Requires **macOS 14 or later**. Official releases are universal builds for
 **Apple Silicon and Intel**.
 
-[Release notes for Ting 0.4.0](docs/releases/v0.4.0.md): any coding agent can
-now write and check a micro-app for you.
+[Release notes for Ting 0.5.0](docs/releases/v0.5.0.md): micro-apps become
+small scripts of steps (shell, Python, HTTP, AI) with shared libraries, and a
+coding agent can now set up your bindings too.
 
 ## Install
 
@@ -46,7 +47,8 @@ copy from the ZIP, then open it again. Your settings and bindings are kept.
 - **Actions:** open an app (an app that is already running comes to the front)
   or open a URL with its default handler — web links and app URL schemes such as
   `raycast://` or `hascs://`, or start a [micro-app](#micro-apps). Shell
-  commands run only from approved micro-app files, never from config.json.
+  commands, HTTP requests and AI calls run only from approved micro-app files,
+  never from config.json.
 - **Any keyboard layout:** bindings are stored by the Latin letter of the key, so
   they keep working with Russian, Ukrainian or any other layout. The menu shows
   the current layout's letter as a small hint next to the Latin one.
@@ -107,17 +109,25 @@ uses `/tmp/ting-test.json.launcha-history.json` and
 
 ## Micro-apps
 
-A micro-app is a small tool that runs one shell command: it can ask for a few
-parameters, read the clipboard and show or copy the result. Each micro-app is one
-YAML file in a strict, checked format, described in
+A micro-app is a small tool: it can ask for a few parameters, read the
+clipboard and show or copy the result. Its work is one shell command or a short
+script of **steps**: shell or Python code, HTTP requests, questions to OpenAI,
+Anthropic or a compatible server (Ollama, LM Studio, OpenRouter), text templates,
+JSON fields, opening a URL and notifications. The output of each step is the
+input of the next one, as in a shell pipe. Each micro-app is one YAML file in a
+strict, checked format, described in
 [docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md), which holds the full
-text of five working [examples](docs/micro-apps/examples/): Format JSON, Change
-case, Encode / decode, Count words and DNS lookup. The files are meant to be
-written by you or by a coding agent such as Claude Code, Codex or pi; Ting has no
-editor for them and installs none by itself, so the folder starts empty. The
-format document also ships inside the app, as
-`/Applications/Ting.app/Contents/Resources/FORMAT.md`, so an agent can read the
-version that matches the installed Ting.
+text of ten working [examples](docs/micro-apps/examples/): Format JSON, Change
+case, Encode / decode, Count words, DNS lookup, Wikipedia summary, Search the
+web, Translate, Translate to Ukrainian and Ask Claude. Shared steps live once in
+a **library**, `micro/libs/NAME.yaml`: a micro-app runs it as a step
+(`- call: translate` with `params:`) or inherits it and changes single keys
+(`inherit: translate`, then `steps: - id: translate` with new `params`), so
+"Translate to Ukrainian" and "Translate to English" share one prompt. The files are meant to be written by you or by a
+coding agent such as Claude Code, Codex or pi; Ting has no editor for them and
+installs none by itself, so the folder starts empty. The format document also
+ships inside the app, as `/Applications/Ting.app/Contents/Resources/FORMAT.md`,
+so an agent can read the version that matches the installed Ting.
 
 ```yaml
 format: ting.microapp/2
@@ -130,19 +140,34 @@ params:
     default: upper
     choices: [upper, lower]
 input: clipboard
-command: |
-  case "$TING_MODE" in
-    upper) perl -CS -pe '$_ = uc' ;;
-    lower) perl -CS -pe '$_ = lc' ;;
-  esac
+steps:
+  - python: |
+      import os, sys
+      text = sys.stdin.read()
+      sys.stdout.write(text.upper() if os.environ["TING_MODE"] == "upper" else text.lower())
 output:
   to: [clipboard]
 ```
 
-The command runs with `/bin/sh -c` as you, with your full rights, in your home
-folder and with the PATH of your login shell, so Homebrew tools are found. The
-clipboard text goes to its stdin and each parameter is an environment variable
-(`mode` → `$TING_MODE`); Ting never pastes a value into the command text.
+```yaml
+  - ai: ${input}
+    provider: anthropic
+    model: claude-haiku-5-5
+    key: ${keychain.anthropic}
+    system: Fix the grammar. Answer with the fixed text only.
+```
+
+Every step runs as you, with your full rights, in your home folder and with the
+environment of your login shell, so Homebrew tools and variables such as
+`OPENAI_API_KEY` are found. Shell and Python code reads its input on stdin and
+each parameter as an environment variable (`mode` → `$TING_MODE`); Ting never
+pastes a value into code. The other keys of a step can use variables:
+`${input}`, `${params.mode}`, the output of an earlier step `${steps.page}`, an
+environment variable `${OPENAI_API_KEY}` or a keychain item
+`${keychain.anthropic}`, with filters such as `${input|trim|url}`. Keep keys out
+of the files: export them in your shell start-up file or add them to the
+keychain. While a micro-app runs, the panel shows which step runs and the output
+of the last step while it comes, such as an AI answer word by word.
 
 Ting loads every `*.yaml` file of the `micro/` folder next to the config file
 (`~/.config/ting/micro/`) and loads it again when a file is added, changed or removed. A missing folder simply
@@ -155,6 +180,26 @@ line per problem (it is empty when all files are good). With `TING_CONFIG` set,
 both get the config file name in front, like the launcha files:
 `TING_CONFIG=/tmp/ting-test.json` uses the folder `/tmp/ting-test.json.micro/` and
 the log `/tmp/ting-test.json.micro-errors.log`.
+
+### Running a micro-app from Terminal
+
+The app bundles a native Swift CLI that uses the same execution engine:
+
+```sh
+MICRO=/Applications/Ting.app/Contents/MacOS/ting-micro
+"$MICRO" check script.yaml
+printf '%s' 'Hello' | "$MICRO" run script.yaml --param mode=lower --verbose
+"$MICRO" run script.yaml --input 'Hello' --timeout 120
+```
+
+From source: `swift run ting-micro run script.yaml`. Input comes from stdin or
+`--input`, the result goes to stdout, and errors go to stderr. It never opens
+Ting's panels, touches the clipboard or reads/writes config, approvals or
+remembered values. `run` explicitly authorizes execution of the named file;
+only run trusted scripts. It uses the terminal environment and current folder.
+`open` and `notify` require `--allow-effects`; shell/Python and HTTP/AI still
+have full rights. `Ctrl-C` stops the run and its child processes. See
+[console usage](docs/micro-apps/FORMAT.md#checking-and-running).
 
 ### Checking a micro-app file
 
@@ -179,22 +224,26 @@ in a temporary folder, runs the check command and fixes the file until it is
 good, then moves it into the micro-apps folder. It does not change `config.json`:
 you approve the new file at its first start and bind a key to it yourself.
 
-### Asking a coding agent for a micro-app
+### Setting up Ting with a coding agent
+
+A coding agent such as Claude Code, Codex or pi can change Ting for you: write
+micro-apps and libraries, and add key bindings and settings to `config.json`.
+Its guide is [docs/CONFIGURING.md](docs/CONFIGURING.md), shipped as
+`Ting.app/Contents/Resources/CONFIGURING.md`; it points to FORMAT.md for
+micro-apps. Ask in plain words, for example "write a new micro-app: Leader t a
+should translate the clipboard into German".
 
 **Copy Agent Prompt**, in the menu-bar menu next to **Open Config File** and in
 **Settings › Advanced** next to **Open Folder in Finder**, puts a ready text on
-the clipboard and shows "Agent prompt copied". Paste it into a coding agent such
-as Claude Code, Codex or pi and add what the micro-app should do after its last
-line, "The micro-app I want:". The text names the real paths of this Mac: the
-format document inside Ting.app (`Ting.app/Contents/Resources/FORMAT.md`), with
-the GitHub link of the running version
-(`https://raw.githubusercontent.com/bobuk-io/ting/v<version>/docs/micro-apps/FORMAT.md`)
-as the fallback, the check command with the path of the Ting executable and the
-micro-apps folder (the one of `TING_CONFIG` when it is set). It tells the agent
-to write and check the file in a temporary folder, to move it into the
-micro-apps folder only when the check reports no problem, and not to change
-`config.json`. Without the document inside the app (a `swift run` build), the
-text names only the link, at the tag of the version of the source tree.
+the clipboard. Paste it into the agent and add your task after its last line,
+"My task:". The text names the paths of this Mac: the guide and the format
+document inside Ting.app (with the GitHub links of the running version as the
+fallback), `ting-micro` and the micro-apps folder (the one of `TING_CONFIG` when
+it is set). It tells the agent to write and check micro-apps in a temporary
+folder, to move them into the folder only when `ting-micro check` reports no
+problem, to change `config.json` only as you asked and check it with
+`ting-micro check-config`, and never to write keys into files or touch the
+approvals. You still approve each new micro-app at its first start.
 
 `Ting --agent-prompt` prints the same text and exits, for scripts:
 
@@ -202,8 +251,7 @@ text names only the link, at the tag of the version of the source tree.
 /Applications/Ting.app/Contents/MacOS/Ting --agent-prompt
 ```
 
-Like the check command, it opens no window, does not read `config.json` and
-writes no file.
+It opens no window, does not read `config.json` and writes no file.
 
 ### Starting a micro-app
 
@@ -284,7 +332,7 @@ Spotlight.
   and the micro-apps folder: the list of found micro-apps (name, id, file, good
   or broken), the list of micro-app errors, **Open Folder in Finder**, which
   creates the folder when it is missing, and **Copy Agent Prompt** (see
-  [Asking a coding agent for a micro-app](#asking-a-coding-agent-for-a-micro-app)).
+  [Setting up Ting with a coding agent](#setting-up-ting-with-a-coding-agent)).
 
 ## Configuration file
 

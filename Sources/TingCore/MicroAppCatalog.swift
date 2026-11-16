@@ -44,24 +44,37 @@ public struct MicroAppEntry: Equatable, Sendable {
 public struct MicroAppCatalog: Equatable, Sendable {
     /// Sorted by file name.
     public private(set) var entries: [MicroAppEntry]
+    /// The problems of the library files (`libs/*.yaml`), by file and line.
+    public var libraryIssues: [MicroAppIssue] = []
 
-    public init(entries: [MicroAppEntry] = []) {
+    public init(entries: [MicroAppEntry] = [], libraryIssues: [MicroAppIssue] = []) {
         self.entries = entries
+        self.libraryIssues = libraryIssues
     }
 
     /// The working micro-apps, in file-name order.
     public var apps: [MicroApp] { entries.compactMap(\.app) }
-    /// Every problem, by file name, then by line.
-    public var issues: [MicroAppIssue] { entries.flatMap(\.issues) }
+    /// Every problem, by file name, then by line; the library files after the micro-apps.
+    public var issues: [MicroAppIssue] { entries.flatMap(\.issues) + libraryIssues }
     public var brokenFiles: [String] { entries.filter(\.isBroken).map(\.file) }
 
     /// Checks every file and applies the id rules: when two working files have the same id, the
     /// first by file name works and the later ones are broken with a "duplicate id" issue.
-    public static func load(_ files: [(name: String, text: String)]) -> MicroAppCatalog {
-        build(hashed: files.map { file in
+    public static func load(_ files: [(name: String, text: String)], libraries: MicroAppLibraries = MicroAppLibraries()) -> MicroAppCatalog {
+        var catalog = build(hashed: files.map { file in
             let name = (file.name as NSString).lastPathComponent
-            return (name, MicroAppChecker.check(file.text, fileName: name), MicroAppApprovals.hash(Data(file.text.utf8)))
+            return (name, MicroAppChecker.check(file.text, fileName: name, libraries: libraries), MicroAppApprovals.hash(Data(file.text.utf8)))
         })
+        catalog.libraryIssues = checkLibraries(libraries)
+        return catalog
+    }
+
+    /// The problems of every library file, checked on its own, by file and line.
+    public static func checkLibraries(_ libraries: MicroAppLibraries) -> [MicroAppIssue] {
+        libraries.sources.values.sorted { $0.file < $1.file }.flatMap { source -> [MicroAppIssue] in
+            if case .failure(let failure) = MicroAppChecker.checkLibrary(source, libraries: libraries, stack: []) { return failure.issues }
+            return []
+        }
     }
 
     /// Like `load`, for files that are already checked (or could not be read).
@@ -91,7 +104,9 @@ public struct MicroAppCatalog: Equatable, Sendable {
                                                  brokenName: app.name, brokenHidden: app.hidden))
                 } else {
                     owners[app.id] = file
-                    entries.append(MicroAppEntry(file: file, app: app, issues: [], contentHash: hash))
+                    // The approval covers the libraries too: a change in one asks again.
+                    let combined = hash.isEmpty || app.libraries.isEmpty ? hash : MicroAppApprovals.hash(hash, libraries: app.libraries)
+                    entries.append(MicroAppEntry(file: file, app: app, issues: [], contentHash: combined))
                 }
             }
         }

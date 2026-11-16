@@ -35,7 +35,7 @@ final class AgentPromptSourceTests: XCTestCase {
         let text = AgentPromptSource.text(bundle: bundle, environment: [:])
         XCTAssertFalse(text.contains("Resources/FORMAT.md"))
         let link = "https://raw.githubusercontent.com/bobuk-io/ting/v\(TingVersion.marketing)/docs/micro-apps/FORMAT.md"
-        XCTAssertTrue(text.contains("format document at \(link)."), text)
+        XCTAssertTrue(text.contains("format document \(link)."), text)
         XCTAssertFalse(text.contains("/main/"), text)
     }
 

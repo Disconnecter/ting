@@ -6,6 +6,8 @@ private let root = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 private let documentURL = root.appendingPathComponent("docs/micro-apps/FORMAT.md")
 private let examplesURL = root.appendingPathComponent("docs/micro-apps/examples", isDirectory: true)
+/// The example libraries: the micro-app blocks of FORMAT.md may call or inherit them.
+private let libraries = MicroAppLibraries.read(folder: examplesURL.appendingPathComponent("libs"))
 
 /// The text of every fenced `yaml` block of a markdown document, in order, with its final line break.
 private func yamlBlocks(of markdown: String) -> [String] {
@@ -27,8 +29,8 @@ private func yamlBlocks(of markdown: String) -> [String] {
     return blocks
 }
 
-/// The top-level keys that only a whole micro-app file has: the required keys of `ting.microapp/2`.
-private let fileKeys: Set<String> = ["format", "description", "input", "command", "output"]
+/// The top-level keys that only a whole micro-app file has: the required keys of `ting.microapp/2`, `command` and `steps`.
+private let fileKeys: Set<String> = ["format", "description", "input", "command", "steps", "output"]
 
 /// A complete micro-app block: a `yaml` block with a top-level line (not indented, not a comment)
 /// for any required key of a file, wherever it stands: after comments, blank lines, `---` or other
@@ -50,8 +52,13 @@ private func isCompleteMicroApp(_ block: String) -> Bool {
 private func refusedBlocks(of markdown: String, examples: [(name: String, text: String)] = [])
     -> [(index: Int, fileName: String, issues: [MicroAppIssue])] {
     yamlBlocks(of: markdown).filter(isCompleteMicroApp).enumerated().compactMap { index, block in
+        if block.hasPrefix("format: \(MicroAppLibraries.format)") {
+            guard case .failure(let failure) = MicroAppChecker.checkLibrary(block, fileName: "libs/format-block-\(index + 1).yaml",
+                                                                             libraries: libraries) else { return nil }
+            return (index, "library", failure.issues)
+        }
         let fileName = examples.first { $0.text == block }?.name ?? "format-block-\(index + 1).yaml"
-        guard case .failure(let failure) = MicroAppChecker.check(block, fileName: fileName) else { return nil }
+        guard case .failure(let failure) = MicroAppChecker.check(block, fileName: fileName, libraries: libraries) else { return nil }
         return (index, fileName, failure.issues)
     }
 }
@@ -64,15 +71,18 @@ private func refusedBlocks(of markdown: String, examples: [(name: String, text: 
     }
 
     private func examples() throws -> [(name: String, text: String)] {
-        let names = try FileManager.default.contentsOfDirectory(atPath: examplesURL.path)
-            .filter { $0.hasSuffix(".yaml") }.sorted()
+        let libraryNames = try FileManager.default.contentsOfDirectory(atPath: examplesURL.appendingPathComponent("libs").path)
+            .filter { $0.hasSuffix(".yaml") }.map { "libs/" + $0 }
+        let names = try (FileManager.default.contentsOfDirectory(atPath: examplesURL.path)
+            .filter { $0.hasSuffix(".yaml") } + libraryNames).sorted()
         return try names.map { ($0, try String(contentsOf: examplesURL.appendingPathComponent($0), encoding: .utf8)) }
     }
 
     @Test func holdsEveryExampleWordForWord() throws {
         let examples = try examples()
-        #expect(examples.map(\.name) == ["change-case.yaml", "count-text.yaml", "dns-lookup.yaml",
-                                         "encode-decode.yaml", "format-json.yaml"])
+        #expect(examples.map(\.name) == ["ask-claude.yaml", "change-case.yaml", "count-text.yaml", "dns-lookup.yaml",
+                                         "encode-decode.yaml", "format-json.yaml", "libs/translate.yaml", "search-web.yaml",
+                                         "translate-ukrainian.yaml", "translate.yaml", "wiki-summary.yaml"])
         let text = try document()
         let blocks = yamlBlocks(of: text)
         for example in examples {
@@ -126,7 +136,7 @@ private func refusedBlocks(of markdown: String, examples: [(name: String, text: 
     }
 
     @Test func hasNoLocalPaths() throws {
-        let text = try document()
+        let text = try document() + (try String(contentsOf: root.appendingPathComponent("docs/CONFIGURING.md"), encoding: .utf8))
         for path in ["/Users/", "/home/", "/var/folders/"] {
             #expect(!text.contains(path), "FORMAT.md contains \(path)")
         }
