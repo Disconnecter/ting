@@ -2,13 +2,15 @@ import Foundation
 
 // MARK: - Candidates
 
-/// One thing launcha can open: an app or a URL.
+/// One thing launcha can open: an app, a URL or a micro-app.
 public struct LaunchaCandidate: Hashable, Sendable, Identifiable {
     public enum Target: Hashable, Sendable {
         /// Bundle identifier, e.g. "com.apple.Safari".
         case app(String)
         /// Absolute URL string.
         case url(String)
+        /// Micro-app id: what a `micro` binding to it would hold.
+        case micro(String)
     }
 
     /// Stable identity. Launch history is stored under this value, so it must not change
@@ -35,6 +37,11 @@ public struct LaunchaCandidate: Hashable, Sendable, Identifiable {
         LaunchaCandidate(id: "url:" + url, name: name, target: .url(url))
     }
 
+    /// Micro-app candidate. Identity is "micro:" + the micro-app id.
+    public static func micro(id: String, name: String) -> LaunchaCandidate {
+        LaunchaCandidate(id: "micro:" + id, name: name, target: .micro(id))
+    }
+
     /// Candidates for every app and URL binding in `items`, depth-first, without duplicate ids.
     /// The name is the label, or the bundle identifier / URL when the label is empty.
     public static func from(_ items: [Item]) -> [LaunchaCandidate] {
@@ -50,6 +57,67 @@ public struct LaunchaCandidate: Hashable, Sendable, Identifiable {
                 candidate = .url(url, name: binding.item.label.isEmpty ? url : binding.item.label)
             }
             if seen.insert(candidate.id).inserted { result.append(candidate) }
+        }
+        return result
+    }
+}
+
+// MARK: - Micro-app candidates
+
+/// A micro-app as launcha lists it: the searchable candidate and what the row shows.
+public struct LaunchaMicroCandidate: Equatable, Sendable, Identifiable {
+    public var candidate: LaunchaCandidate
+    /// The id a start passes to the micro-app flow.
+    public var microID: String
+    /// The file name in the micro-apps folder, such as `dns-lookup.yaml`.
+    public var file: String
+    /// The `description` of a working micro-app; empty for a broken file.
+    public var description: String
+    /// Why a broken file does not work, in one line; `nil` for a working micro-app.
+    public var problem: String?
+
+    public init(candidate: LaunchaCandidate, microID: String, file: String, description: String, problem: String?) {
+        self.candidate = candidate
+        self.microID = microID
+        self.file = file
+        self.description = description
+        self.problem = problem
+    }
+
+    public var id: String { candidate.id }
+    public var isWorking: Bool { problem == nil }
+}
+
+extension MicroAppCatalog {
+    /// The micro-apps launcha lists, in file-name order: every working micro-app except those
+    /// with `hidden: true`, and every broken file (it cannot say it is hidden), as not working.
+    /// Bindings do not matter for the list. The name is the label of the first `micro` binding
+    /// to the id that has a label (depth-first), else the micro-app's `name`, else the id.
+    /// A broken file uses the id a binding finds it by (its kept `id`, else the file name
+    /// without `.yaml`); it is left out when a working micro-app or an earlier file owns that id.
+    public func launchaCandidates(bindings items: [Item]) -> [LaunchaMicroCandidate] {
+        var labels: [String: String] = [:]
+        for binding in BindingTree.flatten(items) {
+            if case .micro(let id) = binding.item.action, !binding.item.label.isEmpty, labels[id] == nil {
+                labels[id] = binding.item.label
+            }
+        }
+        let owned = Set(apps.map(\.id))
+        var seen: Set<String> = []
+        var result: [LaunchaMicroCandidate] = []
+        for entry in entries {
+            if let app = entry.app {
+                guard !app.hidden, seen.insert(app.id).inserted else { continue }
+                let name = bindingName(label: labels[app.id] ?? "", id: app.id)
+                result.append(LaunchaMicroCandidate(candidate: .micro(id: app.id, name: name), microID: app.id,
+                                                    file: entry.file, description: app.description, problem: nil))
+            } else {
+                let id = entry.explicitID ?? entry.fileID
+                guard !owned.contains(id), seen.insert(id).inserted else { continue }
+                let problem = entry.issues.first.map { "line \($0.line): \($0.message)" } ?? "the file has errors"
+                result.append(LaunchaMicroCandidate(candidate: .micro(id: id, name: labels[id] ?? id), microID: id,
+                                                    file: entry.file, description: "", problem: problem))
+            }
         }
         return result
     }

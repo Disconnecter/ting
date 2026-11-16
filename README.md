@@ -60,7 +60,7 @@ apps and on every Space.
 ## launcha
 
 The leader menu is called **selecta**. **launcha** is its search companion: type
-part of an app name and press `Return`.
+part of an app or micro-app name and press `Return`.
 
 - **Open it:** press the leader twice at the top level of selecta. The first
   press opens selecta at once, so sequences are never delayed; any key in
@@ -78,7 +78,13 @@ part of an app name and press `Return`.
   Ting scans these folders at startup and each time launcha opens. While the
   panel stays open, it checks every 15 seconds whether a refresh is due; these
   background scans run at most once per minute.
-- **Files:** only when no app matches, launcha asks Spotlight for files in your
+- **Micro-apps:** every loaded micro-app is listed, with or without a binding,
+  except files with `hidden: true` (they still start by their binding). The name
+  is the binding label, else the micro-app's `name`, else the id. `Return` starts
+  the same flow as its binding: approval, parameters, result; `⌘Return` shows
+  its file in Finder. A broken file is listed as not working with its first
+  error, and starting it shows the error.
+- **Files:** only when no app or micro-app matches, launcha asks Spotlight for files in your
   home folder (not `~/Library`, hidden folders or app bundles) and opens a file
   with its usual app.
 - **Desktop, Documents and Downloads** are not searched until you allow it, in
@@ -124,7 +130,9 @@ Bind a key to a micro-app in **Settings › Bindings**, or by its id in `config.
 of `items`, `app`, `url` and `micro`. selecta shows the label, else the
 micro-app's `name`, else the id. A binding to an id that is not loaded keeps the
 config valid; selecta shows it as not working, and its key shows the error
-instead of starting anything.
+instead of starting anything. Every micro-app can also be started by name from
+[launcha](#launcha), with or without a binding, unless its file says
+`hidden: true`.
 
 - **Approval:** before the first run, and again after any change of the file,
   the approval panel shows the name, the file and the full command. `⌘Return`
