@@ -31,6 +31,24 @@ your bindings too.
 
 ## Install
 
+### Homebrew
+
+```sh
+brew install --cask bobuk-io/tap/ting
+open /Applications/Ting.app
+```
+
+If Homebrew asks you to trust the cask, run
+`brew trust --cask bobuk-io/tap/ting`, then repeat the install command.
+
+The [official tap](https://github.com/bobuk-io/homebrew-tap) installs the same
+signed, notarized universal app as the ZIP. If Ting is already in `/Applications`,
+keep using its built-in updates, or quit Ting and run
+`brew install --cask --adopt bobuk-io/tap/ting` to adopt an identical copy.
+Homebrew refuses to adopt a different version; do not use `--force` to overwrite it.
+
+### Manual download
+
 1. Download the universal ZIP from [Releases](https://github.com/bobuk-io/ting/releases/latest).
 2. Unzip it and move `Ting.app` to `/Applications`.
 3. Open Ting. It lives in the menu bar and has no Dock icon.
@@ -44,6 +62,14 @@ releases; you can turn automatic checks off in Settings.
 To upgrade an installed copy, choose **Check for Updates…** in the menu-bar
 menu. You can also quit Ting and replace `/Applications/Ting.app` with the new
 copy from the ZIP, then open it again. Your settings and bindings are kept.
+Homebrew users can instead quit Ting, run
+`brew upgrade --cask --greedy bobuk-io/tap/ting`, and open it again.
+The `--greedy` flag includes apps with built-in updates.
+
+To uninstall a Homebrew copy, turn off launch at login, quit Ting, then run
+`brew uninstall --cask bobuk-io/tap/ting`. This keeps your data. Add `--zap` only
+to also delete settings, bindings, micro-apps, approvals, remembered values and
+usage history.
 
 ## Use
 
@@ -502,7 +528,12 @@ their `bin` directory. Then:
    The release is created as a draft, all assets are uploaded, and then it is
    published, so the feed never points at an incomplete release. The script then
    copies `appcast.xml` into the landing site checkout (`../landing`, or
-   `LANDING`) as `public/apps/ting/appcast.xml`.
+   `LANDING`) as `public/apps/ting/appcast.xml`. It then updates the cask in
+   `bobuk-io/homebrew-tap` with the archive version and SHA-256. The GitHub CLI
+   account must have write access to that repository. If the tap update fails,
+   the release remains published: retry `bash Scripts/update_homebrew.sh --publish`
+   without rerunning `publish.sh`. To preview the cask without publishing, run
+   `bash Scripts/update_homebrew.sh`.
 4. Publish the landing site (see its `docs/updating.md`): the feed of installed
    copies is `https://bobuk.io/apps/ting/appcast.xml`. The GitHub release keeps
    its `appcast.xml` for Ting 0.6.1 and older, which still read

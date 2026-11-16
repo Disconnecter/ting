@@ -60,4 +60,7 @@ mkdir -p "$(dirname "$SITE_FEED")"
 cp "$APPCAST" "$SITE_FEED"
 echo "PUBLISHED: $TAG on GitHub Releases."
 echo "FEED_READY: $SITE_FEED"
+# The cask must refer only to an already published, checksum-verified archive.
+# Retry independently with Scripts/update_homebrew.sh --publish if this fails.
+bash "$ROOT/Scripts/update_homebrew.sh" --publish
 echo "Next: in $LANDING run npm run sync:github && npm run build && npm test, commit, push and npm run deploy."
