@@ -17,8 +17,8 @@ from grime and sound-system culture: amber keycaps on graphite, `esc pull up`,
 Requires **macOS 14 or later**. Official releases are universal builds for
 **Apple Silicon and Intel**.
 
-[Release notes for Ting 0.3.3](docs/releases/v0.3.3.md): a quieter “ting” and
-a clearer Settings switch to turn it off.
+[Release notes for Ting 0.4.0](docs/releases/v0.4.0.md): any coding agent can
+now write and check a micro-app for you.
 
 ## Install
 
