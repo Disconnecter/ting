@@ -108,7 +108,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private let runner: MicroAppRunner
     /// The clipboard: stdin of `input: clipboard` and the `clipboard` target.
     private let pasteboard: NSPasteboard
-    /// `false` keeps the panel off screen; the session still goes through every state. For tests.
+    /// `false` builds the panel with its real views and key handling but never puts it on screen
+    /// or gives it keyboard focus. For tests, so the user's screen and typing are not touched.
     private let presentsWindow: Bool
     private var panel: MicroAppFlowPanel?
     private var task: Task<Void, Never>?
@@ -127,6 +128,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     }
 
     var isOpen: Bool { session.state != .closed }
+    /// The flow panel, once a step has shown it.
+    var flowPanel: MicroAppFlowPanel? { panel }
 
     func setCatalog(_ catalog: MicroAppCatalog) {
         self.catalog = catalog
@@ -271,11 +274,11 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     // MARK: Panel
 
     private func show(_ state: MicroAppFlowSession.State) {
+        let panel = self.panel ?? makePanel()
         guard presentsWindow else {
             session.state = state
             return
         }
-        let panel = self.panel ?? makePanel()
         if !panel.isVisible {
             let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
             if let visible = screen?.visibleFrame {
