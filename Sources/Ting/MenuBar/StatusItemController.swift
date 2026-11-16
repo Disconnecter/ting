@@ -109,8 +109,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(item("About Ting", #selector(showAbout)))
-        if UpdateService.shared.isAvailable {
-            menu.addItem(item("Check for Updates…", #selector(checkForUpdates)))
+        // "Update Ting via Homebrew…" for a copy that Homebrew manages, otherwise Sparkle's check.
+        if let title = UpdateService.shared.menuTitle {
+            menu.addItem(item(title, #selector(checkForUpdates)))
         }
         menu.addItem(item("Quit Ting", #selector(quit), key: "q"))
     }

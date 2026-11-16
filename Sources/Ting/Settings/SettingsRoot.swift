@@ -101,10 +101,20 @@ private struct GeneralSettings: View {
                         Button("Check Now") { updates.checkForUpdates() }
                     }
                 } header: { MonoLabel("Updates", size: 9).foregroundStyle(Color.tingAmber) }
+            } else if let homebrew = updates.homebrew {
+                Section {
+                    Text("Homebrew installed this copy (\(homebrew.prefix.path)), so Homebrew updates it.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Text("Version \(Self.version)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Update Ting via Homebrew…") { updates.checkForUpdates() }
+                    }
+                } header: { MonoLabel("Updates", size: 9).foregroundStyle(Color.tingAmber) }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: updates.isAvailable ? 720 : 620)
+        .frame(width: 560, height: updates.menuTitle != nil ? 720 : 620)
     }
 }
 

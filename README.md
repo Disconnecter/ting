@@ -32,7 +32,8 @@ your bindings too.
 The small gear in the bottom-right corner of selecta and launcha opens Ting's
 menu, including Settings and Check for Updates, even when the menu-bar icon is hidden.
 
-[Release notes for Ting 0.7.3](docs/releases/v0.7.3.md).
+[Release notes for Ting 0.7.4](docs/releases/v0.7.4.md): a copy installed with
+Homebrew updates through Homebrew from Ting's menu instead of Sparkle.
 
 ## Install
 
@@ -47,8 +48,9 @@ If Homebrew asks you to trust the cask, run
 `brew trust --cask bobuk-io/tap/ting`, then repeat the install command.
 
 The [official tap](https://github.com/bobuk-io/homebrew-tap) installs the same
-signed, notarized universal app as the ZIP. If Ting is already in `/Applications`,
-keep using its built-in updates, or quit Ting and run
+signed, notarized universal app as the ZIP. A copy that Homebrew installed is
+updated by Homebrew, see [updates](#updates) below. If Ting is already in
+`/Applications`, keep using its built-in updates, or quit Ting and run
 `brew install --cask --adopt bobuk-io/tap/ting` to adopt an identical copy.
 Homebrew refuses to adopt a different version; do not use `--force` to overwrite it.
 
@@ -60,16 +62,29 @@ Homebrew refuses to adopt a different version; do not use `--force` to overwrite
 4. Press the key you want as your leader. There is no default leader.
 
 Official releases are signed with Developer ID, notarized by Apple and include a
-stapled notarization ticket. Each release includes a SHA-256 checksum. Ting
-updates itself with [Sparkle](https://sparkle-project.org) from this repository's
-releases; you can turn automatic checks off in Settings.
+stapled notarization ticket. Each release includes a SHA-256 checksum.
 
-To upgrade an installed copy, choose **Check for Updates…** in the menu-bar
-menu. You can also quit Ting and replace `/Applications/Ting.app` with the new
-copy from the ZIP, then open it again. Your settings and bindings are kept.
-Homebrew users can instead quit Ting, run
-`brew upgrade --cask --greedy bobuk-io/tap/ting`, and open it again.
-The `--greedy` flag includes apps with built-in updates.
+### Updates
+
+A downloaded copy updates itself with [Sparkle](https://sparkle-project.org)
+from this repository's releases; you can turn automatic checks off in Settings.
+To upgrade it, choose **Check for Updates…** in Ting's menu (the menu-bar icon
+or the gear of selecta and launcha). You can also quit Ting and replace
+`/Applications/Ting.app` with the new copy from the ZIP, then open it again.
+
+A copy that Homebrew installed (a Caskroom record of the cask `ting` points to
+the running Ting.app) never runs Sparkle: it does not check for updates on its
+own and shows no Sparkle window. Its menu and the Updates section of Settings
+offer **Update Ting via Homebrew…** instead. That runs exactly
+`brew upgrade --cask --greedy bobuk-io/tap/ting` with the `brew` of the prefix
+that installed Ting, and shows the command, the live output of brew and the real
+result: updated, already up to date, or the error (for example no network, a
+Homebrew lock or a password prompt that cannot be answered). After an update
+Ting starts again from its installed place and shows the result once more. The
+`--greedy` flag is needed because the cask declares built-in updates. You can
+also run the same command in a terminal yourself.
+
+Updates keep your settings, bindings and micro-apps.
 
 To uninstall a Homebrew copy, turn off launch at login, quit Ting, then run
 `brew uninstall --cask bobuk-io/tap/ting`. This keeps your data. Add `--zap` only
@@ -476,7 +491,9 @@ Ting has no accounts, analytics or servers. It opens the apps and URLs you
 configure and runs the commands of the micro-app files you approved; what such a
 command does, including network access, is up to the command. Sparkle checks
 the update feed at `https://bobuk.io/apps/ting/appcast.xml` (Ting 0.6.1 and older:
-this repository's release feed) and downloads updates from GitHub. See [SECURITY.md](SECURITY.md) for the security
+this repository's release feed) and downloads updates from GitHub. In a copy
+that Homebrew installed, Sparkle is off and Ting runs `brew` only when you choose
+**Update Ting via Homebrew…**. See [SECURITY.md](SECURITY.md) for the security
 model and private vulnerability reporting.
 
 ## Develop
