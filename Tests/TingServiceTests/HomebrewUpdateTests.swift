@@ -285,14 +285,43 @@ import TingCore
         #expect(opened == "\(real(caskroom.appendingPathComponent("0.7.4/Ting.app"))) --args --homebrew-update-log \(directory.path)\n")
     }
 
+    /// Without a complete copy of Ting.app for the progress viewer, nothing could show the
+    /// progress while brew replaces Ting: brew is never started, and the window shows why.
+    @Test func homebrewViewerCopyFailureStartsNoBrew() async throws {
+        let install = try install(brew: "echo '🍺  ting was successfully upgraded!'")
+        let broken = root.appendingPathComponent("Broken/Ting.app")
+        try fm.createDirectory(at: broken.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        let cases: [(URL?, String)] = [
+            (nil, "not running from an app bundle"),
+            (root.appendingPathComponent("Missing/Ting.app"), "Could not prepare the progress window"),
+            (broken, "has no executable"),
+        ]
+        for (source, reason) in cases {
+            let runner = HomebrewUpdateRunner(install: install, base: root.appendingPathComponent("runs"),
+                                              viewerSource: source, pollInterval: 0.05)
+            let outcome = try await finish(runner)
+            guard case .failed(-1, let text) = outcome else { Issue.record("Expected a failure, got \(outcome)"); continue }
+            #expect(text.contains("Could not prepare the progress window"))
+            #expect(text.contains(reason))
+            let model = HomebrewUpdateModel()
+            model.finish(outcome, log: runner.directory.map(HomebrewUpdateRunner.output(in:)))
+            #expect(model.output == text)
+            #expect(!runner.isRunning)
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        #expect(read("brew-calls").isEmpty)
+    }
+
     /// A run that cannot start shows its reason, not an empty log.
     @Test func homebrewStartupFailuresShowTheReason() async throws {
         let install = try install(brew: "exit 0")
+        _ = try script("ViewerSource/Ting.app/Contents/MacOS/Ting", "exit 0")
         let blocker = root.appendingPathComponent("not-a-folder")
         try Data("x".utf8).write(to: blocker)
         let unpreparable = HomebrewUpdateRunner(install: install, base: blocker, viewerSource: nil, pollInterval: 0.05)
         let unstartable = HomebrewUpdateRunner(install: install, base: root.appendingPathComponent("runs"),
-                                               shell: root.appendingPathComponent("missing/sh"), viewerSource: nil,
+                                               shell: root.appendingPathComponent("missing/sh"),
+                                               viewerSource: root.appendingPathComponent("ViewerSource/Ting.app"),
                                                pollInterval: 0.05)
         for (runner, reason) in [(unpreparable, "Could not prepare the update"), (unstartable, "Could not start the update helper")] {
             let outcome = try await finish(runner)
