@@ -11,6 +11,8 @@ final class MicroAppStore {
     let folderURL: URL
     let logURL: URL
     private(set) var catalog = MicroAppCatalog()
+    /// Called on each load of the folder, also the loads that the watch makes.
+    var onLoad: (() -> Void)?
 
     private var sources: [DispatchSourceFileSystemObject] = []
     private var pendingReload: DispatchWorkItem?
@@ -42,6 +44,7 @@ final class MicroAppStore {
     /// Reads every `*.yaml` file of the folder. A missing folder gives an empty list, not an error.
     @discardableResult
     func load() -> MicroAppCatalog {
+        onLoad?()
         catalog = MicroAppCatalog.build(hashed: readFiles())
         writeLog()
         return catalog

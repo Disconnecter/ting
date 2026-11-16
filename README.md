@@ -1,7 +1,8 @@
 # Ting
 
 A leader-key launcher for macOS. Press your leader key, then one key or a short
-sequence to open an app or a link — without a search field, the Dock or the mouse.
+sequence to open an app or a link, or to start a small
+[micro-app](#micro-apps) — without a search field, the Dock or the mouse.
 
 ```text
 Home  space      →  WezTerm
@@ -110,7 +111,35 @@ A micro-app is a small tool that runs one shell command: it can ask for a few
 parameters, read the clipboard and show or copy the result. Each micro-app is one
 YAML file in a strict, checked format, described in
 [docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md) with five working
-[examples](docs/micro-apps/examples/).
+[examples](docs/micro-apps/examples/): Format JSON, Change case, Encode / decode,
+Count words and DNS lookup. The files are meant to be written by you or by an AI
+assistant such as Claude Code; Ting has no editor for them and installs none by
+itself, so the folder starts empty.
+
+```yaml
+format: ting.microapp/2
+name: Change case
+description: Change the case of the clipboard text.
+params:
+  - name: mode
+    type: choice
+    required: false
+    default: upper
+    choices: [upper, lower]
+input: clipboard
+command: |
+  case "$TING_MODE" in
+    upper) perl -CS -pe '$_ = uc' ;;
+    lower) perl -CS -pe '$_ = lc' ;;
+  esac
+output:
+  to: [clipboard]
+```
+
+The command runs with `/bin/sh -c` as you, with your full rights, in your home
+folder and with the PATH of your login shell, so Homebrew tools are found. The
+clipboard text goes to its stdin and each parameter is an environment variable
+(`mode` → `$TING_MODE`); Ting never pastes a value into the command text.
 
 Ting loads every `*.yaml` file of the `micro/` folder next to the config file
 (`~/.config/ting/micro/`) and loads it again when a file is added, changed or removed. A missing folder simply
@@ -171,8 +200,10 @@ instead of starting anything. Every micro-app can also be started by name from
   the result panel with an error mark, the exit code, stderr and stdout, and
   copies nothing. Output longer than 1 MB is cut, with a note. In the result
   panel you can scroll and select text; `⌘C` copies the selection, `Return`
-  copies everything and closes, `Esc` closes. This version shows every output
-  style as plain text.
+  copies everything and closes, `Esc` closes. `output.as` sets the style:
+  `markdown` (the default: headings, lists, bold, italic, code and tables as
+  aligned columns), `console` (monospaced, with ANSI colours), `text` or `code`
+  (monospaced). An error is always shown as console text.
 - Only one micro-app is open at a time: a new start closes the open panel and
   stops its command.
 
@@ -224,7 +255,7 @@ the file in your dotfiles if you like.
 ```
 
 - Each item has a `key`, an optional `label` and exactly one of `items` (a
-  group), `app` (a bundle identifier) or `url`.
+  group), `app` (a bundle identifier), `url` or `micro` (a micro-app id).
 - `key` is a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`.
 - `leader` is a key name such as `home`, `f13` or `space`, optionally with
   modifiers: `option+shift+cmd+f`, `ctrl+space`.
@@ -245,7 +276,8 @@ startup or panel-opening scans. It asks Spotlight for file names only for what
 you type, and only when no app matches. It keeps its launch counts on your Mac.
 
 Ting has no accounts, analytics or servers. It opens the apps and URLs you
-configure. Sparkle checks this repository's public release feed for updates and
+configure and runs the commands of the micro-app files you approved; what such a
+command does, including network access, is up to the command. Sparkle checks this repository's public release feed for updates and
 downloads updates from GitHub. See [SECURITY.md](SECURITY.md) for the security
 model and private vulnerability reporting.
 
@@ -261,7 +293,9 @@ swift test
 
 `run.sh` builds a development copy in `build/` and starts it. Development builds
 are ad-hoc signed, not notarized, and never check for updates. Set
-`TING_CONFIG=/tmp/ting-test.json` to keep your real configuration untouched.
+`TING_CONFIG=/tmp/ting-test.json` to keep your real configuration untouched; the
+micro-apps folder, the error log and the micro-app state then live next to it
+(`/tmp/ting-test.json.micro/` and so on).
 
 The SwiftUI interface and AppKit panel, hotkey and menu-bar wiring live in
 `Sources/Ting`. The config format, key names, the binding tree and the leader

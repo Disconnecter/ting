@@ -334,7 +334,6 @@ output:
           to: [panel, file]
           as: html
         """, file: "broken.yaml")
-        #expect(has(found, line: 2, "must equal the file name `broken`"))
         #expect(has(found, line: 9, "`params[0].type` is `string`"))
         #expect(has(found, line: 10, "optional param needs a `default`"))
         #expect(has(found, line: 11, "name `Record Type` may only use"))
@@ -397,11 +396,14 @@ output:
         #expect(has(found, line: line, fragment), "\(text.debugDescription): \(found)")
     }
 
-    @Test func fileNameRules() {
+    @Test func fileNameRules() throws {
         #expect(has(issues(minimal, file: "Say Hi.yaml"), line: 1, "file name `Say Hi` must be kebab-case"))
         #expect(has(issues(minimal, file: "say-hi.yml"), line: 1, "must end in `.yaml`"))
         #expect(issues("id: say-hi\n" + minimal, file: "say-hi.yaml").isEmpty)
-        #expect(has(issues("id: other\n" + minimal, file: "say-hi.yaml"), line: 1, "must equal the file name `say-hi`"))
+        // The `id` key does not have to equal the file name: the link survives a rename.
+        #expect(issues("id: other\n" + minimal, file: "say-hi.yaml").isEmpty)
+        #expect(try app("id: other\n" + minimal, file: "say-hi.yaml").id == "other")
+        #expect(issues("id: say-hi\n" + minimal, file: "Say Hi.yaml").isEmpty)
     }
 
     @Test func templateOnlyForDeclaredParams() throws {

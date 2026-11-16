@@ -106,6 +106,11 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private let approvals: MicroAppApprovalStore
     private let values: MicroAppValueStore
     private let runner: MicroAppRunner
+    /// The clipboard: stdin of `input: clipboard` and the `clipboard` target.
+    private let pasteboard: NSPasteboard
+    /// `false` builds the panel with its real views and key handling but never puts it on screen
+    /// or gives it keyboard focus. For tests, so the user's screen and typing are not touched.
+    private let presentsWindow: Bool
     private var panel: MicroAppFlowPanel?
     private var task: Task<Void, Never>?
     /// Bumped by every start and close, so a late result of a stopped flow is dropped.
@@ -113,13 +118,18 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     /// The hash waiting for ⌘↩ in the approval panel.
     private var pendingHash = ""
 
-    init(approvals: MicroAppApprovalStore? = nil, values: MicroAppValueStore? = nil, runner: MicroAppRunner = MicroAppRunner()) {
+    init(approvals: MicroAppApprovalStore? = nil, values: MicroAppValueStore? = nil, runner: MicroAppRunner = MicroAppRunner(),
+         pasteboard: NSPasteboard = .general, presentsWindow: Bool = true) {
         self.approvals = approvals ?? MicroAppApprovalStore()
         self.values = values ?? MicroAppValueStore()
         self.runner = runner
+        self.pasteboard = pasteboard
+        self.presentsWindow = presentsWindow
     }
 
     var isOpen: Bool { session.state != .closed }
+    /// The flow panel, once a step has shown it.
+    var flowPanel: MicroAppFlowPanel? { panel }
 
     func setCatalog(_ catalog: MicroAppCatalog) {
         self.catalog = catalog
@@ -208,7 +218,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         let current = generation
         pendingHash = ""
         show(.working(app))
-        let stdin = app.input == .clipboard ? (NSPasteboard.general.string(forType: .string) ?? "") : nil
+        let stdin = app.input == .clipboard ? (pasteboard.string(forType: .string) ?? "") : nil
         let runner = self.runner
         task = Task { [weak self] in
             let result = await runner.run(app, values: values, stdin: stdin)
@@ -221,8 +231,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
 
     private func present(_ plan: MicroAppResultPlan) {
         if let text = plan.clipboard {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
         }
         switch plan.show {
         case .nothing:
@@ -235,7 +245,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func handle(_ key: MicroAppFlowPanel.Key) {
+    /// A key of the panel: ⌘↩, ↩, ⌘O or Esc.
+    func handle(_ key: MicroAppFlowPanel.Key) {
         switch (session.state, key) {
         case (.approval, .commandEnter):
             approve()
@@ -255,15 +266,19 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     }
 
     private func copyAll(_ content: MicroAppPanelContent) {
-        NSPasteboard.general.clearContents()
+        pasteboard.clearContents()
         // The plain result: console text (and every error) without its escape codes.
-        NSPasteboard.general.setString(content.plainText, forType: .string)
+        pasteboard.setString(content.plainText, forType: .string)
     }
 
     // MARK: Panel
 
     private func show(_ state: MicroAppFlowSession.State) {
         let panel = self.panel ?? makePanel()
+        guard presentsWindow else {
+            session.state = state
+            return
+        }
         if !panel.isVisible {
             let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
             if let visible = screen?.visibleFrame {
