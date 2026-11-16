@@ -32,6 +32,27 @@ import Testing
         ])
     }
 
+    @Test(arguments: [
+        ("\u{9D}0;title\u{9C}hello", "hello"),
+        ("\u{9D}0;title\u{07}hello", "hello"),
+        ("\u{9D}8;;https://x\u{1B}\\link\u{9D}8;;\u{9C}", "link"),
+        ("\u{90}q payload\u{9C}a\u{98}sos\u{9C}b\u{9E}pm\u{9C}c\u{9F}apc\u{9C}d", "abcd"),
+        ("\u{1B}]0;title\u{9C}x\u{1B}Pdcs\u{9C}y", "xy"),
+        ("before\u{9D}never closed", "before"),
+    ])
+    func c1ControlStringsAreDroppedWithTheirPayload(text: String, plain: String) {
+        #expect(ConsoleText.plain(text) == plain)
+        #expect(MicroAppPanelContent(title: "t", text: text, style: .console, isError: false).plainText == plain)
+        #expect(MicroAppPanelContent(title: "t", text: text, style: .markdown, isError: true).plainText == text)
+    }
+
+    @Test func c1ControlStringKeepsTheStyleAroundIt() {
+        #expect(ConsoleText.parse("\u{1B}[31mred\u{9D}0;t\u{9C} still\u{9B}0mplain") == [
+            ConsoleRun("red still", ConsoleStyle(foreground: .basic(1))),
+            ConsoleRun("plain"),
+        ])
+    }
+
     @Test func unknownEscapeCodesAreDropped() {
         let text = "\u{1B}[2J\u{1B}[H\u{1B}]0;title\u{07}\u{1B}]8;;https://x\u{1B}\\link\u{1B}]8;;\u{1B}\\ "
             + "\u{1B}(B\u{1B}7\u{1B}[?25lprogress\r50%\u{08}\n\tend\u{1B}[K\u{1B}"
@@ -173,6 +194,31 @@ import Testing
     @Test func unclosedFenceRunsToTheEnd() {
         #expect(MarkdownText.parse("~~~\n  *not bold*\n\n# no heading") == [
             .code(language: "", text: "  *not bold*\n\n# no heading"),
+        ])
+    }
+
+    @Test(arguments: [
+        ("**bold *italic***", [MarkdownSpan("bold ", bold: true), MarkdownSpan("italic", bold: true, italic: true)]),
+        ("*italic **bold***", [MarkdownSpan("italic ", italic: true), MarkdownSpan("bold", bold: true, italic: true)]),
+        ("***both** italic*", [MarkdownSpan("both", bold: true, italic: true), MarkdownSpan(" italic", italic: true)]),
+        ("***both* bold**", [MarkdownSpan("both", bold: true, italic: true), MarkdownSpan(" bold", bold: true)]),
+        ("__bold _italic___", [MarkdownSpan("bold ", bold: true), MarkdownSpan("italic", bold: true, italic: true)]),
+        ("*a **b** c*", [MarkdownSpan("a ", italic: true), MarkdownSpan("b", bold: true, italic: true),
+                         MarkdownSpan(" c", italic: true)]),
+        ("***a**", [MarkdownSpan("*"), MarkdownSpan("a", bold: true)]),
+        ("**a***", [MarkdownSpan("a", bold: true), MarkdownSpan("*")]),
+        ("x **bold *italic*** y", [MarkdownSpan("x "), MarkdownSpan("bold ", bold: true),
+                                   MarkdownSpan("italic", bold: true, italic: true), MarkdownSpan(" y")]),
+    ])
+    func nestedEmphasisClosingTogether(text: String, spans: [MarkdownSpan]) {
+        #expect(MarkdownText.inline(text) == spans)
+    }
+
+    @Test func nestedEmphasisInBlocks() {
+        #expect(MarkdownText.parse("# **Total *now***\n\n- **a *b***") == [
+            .heading(level: 1, spans: [MarkdownSpan("Total ", bold: true), MarkdownSpan("now", bold: true, italic: true)]),
+            .list([MarkdownListItem(marker: .bullet, spans: [MarkdownSpan("a ", bold: true),
+                                                              MarkdownSpan("b", bold: true, italic: true)])]),
         ])
     }
 

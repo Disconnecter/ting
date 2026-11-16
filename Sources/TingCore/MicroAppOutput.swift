@@ -53,6 +53,12 @@ public struct ConsoleRun: Equatable, Sendable {
 public enum ConsoleText {
     private static let escape: Unicode.Scalar = "\u{1B}"
     private static let bell: Unicode.Scalar = "\u{07}"
+    /// `ESC ]` (OSC), `ESC P` (DCS), `ESC X` (SOS), `ESC ^` (PM), `ESC _` (APC): each starts a control string.
+    private static let escStringIntroducers: Set<UInt32> = [0x5D, 0x50, 0x58, 0x5E, 0x5F]
+    /// The one-character C1 forms of the same: DCS, SOS, OSC, PM, APC.
+    private static let c1StringIntroducers: Set<UInt32> = [0x90, 0x98, 0x9D, 0x9E, 0x9F]
+    /// ST, the C1 string terminator (the one-character form of `ESC \`).
+    private static let stringTerminator: UInt32 = 0x9C
 
     /// The text without any escape or control code (only line breaks and tabs stay):
     /// what Enter, ⌘C and the clipboard target get.
@@ -82,6 +88,26 @@ public enum ConsoleText {
         var i = 0
         while i < scalars.count {
             let scalar = scalars[i]
+            // A control string: OSC, DCS, SOS, PM or APC, as ESC + letter or as one C1 character.
+            // Its whole payload is dropped, up to BEL, ESC \ or the C1 string terminator.
+            let stringStart: Int?
+            if c1StringIntroducers.contains(scalar.value) {
+                stringStart = i + 1
+            } else if scalar == escape, i + 1 < scalars.count, escStringIntroducers.contains(scalars[i + 1].value) {
+                stringStart = i + 2
+            } else {
+                stringStart = nil
+            }
+            if let stringStart {
+                var j = stringStart
+                while j < scalars.count {
+                    if scalars[j] == bell || scalars[j].value == stringTerminator { j += 1; break }
+                    if scalars[j] == escape, j + 1 < scalars.count, scalars[j + 1] == "\\" { j += 2; break }
+                    j += 1
+                }
+                i = j
+                continue
+            }
             if scalar == escape || scalar.value == 0x9B {
                 // 0x9B is the one-byte CSI.
                 var j = i + 1
@@ -111,18 +137,6 @@ public enum ConsoleText {
                     continue
                 }
                 guard j < scalars.count else { i = j; continue }
-                let next = scalars[j].value
-                if next == 0x5D || next == 0x50 || next == 0x5F || next == 0x5E || next == 0x58 {
-                    // OSC, DCS, APC, PM, SOS: a string up to BEL or ESC \.
-                    j += 1
-                    while j < scalars.count {
-                        if scalars[j] == bell { j += 1; break }
-                        if scalars[j] == escape, j + 1 < scalars.count, scalars[j + 1] == "\\" { j += 2; break }
-                        j += 1
-                    }
-                    i = j
-                    continue
-                }
                 // ESC, intermediate bytes, one final byte (such as `ESC ( B` or `ESC 7`).
                 while j < scalars.count, (0x20...0x2F).contains(scalars[j].value) { j += 1 }
                 if j < scalars.count { j += 1 }
@@ -510,10 +524,42 @@ public enum MarkdownText {
     // MARK: Inline
 
     /// Inline markdown: `code`, **bold**, *italic*, ***both***, the same with underscores (not inside a
-    /// word), and backslash escapes. A delimiter without its closing pair stays literal.
+    /// word), and backslash escapes. Emphasis follows the CommonMark delimiter-run rules, so runs that
+    /// close together (`**bold *italic***`) or open together (`***both** italic*`) are split between
+    /// the nested pairs. A delimiter without its pair stays literal.
     public static func inline(_ text: String) -> [MarkdownSpan] {
+        var tokens = tokenize(Array(text))
+        let matches = matchEmphasis(&tokens)
+
+        // How many bold and italic pairs cover each token: +1 after the opener, −1 at the closer.
+        var boldDepth = [Int](repeating: 0, count: tokens.count + 1)
+        var italicDepth = [Int](repeating: 0, count: tokens.count + 1)
+        for match in matches {
+            if match.strong {
+                boldDepth[match.opener + 1] += 1
+                boldDepth[match.closer] -= 1
+            } else {
+                italicDepth[match.opener + 1] += 1
+                italicDepth[match.closer] -= 1
+            }
+        }
         var spans: [MarkdownSpan] = []
-        parseInline(Array(text), bold: false, italic: false, into: &spans)
+        var bold = 0
+        var italic = 0
+        for (index, token) in tokens.enumerated() {
+            bold += boldDepth[index]
+            italic += italicDepth[index]
+            switch token.kind {
+            case .text(let text):
+                append(text, bold: bold > 0, italic: italic > 0, code: false, to: &spans)
+            case .code(let text):
+                append(text, bold: bold > 0, italic: italic > 0, code: true, to: &spans)
+            case .delimiter(let char):
+                // The part of the run that no pair used stays literal.
+                append(String(repeating: String(char), count: token.remaining), bold: bold > 0, italic: italic > 0,
+                       code: false, to: &spans)
+            }
+        }
         return spans
     }
 
@@ -526,10 +572,35 @@ public enum MarkdownText {
         }
     }
 
-    private static func parseInline(_ chars: [Character], bold: Bool, italic: Bool, into spans: inout [MarkdownSpan]) {
+    private struct InlineToken {
+        enum Kind {
+            case text(String)
+            case code(String)
+            case delimiter(Character)
+        }
+
+        var kind: Kind
+        /// For a delimiter run: its length, whether it can open and close, and how much is used.
+        var count = 0
+        var canOpen = false
+        var canClose = false
+        var used = 0
+
+        var remaining: Int { count - used }
+    }
+
+    private struct EmphasisMatch {
+        var opener: Int
+        var closer: Int
+        var strong: Bool
+    }
+
+    private static func tokenize(_ chars: [Character]) -> [InlineToken] {
+        var tokens: [InlineToken] = []
         var literal = ""
         func flush() {
-            append(literal, bold: bold, italic: italic, code: false, to: &spans)
+            guard !literal.isEmpty else { return }
+            tokens.append(InlineToken(kind: .text(literal)))
             literal = ""
         }
         var i = 0
@@ -548,7 +619,7 @@ public enum MarkdownText {
                     if body.count >= 2, body.first == " ", body.last == " ", body.contains(where: { $0 != " " }) {
                         body = String(body.dropFirst().dropLast())
                     }
-                    append(body, bold: bold, italic: italic, code: true, to: &spans)
+                    tokens.append(InlineToken(kind: .code(body)))
                     i = close + count
                 } else {
                     literal += String(repeating: "`", count: count)
@@ -558,29 +629,86 @@ public enum MarkdownText {
             }
             if char == "*" || char == "_" {
                 let count = run(of: char, in: chars, at: i)
-                let opener = min(count, 3)
                 let before: Character? = i > 0 ? chars[i - 1] : nil
                 let after: Character? = i + count < chars.count ? chars[i + count] : nil
-                let opens = (after.map { !$0.isWhitespace } ?? false)
-                    && (char == "*" || !(before.map(isWordChar) ?? false))
-                if count <= 3, opens, let close = closingDelimiter(char, count: opener, in: chars, from: i + count) {
-                    flush()
-                    let inner = Array(chars[(i + count)..<close])
-                    parseInline(inner, bold: bold || opener >= 2, italic: italic || opener != 2, into: &spans)
-                    i = close + opener
+                // Flanking as in CommonMark; the start and the end of the text count as white space.
+                let beforeSpace = before.map(\.isWhitespace) ?? true
+                let afterSpace = after.map(\.isWhitespace) ?? true
+                let beforePunct = before.map(isPunctuation) ?? false
+                let afterPunct = after.map(isPunctuation) ?? false
+                let left = !afterSpace && (!afterPunct || beforeSpace || beforePunct)
+                let right = !beforeSpace && (!beforePunct || afterSpace || afterPunct)
+                flush()
+                var token = InlineToken(kind: .delimiter(char), count: count)
+                if char == "*" {
+                    token.canOpen = left
+                    token.canClose = right
                 } else {
-                    literal += String(repeating: String(char), count: count)
-                    i += count
+                    token.canOpen = left && (!right || beforePunct)
+                    token.canClose = right && (!left || afterPunct)
                 }
+                tokens.append(token)
+                i += count
                 continue
             }
             literal.append(char)
             i += 1
         }
         flush()
+        return tokens
     }
 
-    private static func isWordChar(_ char: Character) -> Bool { char.isLetter || char.isNumber }
+    private static func isPunctuation(_ char: Character) -> Bool { char.isPunctuation || char.isSymbol }
+
+    /// Pairs the delimiter runs: each closer, from the left, takes the nearest opener of its character;
+    /// both give 2 characters (bold) when both have 2 left, else 1 (italic), and the closer goes on
+    /// while it has characters left. The runs between a pair can no longer pair with anything outside.
+    private static func matchEmphasis(_ tokens: inout [InlineToken]) -> [EmphasisMatch] {
+        var stack = tokens.indices.filter { if case .delimiter = tokens[$0].kind { return true } else { return false } }
+        var matches: [EmphasisMatch] = []
+        var k = 0
+        while k < stack.count {
+            let closer = stack[k]
+            guard tokens[closer].canClose, tokens[closer].remaining > 0,
+                  case .delimiter(let char) = tokens[closer].kind else { k += 1; continue }
+            var found: Int?
+            var m = k - 1
+            while m >= 0 {
+                let opener = stack[m]
+                if case .delimiter(let other) = tokens[opener].kind, other == char, tokens[opener].canOpen,
+                   tokens[opener].remaining > 0, !breaksRuleOfThree(tokens[opener], tokens[closer]) {
+                    found = m
+                    break
+                }
+                m -= 1
+            }
+            guard let m = found else {
+                // A run that only closes and found no opener will never be used.
+                if !tokens[closer].canOpen { stack.remove(at: k) } else { k += 1 }
+                continue
+            }
+            let opener = stack[m]
+            let use = tokens[opener].remaining >= 2 && tokens[closer].remaining >= 2 ? 2 : 1
+            tokens[opener].used += use
+            tokens[closer].used += use
+            matches.append(EmphasisMatch(opener: opener, closer: closer, strong: use == 2))
+            stack.removeSubrange((m + 1)..<k)
+            k = m + 1
+            if tokens[opener].remaining == 0 {
+                stack.remove(at: m)
+                k -= 1
+            }
+            if tokens[closer].remaining == 0 { stack.remove(at: k) }
+        }
+        return matches
+    }
+
+    /// CommonMark: a run that can both open and close does not pair with one whose lengths add up to a
+    /// multiple of 3, unless both lengths are multiples of 3 (so `*a**b*` stays one italic).
+    private static func breaksRuleOfThree(_ opener: InlineToken, _ closer: InlineToken) -> Bool {
+        guard opener.canClose || closer.canOpen else { return false }
+        return (opener.count + closer.count) % 3 == 0 && !(opener.count % 3 == 0 && closer.count % 3 == 0)
+    }
 
     private static func run(of char: Character, in chars: [Character], at index: Int) -> Int {
         var j = index
@@ -598,32 +726,6 @@ public enum MarkdownText {
             } else {
                 j += 1
             }
-        }
-        return nil
-    }
-
-    /// The start of a closing run of exactly `count` delimiters, after a non-space, skipping code spans.
-    private static func closingDelimiter(_ char: Character, count: Int, in chars: [Character], from start: Int) -> Int? {
-        var j = start
-        while j < chars.count {
-            if chars[j] == "\\" { j += 2; continue }
-            if chars[j] == "`" {
-                let ticks = run(of: "`", in: chars, at: j)
-                if let close = closingTicks(ticks, in: chars, from: j + ticks) { j = close + ticks } else { j += ticks }
-                continue
-            }
-            if chars[j] == char {
-                let length = run(of: char, in: chars, at: j)
-                let before = chars[j - 1]
-                let after: Character? = j + length < chars.count ? chars[j + length] : nil
-                if length == count, j > start, !before.isWhitespace,
-                   char == "*" || !(after.map(isWordChar) ?? false) {
-                    return j
-                }
-                j += length
-                continue
-            }
-            j += 1
         }
         return nil
     }

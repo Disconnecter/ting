@@ -121,6 +121,28 @@ final class MicroAppOutputRendererTests: XCTestCase {
         XCTAssertTrue(code.fontDescriptor.symbolicTraits.contains(.monoSpace))
     }
 
+    func testC1ControlStringsAreNotShownOrCopied() async throws {
+        let app = MicroApp(id: "title", description: "Title", input: .none,
+                           command: #"printf '\302\2350;title\302\234hello \033[32mgreen\033[0m\302\2208;;x\302\234\n'"#,
+                           output: .init(targets: [.panel], style: .console))
+        let content = try await panel(app, stdin: nil)
+        XCTAssertTrue(content.text.unicodeScalars.contains { $0.value == 0x9D }, content.text)
+        let rendered = MicroAppOutputRenderer.render(content)
+        XCTAssertEqual(rendered.string, "hello green")
+        XCTAssertEqual(content.plainText, "hello green")
+    }
+
+    func testNestedEmphasisIsDrawn() throws {
+        let rendered = MicroAppOutputRenderer.render("**bold *italic***", style: .markdown)
+        XCTAssertEqual(rendered.string, "bold italic")
+        let bold = try XCTUnwrap(rendered.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(bold.fontDescriptor.symbolicTraits.contains(.bold))
+        XCTAssertFalse(bold.fontDescriptor.symbolicTraits.contains(.italic))
+        let both = try XCTUnwrap(rendered.attribute(.font, at: 6, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(both.fontDescriptor.symbolicTraits.contains(.bold))
+        XCTAssertTrue(both.fontDescriptor.symbolicTraits.contains(.italic))
+    }
+
     func testTextAndCodeStyles() throws {
         let text = MicroAppOutputRenderer.render("**x** \u{1B}[1m", style: .text)
         XCTAssertEqual(text.string, "**x** \u{1B}[1m")
