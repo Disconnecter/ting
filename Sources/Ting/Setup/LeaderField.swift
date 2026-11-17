@@ -6,7 +6,17 @@ import TingCore
 @MainActor
 @Observable
 final class HotkeyRecording: HotkeyRecordingOwner {
-    enum Target { case leader, launcha }
+    enum Target {
+        case leader, launcha, clipboarda
+
+        var role: String {
+            switch self {
+            case .leader: "be a leader"
+            case .launcha: "open launcha"
+            case .clipboarda: "open clipboarda"
+            }
+        }
+    }
 
     private(set) var isRecording = false
     private(set) var preview = ""
@@ -60,13 +70,15 @@ final class HotkeyRecording: HotkeyRecordingOwner {
             return nil
         case .keyDown:
             let hotkey = Hotkey.combo(keyCode: event.keyCode, modifiers: modifiers)
-            let role = target == .leader ? "be a leader" : "open launcha"
+            let config = model?.config
             if KeyCodes.name(for: event.keyCode) == nil || !hotkey.isValid {
-                warning = "A modifier alone cannot \(role). Press any other key."
-            } else if target == .launcha, hotkey == model?.config.leader {
-                warning = "\(hotkey.display) is the leader. Press another key for launcha."
-            } else if target == .leader, hotkey == model?.config.launcha.hotkey {
+                warning = "A modifier alone cannot \(target.role). Press any other key."
+            } else if target != .leader, hotkey == config?.leader {
+                warning = "\(hotkey.display) is the leader. Press another key."
+            } else if target != .launcha, hotkey == config?.launcha.hotkey {
                 warning = "\(hotkey.display) already opens launcha. Press another key."
+            } else if target != .clipboarda, hotkey == config?.clipboarda.activeHotkey {
+                warning = "\(hotkey.display) already opens clipboarda. Press another key."
             } else {
                 finish(hotkey)
             }
@@ -82,6 +94,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
         switch target {
         case .leader: model?.setLeader(hotkey)
         case .launcha: model?.setLaunchaHotkey(hotkey)
+        case .clipboarda: model?.setClipboardaHotkey(hotkey)
         }
     }
 }
@@ -149,15 +162,33 @@ struct LeaderField: View {
 
 /// Records the separate launcha hotkey. It starts unset; Clear removes it.
 struct LaunchaHotkeyField: View {
+    var body: some View { WindowHotkeyField(target: .launcha) }
+}
+
+/// Records the clipboarda hotkey. It starts unset; Clear removes it.
+struct ClipboardaHotkeyField: View {
+    var body: some View { WindowHotkeyField(target: .clipboarda) }
+}
+
+/// The hotkey of a Ting window (launcha or clipboarda).
+private struct WindowHotkeyField: View {
+    let target: HotkeyRecording.Target
     @Environment(AppModel.self) private var model
     @State private var recording = HotkeyRecording()
+
+    private var name: String { target == .clipboarda ? "clipboarda" : "launcha" }
+    private var hotkey: Hotkey? { target == .clipboarda ? model.config.clipboarda.hotkey : model.config.launcha.hotkey }
+    private var problem: String? { target == .clipboarda ? model.clipboardaHotkeyProblem : model.launchaHotkeyProblem }
+    private func set(_ hotkey: Hotkey?) {
+        if target == .clipboarda { model.setClipboardaHotkey(hotkey) } else { model.setLaunchaHotkey(hotkey) }
+    }
 
     var body: some View {
         let isRecording = recording.isRecording
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Button {
-                    if isRecording { recording.cancel() } else { recording.start(model: model, target: .launcha) }
+                    if isRecording { recording.cancel() } else { recording.start(model: model, target: target) }
                 } label: {
                     HStack(spacing: 10) {
                         if isRecording {
@@ -165,7 +196,7 @@ struct LaunchaHotkeyField: View {
                             let preview = recording.preview
                             Text(preview.isEmpty ? "Press a key…" : preview)
                                 .foregroundStyle(preview.isEmpty ? Color.tingMuted : Color.tingInk)
-                        } else if let hotkey = model.config.launcha.hotkey {
+                        } else if let hotkey {
                             Text(hotkey.display)
                         } else {
                             Text("Not set").foregroundStyle(Color.tingMuted)
@@ -183,20 +214,20 @@ struct LaunchaHotkeyField: View {
                                       style: StrokeStyle(lineWidth: isRecording ? 1.5 : 1, dash: isRecording ? [4, 3] : [])))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(model.config.launcha.hotkey.map { "launcha hotkey \($0.display). Click to change." }
-                                    ?? "Record a launcha hotkey")
-                if model.config.launcha.hotkey != nil, !isRecording {
-                    Button("Clear") { model.setLaunchaHotkey(nil) }
-                        .accessibilityLabel("Clear the launcha hotkey")
+                .accessibilityLabel(hotkey.map { "\(name) hotkey \($0.display). Click to change." }
+                                    ?? "Record a \(name) hotkey")
+                if hotkey != nil, !isRecording {
+                    Button("Clear") { set(nil) }
+                        .accessibilityLabel("Clear the \(name) hotkey")
                 }
             }
             .onDisappear { recording.cancel() }
-            .onChange(of: model.config.launcha.hotkey) { recording.cancel() }
+            .onChange(of: hotkey) { recording.cancel() }
 
             if let warning = recording.warning {
                 Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Color.tingAmber)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if let problem = model.launchaHotkeyProblem, !isRecording {
+            } else if let problem, !isRecording {
                 Label(problem, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Color.tingAmber)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -55,6 +55,8 @@ struct BindingsSettings: View {
                 Menu {
                     Button("Application…", action: addApplication)
                     Button("URL", action: addURL)
+                    Button("clipboarda") { add(.open("", "Clipboard history", .clipboarda)) }
+                    Button("launcha") { add(.open("", "Search", .launcha)) }
                     Menu("Micro-app") {
                         let choices = model.microCatalog.bindingChoices()
                         if choices.isEmpty {
@@ -142,6 +144,15 @@ struct BindingsSettings: View {
             TextField("URL", text: targetBinding(row)).textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
         case .micro(let id):
             microPicker(row, id: id)
+        case .open(let panel):
+            Picker("Window", selection: Binding(
+                get: { panel },
+                set: { next in model.updateBinding(at: row.sequence) { $0.action = .open(next) } })) {
+                ForEach(TingPanel.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .accessibilityLabel("Window for \(row.item.label)")
         }
     }
 
@@ -178,6 +189,7 @@ struct BindingsSettings: View {
         case .app(let bundleID): bundleID
         case .url(let url): url
         case .micro(let id): id
+        case .open(let panel): panel.rawValue
         }
     }
 
@@ -191,7 +203,7 @@ struct BindingsSettings: View {
                 set: { text in
                     model.updateBinding(at: row.sequence) { item in
                         switch item.action {
-                        case .group: break
+                        case .group, .open: break
                         case .app: item.action = .app(text)
                         case .url: item.action = .url(text)
                         case .micro: item.action = .micro(text)

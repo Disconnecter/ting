@@ -229,6 +229,8 @@ struct ItemIcon: View {
                 Image(systemName: "folder").resizable().foregroundStyle(.secondary)
             case .micro:
                 Image(systemName: "terminal").resizable().foregroundStyle(.secondary)
+            case .open(let panel):
+                Image(systemName: panel.symbol).resizable().foregroundStyle(.secondary)
             }
         }
         .scaledToFit()
@@ -267,5 +269,14 @@ enum AppIcons {
         let image = NSWorkspace.shared.icon(forFile: url.path)
         cache[bundleID] = image
         return image
+    }
+}
+
+extension TingPanel {
+    var symbol: String {
+        switch self {
+        case .launcha: "magnifyingglass"
+        case .clipboarda: "list.clipboard"
+        }
     }
 }

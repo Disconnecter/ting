@@ -12,6 +12,8 @@ struct LaunchaSearchField: NSViewRepresentable {
     var onMove: (Int) -> Void
     var onSubmit: () -> Void
     var onCancel: () -> Void
+    var accessibilityLabel = "Search apps and files"
+    var accessibilityHelp = "Up and down arrows choose a result. Return opens it. Command-Return shows it in Finder. Escape closes launcha."
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -31,8 +33,8 @@ struct LaunchaSearchField: NSViewRepresentable {
         field.allowsEditingTextAttributes = false
         field.importsGraphics = false
         field.delegate = context.coordinator
-        field.setAccessibilityLabel("Search apps and files")
-        field.setAccessibilityHelp("Up and down arrows choose a result. Return opens it. Command-Return shows it in Finder. Escape closes launcha.")
+        field.setAccessibilityLabel(accessibilityLabel)
+        field.setAccessibilityHelp(accessibilityHelp)
         return field
     }
 
