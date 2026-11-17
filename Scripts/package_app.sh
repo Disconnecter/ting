@@ -31,8 +31,10 @@ fi
 ICON_TARGET="$ROOT/.build/Icon.icns"
 "$ROOT/Scripts/build_icon.sh" "$ICON_TARGET"
 
+# The native build system writes each architecture to .build/<arch>-apple-macosx/, the paths read below;
+# Swift Build, the default from Swift 6.3 on, writes every architecture to .build/out/ instead.
 for ARCH in "${ARCH_LIST[@]}"; do
-  swift build -c "$CONF" --arch "$ARCH"
+  swift build -c "$CONF" --arch "$ARCH" --build-system native
 done
 
 OUTPUT_DIR=${APP_OUTPUT_DIR:-"$ROOT/build"}

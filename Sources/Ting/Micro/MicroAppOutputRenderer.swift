@@ -102,9 +102,15 @@ enum MicroAppOutputRenderer {
                     line.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: line.length))
                     piece.append(line)
                 }
-            case .code(_, let code):
-                piece.append(NSAttributedString(string: code, attributes: [.font: mono(), .foregroundColor: ink,
-                                                                            .backgroundColor: codeBackground]))
+            case .code(let language, let code):
+                if language == "links" {
+                    // Spans in code style carry the code font and background, links included.
+                    let spans = MarkdownText.codeLinks(code)
+                    piece.append(spansString(spans))
+                } else {
+                    piece.append(NSAttributedString(string: code, attributes: [.font: mono(), .foregroundColor: ink,
+                                                                                .backgroundColor: codeBackground]))
+                }
                 piece.addAttribute(.paragraphStyle, value: paragraph(spacing: 8), range: NSRange(location: 0, length: piece.length))
             case .table(let table):
                 piece.append(tableString(table))
@@ -139,6 +145,18 @@ enum MicroAppOutputRenderer {
                 var font = NSFont.systemFont(ofSize: size, weight: span.bold ? .bold : weight)
                 if span.italic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
                 attributes[.font] = font
+            }
+            if let link = span.link {
+                attributes[.link] = link
+                // Every link is underlined. A web or mail link has the link colour; a file link keeps the
+                // colour of the text around it with a faint underline, so a list of files stays readable.
+                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                if link.isFileURL {
+                    attributes[.underlineColor] = muted.withAlphaComponent(0.6)
+                } else {
+                    attributes[.foregroundColor] = NSColor.linkColor
+                }
+                attributes[.toolTip] = link.isFileURL ? link.path : link.absoluteString
             }
             result.append(NSAttributedString(string: span.text, attributes: attributes))
         }

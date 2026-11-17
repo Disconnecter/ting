@@ -243,4 +243,59 @@ import Testing
             MarkdownSpan(" end"),
         ])
     }
+
+    @Test func linksInACodeBlock() {
+        let tree = "~\n├── [Down_loads/](</Users/a/Down loads>)\n│   └── [a\\]*b*.pdf](/x/a]*b*.pdf) [bad](rel)"
+        #expect(MarkdownText.parse("```links\n" + tree + "\n```") == [.code(language: "links", text: tree)])
+        #expect(MarkdownText.codeLinks(tree) == [
+            MarkdownSpan("~\n├── ", code: true),
+            MarkdownSpan("Down_loads/", code: true, link: URL(fileURLWithPath: "/Users/a/Down loads")),
+            MarkdownSpan("\n│   └── ", code: true),
+            MarkdownSpan("a]*b*.pdf", code: true, link: URL(fileURLWithPath: "/x/a]*b*.pdf")),
+            MarkdownSpan(" [bad](rel)", code: true),
+        ])
+    }
+
+    @Test func links() throws {
+        let web = try #require(URL(string: "https://example.com/a_(b)?q=1"))
+        #expect(MarkdownText.inline("see [the **site**](https://example.com/a_(b)?q=1) now") == [
+            MarkdownSpan("see "),
+            MarkdownSpan("the ", link: web),
+            MarkdownSpan("site", bold: true, link: web),
+            MarkdownSpan(" now"),
+        ])
+        #expect(MarkdownText.inline("**[x](/tmp)**") == [MarkdownSpan("x", bold: true, link: URL(fileURLWithPath: "/tmp"))])
+        #expect(MarkdownText.inline("[My Docs](</Users/a/My Docs>)") ==
+            [MarkdownSpan("My Docs", link: URL(fileURLWithPath: "/Users/a/My Docs"))])
+        #expect(MarkdownText.inline("[home](~/Self)") ==
+            [MarkdownSpan("home", link: URL(fileURLWithPath: NSHomeDirectory() + "/Self"))])
+        #expect(MarkdownText.inline("[a\\]b](mailto:x@y.z)") ==
+            [MarkdownSpan("a]b", link: URL(string: "mailto:x@y.z"))])
+    }
+
+    @Test func refusedLinksStayLiteral() {
+        for text in ["[run](javascript:alert(1))", "[x](relative/path)", "[x](/a b)", "[](https://x.org)",
+                     "[x] (https://x.org)", "[x](https://x.org", "[x](https:///nohost)", "\\[x](https://x.org)"] {
+            #expect(MarkdownText.inline(text).allSatisfy { $0.link == nil }, "\(text)")
+        }
+        #expect(MarkdownText.inline("[x](ftp://x.org)") == [MarkdownSpan("[x](ftp://x.org)")])
+    }
+
+    @Test func linkTargets() throws {
+        #expect(MarkdownText.linkURL("file:///Users/a%20b/c") == URL(fileURLWithPath: "/Users/a b/c"))
+        #expect(MarkdownText.linkURL("file://host/x")?.path == "/x")
+        #expect(MarkdownText.linkURL("HTTPS://x.org")?.host == "x.org")
+        #expect(MarkdownText.linkURL("tel:123") == nil)
+        #expect(MarkdownText.linkURL("~user/x") == nil)
+    }
+
+    @Test func linkActionsNeverOpenFiles() throws {
+        let web = try #require(URL(string: "https://x.org"))
+        let folder = URL(fileURLWithPath: "/Users/a/Self")
+        let script = URL(fileURLWithPath: "/Users/a/Downloads/run.command")
+        let isFolder: (URL) -> Bool = { $0 == folder }
+        #expect(MarkdownLinkAction.of(web, isFolder: isFolder) == .open(web))
+        #expect(MarkdownLinkAction.of(folder, isFolder: isFolder) == .showFolder(folder))
+        #expect(MarkdownLinkAction.of(script, isFolder: isFolder) == .revealFile(script))
+    }
 }

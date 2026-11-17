@@ -29,7 +29,8 @@ swift test
 ARCHES="${ARCHES:-arm64 x86_64}" SIGNING_MODE=developer-id APP_OUTPUT_DIR="$OUTPUT_DIR" \
   "$ROOT/Scripts/package_app.sh" release
 codesign --verify --deep --strict --verbose=2 "$APP"
-lipo "$APP/Contents/MacOS/Ting" -verify_arch arm64 x86_64
+# One architecture per call: newer lipo refuses several after -verify_arch.
+for ARCH in arm64 x86_64; do lipo "$APP/Contents/MacOS/Ting" -verify_arch "$ARCH"; done
 swift "$ROOT/Scripts/check_bundle.swift" "$APP"
 swift "$ROOT/Scripts/check_release_privacy.swift" "$APP"
 

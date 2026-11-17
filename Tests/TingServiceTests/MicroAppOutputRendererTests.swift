@@ -144,6 +144,36 @@ final class MicroAppOutputRendererTests: XCTestCase {
         XCTAssertTrue(both.fontDescriptor.symbolicTraits.contains(.italic))
     }
 
+    func testLinksCarryTheirURL() throws {
+        let rendered = MicroAppOutputRenderer.render("- [Self](</Users/a/My Self>)\n  - plain", style: .markdown)
+        XCTAssertEqual(rendered.string, "\t•\tSelf\n\t◦\tplain")
+        let link = try XCTUnwrap(rendered.attribute(.link, at: 3, effectiveRange: nil) as? URL)
+        XCTAssertEqual(link, URL(fileURLWithPath: "/Users/a/My Self"))
+        XCTAssertEqual(rendered.attribute(.toolTip, at: 3, effectiveRange: nil) as? String, "/Users/a/My Self")
+        XCTAssertNil(rendered.attribute(.link, at: rendered.length - 1, effectiveRange: nil))
+        XCTAssertNil(MicroAppOutputRenderer.render("[x](/tmp)", style: .code).attribute(.link, at: 0, effectiveRange: nil))
+        XCTAssertEqual(rendered.attribute(.underlineStyle, at: 3, effectiveRange: nil) as? Int, NSUnderlineStyle.single.rawValue)
+        XCTAssertNotNil(rendered.attribute(.underlineColor, at: 3, effectiveRange: nil), "A file link has a faint underline")
+        let fileColor = try XCTUnwrap(rendered.attribute(.foregroundColor, at: 3, effectiveRange: nil) as? NSColor)
+        XCTAssertEqual(resolved(fileColor), resolved(MicroAppOutputRenderer.ink), "A file link keeps the text colour")
+        let web = MicroAppOutputRenderer.render("[x](https://example.com)", style: .markdown)
+        XCTAssertEqual(web.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, NSColor.linkColor)
+        XCTAssertEqual(web.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int, NSUnderlineStyle.single.rawValue)
+    }
+
+    func testLinksFenceKeepsTheTreeMonospaced() throws {
+        let rendered = MicroAppOutputRenderer.render("```links\n└── [a.pdf](/tmp/a.pdf)\n```", style: .markdown)
+        XCTAssertEqual(rendered.string, "└── a.pdf")
+        XCTAssertEqual(rendered.attribute(.link, at: 4, effectiveRange: nil) as? URL, URL(fileURLWithPath: "/tmp/a.pdf"))
+        for index in [0, 4] {
+            let font = try XCTUnwrap(rendered.attribute(.font, at: index, effectiveRange: nil) as? NSFont)
+            XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.monoSpace))
+        }
+        let plain = MicroAppOutputRenderer.render("```\n[a](/tmp)\n```", style: .markdown)
+        XCTAssertEqual(plain.string, "[a](/tmp)")
+        XCTAssertNil(plain.attribute(.link, at: 1, effectiveRange: nil))
+    }
+
     func testTextAndCodeStyles() throws {
         let text = MicroAppOutputRenderer.render("**x** \u{1B}[1m", style: .text)
         XCTAssertEqual(text.string, "**x** \u{1B}[1m")
