@@ -11,6 +11,8 @@ import Testing
             try Data().write(to: folder.appendingPathComponent(file))
         }
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("Sub"), withIntermediateDirectories: false)
+        // A directory with a sound extension is not a sound.
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("Folder.aiff"), withIntermediateDirectories: false)
         #expect(SystemSounds.names(in: folder) == ["Blow", "Glass", "Pop", "Tink"])
     }
 
