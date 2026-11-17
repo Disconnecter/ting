@@ -182,6 +182,9 @@ private struct LaunchaSettingsSection: View {
             Toggle("Calculate in launcha", isOn: model.binding(\.launcha.calculator))
             Text("Type digits and an operator, such as 2*(3+4) or 1,5 × 4: the result comes first, and Return copies it.")
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle("Convert in launcha", isOn: model.binding(\.launcha.converter))
+            Text("Units, number bases and dates, such as 5 yd to m, 255 to hex, 1700000000 to date or now + 2 days: the result comes first, and Return copies it.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Search Desktop, Documents and Downloads", isOn: Binding(
                 get: { model.protectedFoldersAllowed },
                 set: { allowed in

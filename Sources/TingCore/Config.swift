@@ -93,7 +93,8 @@ public enum Appearance: String, Codable, Sendable, CaseIterable {
 }
 
 /// Launcha settings: the name search panel.
-/// JSON: {"hotkey": Hotkey string or null, "doubleTap": Bool, "doubleTapWindow": seconds, "calculator": Bool}.
+/// JSON: {"hotkey": Hotkey string or null, "doubleTap": Bool, "doubleTapWindow": seconds, "calculator": Bool,
+///       "converter": Bool}.
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct LaunchaSettings: Equatable, Sendable, Codable {
     /// Allowed range of `doubleTapWindow`. Decoding clamps to it.
@@ -107,11 +108,13 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
     public var doubleTapWindow: Double = 0.3
     /// A query of digits and an operator shows its value first. On by default.
     public var calculator: Bool = true
+    /// A conversion such as `5 yd to m`, `255 to hex` or `now + 2 days` shows its value first. On by default.
+    public var converter: Bool = true
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case hotkey, doubleTap, doubleTapWindow, calculator
+        case hotkey, doubleTap, doubleTapWindow, calculator, converter
     }
 
     public init(from decoder: Decoder) throws {
@@ -123,6 +126,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
         let range = LaunchaSettings.doubleTapWindowRange
         doubleTapWindow = min(max(window, range.lowerBound), range.upperBound)
         calculator = try container.decodeIfPresent(Bool.self, forKey: .calculator) ?? defaults.calculator
+        converter = try container.decodeIfPresent(Bool.self, forKey: .converter) ?? defaults.converter
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -135,6 +139,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
         try container.encode(doubleTap, forKey: .doubleTap)
         try container.encode(doubleTapWindow, forKey: .doubleTapWindow)
         try container.encode(calculator, forKey: .calculator)
+        try container.encode(converter, forKey: .converter)
     }
 }
 

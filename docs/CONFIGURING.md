@@ -63,8 +63,9 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound` (booleans),
   `sound` (a system sound name from `/System/Library/Sounds` without extension,
   default `Tink`; an unknown name plays `Tink`), `soundVolume` (0–1, default 0.5),
-  `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true}`;
-  `calculator` shows the value of a query such as `2*(3+4)` first in launcha).
+  `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true,
+  "converter": true}`; `calculator` shows the value of a query such as `2*(3+4)` first in
+  launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`).
 
 Find an app's bundle identifier with
 `mdls -name kMDItemCFBundleIdentifier -r /Applications/Ghostty.app`.

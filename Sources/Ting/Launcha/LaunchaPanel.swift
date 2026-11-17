@@ -155,6 +155,7 @@ final class LaunchaController: NSObject, NSWindowDelegate {
         chrome.leader = config.leader?.display ?? ""
         chrome.tokenDescription = Self.tokenDescription(config)
         model.calculator = config.launcha.calculator
+        model.converter = config.launcha.converter
     }
 
     /// The real keys that open launcha, e.g. "Open launcha: ⌥Space pressed twice, or ⌘K".

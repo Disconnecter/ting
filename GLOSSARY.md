@@ -11,6 +11,8 @@ The terms used for Ting in code, documents and the interface.
 - **launcha:** the search panel: type part of the name of an app, a micro-app or
   a file and press `Return`. A query of digits and an operator, such as
   `2*(3+4)`, shows its value first; `Return` copies it (the launcha calculator).
+  So does a conversion, such as `5 yd to m` or `now + 2 days` (the launcha
+  converter).
 - **binding:** an item of `config.json` with a key and exactly one of `items`
   (a group), `app`, `url` or `micro`.
 

@@ -286,7 +286,7 @@ private struct ResultRow: View {
         case .file: "\(row.name), file in \(row.detail)"
         case .micro(_, _, let isWorking):
             isWorking ? "\(row.name), micro-app" : "\(row.name), micro-app, not working. \(row.detail)"
-        case .calculation(let value): "Result \(value)"
+        case .calculation: "Result \(row.name)"
         }
     }
 

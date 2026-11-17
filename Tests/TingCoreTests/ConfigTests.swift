@@ -27,6 +27,7 @@ import Testing
         #expect(c.launcha.doubleTap)
         #expect(c.launcha.doubleTapWindow == 0.3)
         #expect(c.launcha.calculator)
+        #expect(c.launcha.converter)
     }
     @Test func launchaCompatibility() throws {
         // A 0.2.x file without "launcha" gets the defaults and keeps everything else.
@@ -49,6 +50,11 @@ import Testing
         let off = try decode(#"{"launcha":{"calculator":false}}"#)
         #expect(!off.launcha.calculator)
         #expect(try ConfigCodec.decode(ConfigCodec.encode(off)) == off)
+        // So is the converter, in a 0.7.0 file.
+        #expect(try decode(#"{"launcha":{"calculator":true}}"#).launcha.converter)
+        let noConverter = try decode(#"{"launcha":{"converter":false}}"#)
+        #expect(!noConverter.launcha.converter && noConverter.launcha.calculator)
+        #expect(try ConfigCodec.decode(ConfigCodec.encode(noConverter)) == noConverter)
         // A modifier on its own parses, so the validator can report it.
         #expect(try decode(#"{"launcha":{"hotkey":"right-option"}}"#).launcha.hotkey == .modifierTap(.rightOption))
         let text = String(decoding: ConfigCodec.encode(Config()), as: UTF8.self)
