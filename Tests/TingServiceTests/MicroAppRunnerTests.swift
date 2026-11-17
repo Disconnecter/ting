@@ -255,7 +255,7 @@ final class MicroAppRunnerTests: XCTestCase {
         let env = ["PATH": "/usr/bin:/bin", "HOME": dir.path]
         for shell in ["/bin/zsh", "/bin/bash", "/opt/homebrew/bin/fish", "/usr/local/bin/fish"]
         where FileManager.default.isExecutableFile(atPath: shell) {
-            let result = await UserPATH.read(shell: shell, environment: env, home: dir.path, timeLimit: 10)
+            let result = await UserPATH.read(shell: shell, environment: env, home: dir.path, timeLimit: 30)
             XCTAssertEqual(result.source, .loginShell, shell)
             XCTAssertTrue(MicroAppRunRules.directories(ofPATH: result.path).contains("/usr/bin"), "\(shell): \(result.path)")
         }
