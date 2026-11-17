@@ -30,7 +30,8 @@ to give Ting Accessibility.
 your bindings too.
 
 The small gear in the bottom-right corner of selecta and launcha opens Ting's
-menu, including Settings and Check for Updates, even when the menu-bar icon is hidden.
+menu, including Settings and Check for Updates, even when the menu-bar icon is hidden. The launcher
+stays open under the menu and takes keys again when the menu closes without a choice.
 
 [Release notes for Ting 0.7.4](docs/releases/v0.7.4.md): a copy installed with
 Homebrew updates through Homebrew from Ting's menu instead of Sparkle.

@@ -8,23 +8,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Owned by AppDelegate; launcher buttons do not extend its lifetime.
     static weak var current: StatusItemController?
     private let model: AppModel
-    private let statusItem: NSStatusItem
+    /// nil in tests: a status item needs a window server.
+    private let statusItem: NSStatusItem?
     /// Opens Settings / Welcome; provided by the app delegate.
     private let openSettings: () -> Void
     private let openWelcome: () -> Void
 
-    init(model: AppModel, openSettings: @escaping () -> Void, openWelcome: @escaping () -> Void) {
+    init(model: AppModel, makesStatusItem: Bool = true,
+         openSettings: @escaping () -> Void, openWelcome: @escaping () -> Void) {
         self.model = model
         self.openSettings = openSettings
         self.openWelcome = openWelcome
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = makesStatusItem ? NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength) : nil
         super.init()
         Self.current = self
-        statusItem.button?.image = StatusIcon.image
-        statusItem.button?.setAccessibilityLabel("Ting")
+        statusItem?.button?.image = StatusIcon.image
+        statusItem?.button?.setAccessibilityLabel("Ting")
         let menu = NSMenu()
         menu.delegate = self
-        statusItem.menu = menu
+        statusItem?.menu = menu
         observe()
     }
 
@@ -38,10 +40,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updateButton() {
-        statusItem.isVisible = model.config.showMenuBarIcon
+        statusItem?.isVisible = model.config.showMenuBarIcon
         let problem = model.needsAttention
-        statusItem.button?.appearsDisabled = !model.isLeaderActive
-        statusItem.button?.toolTip = model.isPaused ? "Ting is paused"
+        statusItem?.button?.appearsDisabled = !model.isLeaderActive
+        statusItem?.button?.toolTip = model.isPaused ? "Ting is paused"
             : model.config.leader == nil ? "Ting: no leader key yet"
             : problem ? "Ting: needs attention" : "Ting: \(model.leaderDisplay)"
     }
@@ -49,15 +51,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // MARK: Menu
 
     /// A separate menu instance uses exactly the tray's builder and action targets.
-    func popUp(from view: NSView) {
+    /// `present` shows the menu and blocks while it tracks; tests replace it.
+    func popUp(from view: NSView,
+               present: (NSMenu, NSPoint) -> Void = { $0.popUp(positioning: nil, at: $1, in: nil) }) {
         guard let window = view.window else { return }
         let screenPoint = window.convertPoint(toScreen: view.convert(NSPoint(x: 0, y: view.bounds.maxY), to: nil))
-        // Release the launcher's key handling before native menu tracking starts.
-        model.closeLaunchers()
         let menu = NSMenu()
         menu.delegate = self
         menuNeedsUpdate(menu)
-        menu.popUp(positioning: nil, at: screenPoint, in: nil)
+        // The launcher stays open under the menu. It ignores keys and hotkeys while the menu
+        // tracks, so they go to the menu only.
+        model.beginMenuTracking()
+        present(menu, screenPoint)
+        model.endMenuTracking()
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
