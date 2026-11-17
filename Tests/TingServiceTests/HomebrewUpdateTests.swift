@@ -219,12 +219,14 @@ import TingCore
     /// done. It is still a recovery launch: after the success it hands over to the installed copy.
     /// Only the copy started after brew (`.final`) never restarts.
     @Test func homebrewLateRecoveryStillRestarts() async throws {
-        let install = try install(brew: "sleep 0.4\necho '🍺  ting was successfully upgraded!'")
+        let allowBrewToFinish = root.appendingPathComponent("allow-brew-to-finish")
+        let install = try install(brew: "while [ ! -f '\(allowBrewToFinish.path)' ]; do sleep 0.01; done\necho '🍺  ting was successfully upgraded!'")
         let runner = try runner(install, pid: try deadPID())
         _ = runner.start(onOutput: { _ in }, onFinish: { _ in })
         let directory = try #require(runner.directory)
         _ = try await waitFor("viewer-calls")
         #expect(HomebrewUpdateRunner.outcome(in: directory) == nil)
+        try Data().write(to: allowBrewToFinish)
         while HomebrewUpdateRunner.outcome(in: directory) == nil { try await Task.sleep(nanoseconds: 50_000_000) }
 
         let viewer = try viewerProcess()

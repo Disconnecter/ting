@@ -25,7 +25,7 @@ trap 'rm -rf "$WORK"' EXIT
 xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" --output-format json >/dev/null
 "$ROOT/Scripts/make_appcast.sh" --check
 
-swift test
+swift test --no-parallel
 ARCHES="${ARCHES:-arm64 x86_64}" SIGNING_MODE=developer-id APP_OUTPUT_DIR="$OUTPUT_DIR" \
   "$ROOT/Scripts/package_app.sh" release
 codesign --verify --deep --strict --verbose=2 "$APP"
