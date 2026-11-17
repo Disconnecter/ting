@@ -48,7 +48,7 @@ private struct ClipboardaCard: View {
             HStack(spacing: 14) {
                 MonoLabel("↩ paste", size: 9, weight: .regular, tracking: 1)
                 MonoLabel("⌘↩ copy", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("⌘⌫ remove", size: 9, weight: .regular, tracking: 1)
+                MonoLabel("⇧⌘⌫ remove", size: 9, weight: .regular, tracking: 1)
                 MonoLabel("esc close", size: 9, weight: .regular, tracking: 1)
                 Spacer()
                 MonoLabel("this session only", size: 9, weight: .regular, tracking: 1)

@@ -10,7 +10,7 @@ final class ClipboardaPanel: NSPanel {
     var onMove: ((Int) -> Void)?
     /// ⌘↩: copy without pasting.
     var onCopy: (() -> Void)?
-    /// ⌘⌫: remove the selected item.
+    /// ⇧⌘⌫: remove the selected item.
     var onDelete: (() -> Void)?
 
     init() {
@@ -50,12 +50,12 @@ final class ClipboardaPanel: NSPanel {
         case swallow
     }
 
-    /// launcha's routes, with ⌘↩ copying and ⌘⌫ removing the selected item instead of
-    /// deleting to the start of the search text.
+    /// launcha's routes, with ⌘↩ copying and ⇧⌘⌫ removing the selected item; ⌘⌫ still
+    /// erases the search text, as in launcha.
     static func route(keyCode: UInt16, latin: String?, flags: NSEvent.ModifierFlags) -> KeyEquivalentRoute {
         let flags = flags.intersection([.command, .shift, .option, .control])
         if flags == .command, keyCode == 36 || keyCode == 76 { return .copy }
-        if flags == .command, keyCode == 51 { return .delete }
+        if flags == [.command, .shift], keyCode == 51 { return .delete }
         switch LaunchaPanel.route(keyCode: keyCode, latin: latin, flags: flags) {
         case .editor: return .editor
         case .action(let selector): return .action(selector)

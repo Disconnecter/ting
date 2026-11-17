@@ -174,7 +174,8 @@ final class ClipboardaPanelTests: XCTestCase {
     func testKeyRoutes() {
         XCTAssertEqual(ClipboardaPanel.route(keyCode: 36, latin: nil, flags: .command), .copy)
         XCTAssertEqual(ClipboardaPanel.route(keyCode: 76, latin: nil, flags: .command), .copy)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 51, latin: nil, flags: .command), .delete)
+        XCTAssertEqual(ClipboardaPanel.route(keyCode: 51, latin: nil, flags: [.command, .shift]), .delete)
+        XCTAssertEqual(ClipboardaPanel.route(keyCode: 51, latin: nil, flags: .command), .editor)
         XCTAssertEqual(ClipboardaPanel.route(keyCode: 51, latin: nil, flags: .option), .editor)
         XCTAssertEqual(ClipboardaPanel.route(keyCode: 9, latin: "v", flags: .command), .action(#selector(NSText.paste(_:))))
         XCTAssertEqual(ClipboardaPanel.route(keyCode: 40, latin: "k", flags: [.command, .shift]), .swallow)
