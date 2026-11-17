@@ -27,15 +27,16 @@ final class AppModel {
     var isPaused = false {
         didSet { applyHotkey() }
     }
-    /// Both hotkeys are off while a new one is being recorded, so pressing an existing one records it.
+    /// All hotkeys are off while a new one is recorded, so an existing shortcut can be captured.
     private(set) var isRecordingHotkey = false
     /// launcha may search Desktop, Documents and Downloads. Stored apart from the config.
     var protectedFoldersAllowed: Bool { launchaModel.protectedFolders == .allowed }
     var launchaConsentError: String? { launchaModel.consentError }
 
-    @ObservationIgnored let store = ConfigStore()
+    @ObservationIgnored let store: ConfigStore
     @ObservationIgnored private(set) lazy var microStore = MicroAppStore(configURL: store.url)
-    @ObservationIgnored private let hotkeys = HotkeyService()
+    @ObservationIgnored private let hotkeys: HotkeyService
+    @ObservationIgnored private var activeAppShortcuts: [AppShortcut] = []
     @ObservationIgnored let leader: LeaderController
     @ObservationIgnored private let runner: ActionRunner
     @ObservationIgnored private let toast = ToastController()
@@ -54,12 +55,23 @@ final class AppModel {
     @ObservationIgnored private var sounds: [String: NSSound?] = [:]
 
     /// `presentsWindows` false: the launchers keep their state but show no window (tests).
-    init(presentsWindows: Bool = true) {
+    init(presentsWindows: Bool = true, store: ConfigStore? = nil, hotkeys: HotkeyService? = nil) {
+        self.store = store ?? ConfigStore()
+        self.hotkeys = hotkeys ?? HotkeyService()
         leader = LeaderController(presentsWindow: presentsWindows)
         let runner = ActionRunner()
         self.runner = runner
-        launchaModel = LaunchaModel(opener: runner, historyStore: LaunchaHistoryStore(), consent: LaunchaConsentStore())
+        let environment = store.map { ["TING_CONFIG": $0.url.path] } ?? ProcessInfo.processInfo.environment
+        launchaModel = LaunchaModel(opener: runner,
+            historyStore: LaunchaHistoryStore(url: LaunchaHistoryStore.defaultURL(environment: environment)),
+            consent: LaunchaConsentStore(url: LaunchaConsentStore.defaultURL(environment: environment)))
         launcha = LaunchaController(model: launchaModel, presentsWindow: presentsWindows)
+        launcha.onBeginShortcutRecording = { [weak self] owner in self?.beginHotkeyRecording(owner) }
+        launcha.onEndShortcutRecording = { [weak self] owner in self?.endHotkeyRecording(owner) }
+        launcha.onSaveShortcut = { [weak self] row, hotkey in
+            guard let self else { throw CancellationError() }
+            try self.setAppShortcut(for: row, hotkey: hotkey)
+        }
     }
 
     var leaderDisplay: String { config.leader?.display ?? "Not set" }
@@ -75,6 +87,7 @@ final class AppModel {
     /// The menu-bar item shows its problem mark.
     var needsAttention: Bool {
         configError != nil || hotkeyProblem != nil || launchaHotkeyProblem != nil || !microAppIssues.isEmpty
+            || !launcha.chrome.appShortcutProblems.isEmpty || issues.contains { $0.kind == .appHotkey }
     }
 
     var launchaHotkeyDisplay: String { config.launcha.hotkey?.display ?? "Not set" }
@@ -97,6 +110,7 @@ final class AppModel {
             switch slot {
             case .leader: self?.hotkeyStatus = status
             case .launcha: self?.launchaHotkeyStatus = status
+            case .application: self?.refreshAppShortcutProblems()
             }
         }
         hotkeys.onPress = { [weak self] slot, time in self?.hotkeyPressed(slot, at: time) }
@@ -104,6 +118,7 @@ final class AppModel {
             switch slot {
             case .leader: self?.leader.leaderReleased()
             case .launcha: self?.launchaKey.release()
+            case .application: break
             }
         }
         leader.onRun = { [weak self] item in self?.run(item) }
@@ -221,7 +236,33 @@ final class AppModel {
         update { $0.launcha.hotkey = hotkey }
     }
 
-    /// Turns both hotkeys off until `owner` ends recording. A new recording cancels the
+    /// Saves exactly the retained app selected in launcha, never a different bundle-ID match.
+    func setAppShortcut(for row: LaunchaRow, hotkey: Hotkey?) throws {
+        guard case .app(let id) = row.kind else { throw AppShortcutRules.Problem.invalidTarget }
+        var next = config
+        if let hotkey {
+            let shortcut = AppShortcut(id: id, name: row.name, path: row.url.path, hotkey: hotkey)
+            try AppShortcutRules.assign(shortcut, in: &next)
+            // The editor suspends Ting's registrations first. OS conflicts fail without a save.
+            if isRecordingHotkey, let error = hotkeys.checkAvailable(hotkey) {
+                throw NSError(domain: "io.bobuk.ting.shortcuts", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: error])
+            }
+        } else { next.appHotkeys.removeAll { $0.id == id } }
+        try store.write(next)
+        configError = nil
+        apply(next)
+    }
+
+    private func refreshAppShortcutProblems() {
+        var problems: [String: String] = [:]
+        for (index, shortcut) in activeAppShortcuts.enumerated() {
+            if case .failed(let reason) = hotkeys.status(.application(index)) { problems[shortcut.id] = reason }
+        }
+        launcha.chrome.appShortcutProblems = problems
+    }
+
+    /// Turns all hotkeys off until `owner` ends recording. A new recording cancels the
     /// previous one; the hotkeys stay off between them.
     func beginHotkeyRecording(_ owner: HotkeyRecordingOwner) {
         recordingGate.begin(owner)
@@ -320,9 +361,12 @@ final class AppModel {
     }
 
     private func applyHotkey() {
+        let wanted = isPaused || isRecordingHotkey ? [] : AppShortcutRules.active(in: config)
+        hotkeys.prepareApplications(wanted)
+        activeAppShortcuts = wanted
         if isPaused || isRecordingHotkey {
             leader.close()
-            launcha.close()
+            if isPaused || launcha.chrome.shortcutEditor == nil { launcha.close() }
             hotkeys.activate(nil, for: .launcha)
             hotkeys.activate(nil, for: .leader)
         } else {
@@ -331,7 +375,9 @@ final class AppModel {
             if hotkeys.hotkey(.launcha) != separate { hotkeys.activate(nil, for: .launcha) }
             hotkeys.activate(config.leader, for: .leader)
             hotkeys.activate(separate, for: .launcha)
+            hotkeys.activateApplications(wanted)
         }
+        refreshAppShortcutProblems()
         hotkeyStatus = hotkeys.status(.leader)
         launchaHotkeyStatus = hotkeys.status(.launcha)
     }
@@ -344,6 +390,16 @@ final class AppModel {
             // is ignored and leaves launcha open.
             leader.leaderPressed(at: time) { [launcha] in
                 if launcha.isOpen { launcha.close() }
+            }
+        case .application(let index):
+            guard !isPaused, !isRecordingHotkey, activeAppShortcuts.indices.contains(index) else { return }
+            let shortcut = activeAppShortcuts[index]
+            leader.close()
+            launcha.close()
+            playSound()
+            Task { [runner, launchaModel] in
+                let outcome = await runner.openApp(at: URL(fileURLWithPath: shortcut.path), name: shortcut.name)
+                await launchaModel.record(outcome, id: shortcut.id)
             }
         case .launcha:
             guard launchaKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }

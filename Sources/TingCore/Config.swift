@@ -146,7 +146,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" (Hotkey string or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
-/// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "items".
+/// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "appHotkeys", "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
     public static let currentVersion = 1
@@ -170,6 +170,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var soundVolume: Double = 0.5
     /// Launcha settings. Older files without "launcha" get the defaults.
     public var launcha: LaunchaSettings = LaunchaSettings()
+    /// Direct global shortcuts assigned from launcha; older files default to none.
+    public var appHotkeys: [AppShortcut] = []
     public var items: [Item] = []
 
     public init() {}
@@ -192,7 +194,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, items
+        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, appHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -212,6 +214,7 @@ public struct Config: Equatable, Sendable, Codable {
         let volume = try container.decodeIfPresent(Double.self, forKey: .soundVolume) ?? defaults.soundVolume
         soundVolume = min(max(volume, 0), 1)
         launcha = try container.decodeIfPresent(LaunchaSettings.self, forKey: .launcha) ?? defaults.launcha
+        appHotkeys = try container.decodeIfPresent([AppShortcut].self, forKey: .appHotkeys) ?? defaults.appHotkeys
         items = try container.decodeIfPresent([Item].self, forKey: .items) ?? defaults.items
     }
 
@@ -233,6 +236,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(sound, forKey: .sound)
         try container.encode(soundVolume, forKey: .soundVolume)
         try container.encode(launcha, forKey: .launcha)
+        try container.encode(appHotkeys, forKey: .appHotkeys)
         try container.encode(items, forKey: .items)
     }
 }
@@ -319,6 +323,8 @@ public struct ConfigIssue: Equatable, Sendable {
         case invalidLaunchaHotkey
         /// The launcha hotkey is the same as the leader.
         case launchaHotkeyConflict
+        /// Invalid, reserved or duplicate application hotkey assignment.
+        case appHotkey
     }
 
     public var kind: Kind
@@ -353,6 +359,23 @@ public enum ConfigValidator {
             } else if hotkey == config.leader {
                 issues.append(ConfigIssue(kind: .launchaHotkeyConflict, sequence: [],
                                           message: "\(hotkey.display) is already the leader. Choose another key for launcha."))
+            }
+        }
+        var appIDs: Set<String> = []
+        var appKeys: Set<Hotkey> = []
+        for shortcut in config.appHotkeys {
+            let problem: String?
+            if !shortcut.hasValidTarget { problem = AppShortcutRules.Problem.invalidTarget.description }
+            else if let reserved = AppShortcutRules.problem(for: shortcut.hotkey, in: config) { problem = reserved.description }
+            else if appIDs.contains(shortcut.id) || appKeys.contains(shortcut.hotkey) {
+                problem = "An application or shortcut is assigned more than once."
+            } else {
+                appIDs.insert(shortcut.id)
+                appKeys.insert(shortcut.hotkey)
+                problem = nil
+            }
+            if let problem {
+                issues.append(ConfigIssue(kind: .appHotkey, sequence: [], message: "\(shortcut.name): \(problem)"))
             }
         }
         validate(config.items, prefix: [], into: &issues)

@@ -4,11 +4,19 @@ import AppKit
 import SwiftUI
 import TingCore
 
+extension Notification.Name {
+    static let launchaEditAppShortcut = Notification.Name("io.bobuk.ting.launcha.editAppShortcut")
+    static let launchaRemoveAppShortcut = Notification.Name("io.bobuk.ting.launcha.removeAppShortcut")
+}
+
 final class LaunchaPanel: NSPanel {
     /// ⌘↩: show the selected result in Finder.
     var onReveal: (() -> Void)?
     /// List navigation must keep working when Tab moves focus away from the search field.
     var onMove: ((Int) -> Void)?
+    var onEditShortcut: (() -> Void)?
+    /// Returns true only while the inline recorder owns the panel's key events.
+    var onRecordShortcut: ((NSEvent) -> Bool)?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
@@ -41,6 +49,7 @@ final class LaunchaPanel: NSPanel {
     }
 
     override func sendEvent(_ event: NSEvent) {
+        if (event.type == .keyDown || event.type == .flagsChanged), onRecordShortcut?(event) == true { return }
         if event.type == .keyDown, let onMove,
            let delta = Self.navigationDelta(keyCode: event.keyCode, flags: event.modifierFlags,
                                            composing: (firstResponder as? NSTextView)?.hasMarkedText() == true) {
@@ -56,6 +65,7 @@ final class LaunchaPanel: NSPanel {
         case editor
         /// ⌘↩: show the selected result in Finder.
         case reveal
+        case editShortcut
         /// A text command sent to the field through the responder chain.
         case action(Selector)
         /// Any other ⌘ shortcut, for example ⌘Q: ignored, so it never reaches Ting's menu.
@@ -72,6 +82,7 @@ final class LaunchaPanel: NSPanel {
     static func route(keyCode: UInt16, latin: String?, flags: NSEvent.ModifierFlags) -> KeyEquivalentRoute {
         let flags = flags.intersection([.command, .shift, .option, .control])
         guard flags.contains(.command) else { return .editor }
+        if latin == "k", flags == [.command, .shift] { return .editShortcut }
         if editingKeyCodes.contains(keyCode) { return .editor }
         if keyCode == 36 || keyCode == 76 { return flags == .command ? .reveal : .swallow }
         let action: String? = switch (latin ?? "", flags) {
@@ -88,12 +99,16 @@ final class LaunchaPanel: NSPanel {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
+        if onRecordShortcut?(event) == true { return true }
         switch Self.route(keyCode: event.keyCode, latin: KeyTranslator.latin(event.keyCode), flags: event.modifierFlags) {
         case .editor:
             // Text navigation returns false at once: the event then reaches the field's
             // `keyDown`. Other keys keep the default window handling.
             if event.modifierFlags.contains(.command) { return false }
             return super.performKeyEquivalent(with: event)
+        case .editShortcut:
+            if (firstResponder as? NSTextView)?.hasMarkedText() != true { onEditShortcut?() }
+            return true
         case .reveal:
             let composing = (firstResponder as? NSTextView)?.hasMarkedText() == true
             if !composing { onReveal?() }
@@ -118,6 +133,9 @@ final class LaunchaChrome {
     var maxListHeight: CGFloat = 360
     /// Bumped on every open to move focus into the search field.
     var focusToken = 0
+    var appHotkeys: [AppShortcut] = []
+    var appShortcutProblems: [String: String] = [:]
+    var shortcutEditor: LaunchaShortcutEditor?
     @ObservationIgnored let icons = LaunchaIconCache()
 }
 
@@ -128,6 +146,10 @@ final class LaunchaController: NSObject, NSWindowDelegate {
     let chrome = LaunchaChrome()
     private var panel: LaunchaPanel?
     private var observers: [NSObjectProtocol] = []
+    private var config = Config()
+    var onBeginShortcutRecording: ((HotkeyRecordingOwner) -> Void)?
+    var onEndShortcutRecording: ((HotkeyRecordingOwner) -> Void)?
+    var onSaveShortcut: ((LaunchaRow, Hotkey?) throws -> Void)?
 
     var isOpen: Bool { model.isOpen }
 
@@ -151,6 +173,8 @@ final class LaunchaController: NSObject, NSWindowDelegate {
     }
 
     func configure(_ config: Config) {
+        self.config = config
+        chrome.appHotkeys = config.appHotkeys
         chrome.showHeader = config.showPanelHeader
         chrome.leader = config.leader?.display ?? ""
         chrome.tokenDescription = Self.tokenDescription(config)
@@ -195,6 +219,7 @@ final class LaunchaController: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        chrome.shortcutEditor?.cancel()
         hidePanel()
         model.close()
     }
@@ -203,14 +228,66 @@ final class LaunchaController: NSObject, NSWindowDelegate {
         panel?.orderOut(nil)
     }
 
+    func editShortcut(for row: LaunchaRow? = nil) {
+        guard isOpen, let row = row ?? model.selectedRow, row.isApp else { return }
+        chrome.shortcutEditor?.cancel()
+        let original = config.appHotkeys.first { $0.id == row.id }?.hotkey
+        let editor = LaunchaShortcutEditor(row: row, original: original)
+        editor.validate = { [weak self] hotkey in
+            guard let self else { return "The launcher closed." }
+            return AppShortcutRules.problem(for: hotkey, in: self.config)?.description
+        }
+        editor.persist = { [weak self] hotkey in
+            guard let self, let save = self.onSaveShortcut else {
+                throw NSError(domain: "io.bobuk.ting.shortcuts", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "Cannot save this shortcut."])
+            }
+            try save(row, hotkey)
+        }
+        editor.replacing = { [weak self] hotkey in
+            self?.config.appHotkeys.first { $0.id != row.id && $0.hotkey == hotkey }?.name
+        }
+        editor.onFinish = { [weak self, weak editor] in
+            guard let self, let editor else { return }
+            self.chrome.shortcutEditor = nil
+            self.onEndShortcutRecording?(editor)
+            self.chrome.focusToken += 1
+        }
+        chrome.shortcutEditor = editor
+        onBeginShortcutRecording?(editor)
+    }
+
     private func makePanel() -> LaunchaPanel {
         let panel = LaunchaPanel()
         panel.delegate = self
         panel.onReveal = { [weak self] in self?.activate(reveal: true) }
         panel.onMove = { [weak self] delta in self?.model.moveSelection(by: delta) }
+        panel.onEditShortcut = { [weak self] in self?.editShortcut() }
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .launchaEditAppShortcut, object: nil, queue: .main) { [weak self] notification in
+                MainActor.assumeIsolated {
+                    guard let self, let id = notification.object as? String,
+                          let row = self.model.rows.first(where: { $0.id == id }) else { return }
+                    self.editShortcut(for: row)
+                }
+            })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .launchaRemoveAppShortcut, object: nil, queue: .main) { [weak self] notification in
+                MainActor.assumeIsolated {
+                    guard let self, let id = notification.object as? String,
+                          let row = self.model.rows.first(where: { $0.id == id }) else { return }
+                    do { try self.onSaveShortcut?(row, nil) }
+                    catch { self.chrome.appShortcutProblems[id] = error.localizedDescription }
+                }
+            })
+        panel.onRecordShortcut = { [weak self] event in
+            guard let editor = self?.chrome.shortcutEditor else { return false }
+            return editor.handlePanelEvent(event)
+        }
         let view = LaunchaView(model: model, chrome: chrome,
                                onActivate: { [weak self] reveal in self?.activate(reveal: reveal) },
-                               onDismiss: { [weak self] in self?.close() })
+                               onDismiss: { [weak self] in self?.close() },
+                               onEditShortcut: { [weak self] row in self?.editShortcut(for: row) })
         let hosting = NSHostingView(rootView: view)
         hosting.sizingOptions = []
         panel.contentView = hosting
@@ -219,7 +296,7 @@ final class LaunchaController: NSObject, NSWindowDelegate {
     }
 
     private func activate(reveal: Bool) {
-        guard isOpen else { return }
+        guard isOpen, chrome.shortcutEditor == nil else { return }
         Task { await model.activateSelection(reveal: reveal) }
     }
 

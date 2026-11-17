@@ -67,6 +67,46 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   "converter": true}`; `calculator` shows the value of a query such as `2*(3+4)` first in
   launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`).
 
+### Direct application hotkeys
+
+`appHotkeys` is an optional list, empty by default. In launcha, select an app
+and press Command-Shift-K, or open its context menu and choose **Set Global
+Shortcut…**. Press the shortcut, then Return or Save. Record Again captures
+another key, Remove Global Shortcut clears the assignment, and Esc cancels.
+Files, calculations and micro-apps have no direct application shortcut editor.
+
+```json
+"appHotkeys": [
+  {
+    "id": "app:com.apple.safari",
+    "name": "Safari",
+    "path": "/Applications/Safari.app",
+    "hotkey": "cmd+f12"
+  }
+]
+```
+
+This fragment belongs at the top level of `config.json`. `id` is the stable
+launcha/history identity, normally `app:` plus the lower-case bundle identifier;
+keep the id produced by launcha for apps without a bundle identifier. `path`
+is the absolute path of the indexed `.app` bundle, not an executable. Ting opens
+that exact copy or brings it forward. `name` is its display name. `hotkey` uses
+the same syntax as the leader: a non-modifier key, optionally with modifiers.
+
+Each app has one shortcut and each shortcut belongs to one app. Saving in
+launcha replaces both the app's old shortcut and any other app's assignment to
+the new shortcut; the editor names the other app before Save. The leader and
+`launcha.hotkey` are always reserved, even while recording suspends them. An
+OS registration conflict or failed save keeps the old configuration.
+
+In a hand-written file, invalid or duplicate entries produce validation
+issues; only the first valid assignment for an app and key is registered.
+An app shortcut that conflicts with the leader or launcha is disabled, never
+the protected shortcut. Changing a protected key later can therefore disable
+an app assignment without deleting it. Pausing Ting or recording a shortcut
+suspends application hotkeys too. Holding an app shortcut launches only once
+until release. Successful launches count toward launcha's ranking.
+
 Find an app's bundle identifier with
 `mdls -name kMDItemCFBundleIdentifier -r /Applications/Ghostty.app`.
 

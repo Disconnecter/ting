@@ -1,0 +1,67 @@
+import Foundation
+
+/// A direct global shortcut for an app selected in launcha, independent of leader sequences.
+public struct AppShortcut: Equatable, Sendable, Codable, Identifiable {
+    /// The same stable identity used by launcha's index and launch history.
+    public var id: String
+    public var name: String
+    /// Retain the indexed app path; do not resolve another copy by bundle identifier.
+    public var path: String
+    public var hotkey: Hotkey
+
+    public init(id: String, name: String, path: String, hotkey: Hotkey) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.hotkey = hotkey
+    }
+
+    public var hasValidTarget: Bool {
+        !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        (path as NSString).isAbsolutePath && (path as NSString).pathExtension.lowercased() == "app"
+    }
+}
+
+public enum AppShortcutRules {
+    public enum Problem: Error, Equatable, Sendable, CustomStringConvertible {
+        case invalidKey, invalidTarget, leader, launcha
+
+        public var description: String {
+            switch self {
+            case .invalidKey: "Press a non-modifier key, optionally with modifiers."
+            case .invalidTarget: "Choose an application with an absolute .app path."
+            case .leader: "This key is reserved for the leader. Choose another shortcut."
+            case .launcha: "This key is reserved for launcha. Choose another shortcut."
+            }
+        }
+    }
+
+    public static func problem(for hotkey: Hotkey, in config: Config) -> Problem? {
+        if !hotkey.isValid { return .invalidKey }
+        if hotkey == config.leader { return .leader }
+        if hotkey == config.launcha.hotkey { return .launcha }
+        return nil
+    }
+
+    /// Validate before mutation: rejection must never delete a previous assignment.
+    public static func assign(_ shortcut: AppShortcut, in config: inout Config) throws {
+        guard shortcut.hasValidTarget else { throw Problem.invalidTarget }
+        if let problem = problem(for: shortcut.hotkey, in: config) { throw problem }
+        config.appHotkeys.removeAll { $0.id == shortcut.id || $0.hotkey == shortcut.hotkey }
+        config.appHotkeys.append(shortcut)
+    }
+
+    /// First valid assignment wins in a hand-written file. Reserved keys always win over apps.
+    public static func active(in config: Config) -> [AppShortcut] {
+        var ids: Set<String> = []
+        var keys: Set<Hotkey> = []
+        return config.appHotkeys.filter {
+            guard $0.hasValidTarget, problem(for: $0.hotkey, in: config) == nil,
+                  !ids.contains($0.id), !keys.contains($0.hotkey) else { return false }
+            ids.insert($0.id)
+            keys.insert($0.hotkey)
+            return true
+        }
+    }
+}

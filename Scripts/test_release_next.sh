@@ -214,7 +214,7 @@ in_order '^release\.sh' '^git\[ting\] commit --quiet -m Release Ting 0\.7\.5$' '
   '^npm run deploy$' '^curl https://feed\.invalid/appcast\.xml'
 [[ "$(tail -1 "$STATE/out")" == 'RELEASE_DONE: Ting 0.7.5 (build 20)' ]] || fail 'last line'
 [[ "$(cd "$TING" && "$REAL_GIT" show --name-only --format= HEAD | sort | tr '\n' ' ')" == \
-  'Sources/TingCore/TingVersion.swift docs/releases/v0.7.5.md version.env ' ]] || fail 'release commit files'
+  'docs/releases/v0.7.5.md Sources/TingCore/TingVersion.swift version.env ' ]] || fail 'release commit files'
 [[ "$(cd "$TING" && "$REAL_GIT" rev-parse HEAD)" == "$("$REAL_GIT" -C "$TING.git" rev-parse main)" ]] || fail 'ting not pushed'
 [[ "$(cd "$LAND" && "$REAL_GIT" rev-parse HEAD)" == "$("$REAL_GIT" -C "$LAND.git" rev-parse main)" ]] || fail 'landing not pushed'
 grep -q 'sparkle:version>20<' "$STATE/live.xml" || fail 'feed not deployed'

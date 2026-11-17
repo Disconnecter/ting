@@ -1,5 +1,5 @@
-// Global hotkeys: the leader and the optional launcha hotkey. Each is any non-modifier key,
-// alone or with modifiers. Registered with Carbon `RegisterEventHotKey`, which needs no
+// Global hotkeys: the leader, optional launcha key and direct application shortcuts.
+// Each is any non-modifier key, alone or with modifiers. Registered with Carbon `RegisterEventHotKey`, which needs no
 // Accessibility or Input Monitoring permission. Carbon reports both press and release.
 import AppKit
 import Carbon
@@ -11,14 +11,33 @@ private let log = Logger(subsystem: "io.bobuk.ting", category: "hotkey")
 @MainActor
 final class HotkeyService {
     /// The hotkeys Ting registers. The raw value is the Carbon hotkey id.
-    enum Slot: UInt32, CaseIterable, Sendable {
-        case leader = 1
-        case launcha = 2
+    enum Slot: Hashable, Sendable {
+        case leader
+        case launcha
+        case application(Int)
+
+        var rawValue: UInt32 {
+            switch self {
+            case .leader: 1
+            case .launcha: 2
+            case .application(let index): UInt32(index) + 3
+            }
+        }
+
+        init?(rawValue: UInt32) {
+            switch rawValue {
+            case 0: return nil
+            case 1: self = .leader
+            case 2: self = .launcha
+            default: self = .application(Int(rawValue - 3))
+            }
+        }
 
         var role: String {
             switch self {
             case .leader: "be a leader"
             case .launcha: "open launcha"
+            case .application: "open an application"
             }
         }
     }
@@ -38,8 +57,11 @@ final class HotkeyService {
     var onStatusChange: ((Slot, Status) -> Void)?
 
     private var registrations: [Slot: Registration] = [:]
+    private var heldApplications: Set<Slot> = []
     private var statuses: [Slot: Status] = [:]
     private var handlerRef: EventHandlerRef?
+    /// Tests supply a backend instead of registering real global shortcuts.
+    private let registerOverride: ((Hotkey, Slot) -> Status)?
 
     private struct Registration {
         var hotkey: Hotkey
@@ -49,7 +71,8 @@ final class HotkeyService {
     /// The C callback cannot capture context; it reaches the single service through this.
     private static weak var shared: HotkeyService?
 
-    init() {
+    init(register: ((Hotkey, Slot) -> Status)? = nil) {
+        registerOverride = register
         HotkeyService.shared = self
     }
 
@@ -69,20 +92,49 @@ final class HotkeyService {
             setStatus(.failed("\(hotkey.display) cannot \(slot.role). Choose a key that is not a modifier."), for: slot)
             return
         }
-        if let other = Slot.allCases.first(where: { $0 != slot && registrations[$0]?.hotkey == hotkey }) {
-            setStatus(.failed("\(hotkey.display) is already used for \(other == .leader ? "the leader" : "launcha")."), for: slot)
+        if let other = registrations.keys.first(where: { $0 != slot && registrations[$0]?.hotkey == hotkey }) {
+            let role: String
+            switch other {
+            case .leader: role = "the leader"
+            case .launcha: role = "launcha"
+            case .application: role = "another application"
+            }
+            setStatus(.failed("\(hotkey.display) is already used for \(role)."), for: slot)
             return
         }
-        register(keyCode: keyCode, modifiers: modifiers, display: hotkey.display, slot: slot)
+        if let registerOverride { setStatus(registerOverride(hotkey, slot), for: slot) }
+        else { register(keyCode: keyCode, modifiers: modifiers, display: hotkey.display, slot: slot) }
+    }
+
+    /// Remove changed application registrations before the protected slots are changed.
+    func prepareApplications(_ shortcuts: [AppShortcut]) {
+        let wanted = Dictionary(uniqueKeysWithValues: shortcuts.enumerated().map { (Slot.application($0.offset), $0.element.hotkey) })
+        for slot in Array(registrations.keys) {
+            if case .application = slot, registrations[slot]?.hotkey != wanted[slot] { deactivate(slot) }
+        }
+    }
+
+    func activateApplications(_ shortcuts: [AppShortcut]) {
+        for (index, shortcut) in shortcuts.enumerated() { activate(shortcut.hotkey, for: .application(index)) }
+    }
+
+    /// Probe an OS conflict while Ting's registrations are suspended for recording.
+    func checkAvailable(_ hotkey: Hotkey) -> String? {
+        let slot = Slot.application(Int(UInt32.max - 3))
+        activate(hotkey, for: slot)
+        defer { deactivate(slot) }
+        if case .failed(let reason) = status(slot) { return reason }
+        return nil
     }
 
     private func deactivate(_ slot: Slot) {
-        let hadRef = registrations[slot]?.ref != nil
+        let wasActive = status(slot) == .active
         if let ref = registrations[slot]?.ref { UnregisterEventHotKey(ref) }
         registrations[slot] = nil
         setStatus(.inactive, for: slot)
+        heldApplications.remove(slot)
         // Carbon sends no release for a hotkey that is gone.
-        if hadRef { onRelease?(slot) }
+        if wasActive { onRelease?(slot) }
     }
 
     private func setStatus(_ status: Status, for slot: Slot) {
@@ -113,6 +165,18 @@ final class HotkeyService {
         }
     }
 
+    /// Carbon can repeat presses while held. Application shortcuts launch only once per hold.
+    func receive(_ slot: Slot, pressed: Bool, at time: TimeInterval = 0) {
+        guard status(slot) == .active else { return }
+        if pressed {
+            if case .application = slot, !heldApplications.insert(slot).inserted { return }
+            onPress?(slot, time)
+        } else {
+            heldApplications.remove(slot)
+            onRelease?(slot)
+        }
+    }
+
     private static let signature = OSType(0x5449_4E47) // 'TING'
 
     private func installCarbonHandler() {
@@ -132,11 +196,8 @@ final class HotkeyService {
             let time = GetEventTime(event)
             MainActor.assumeIsolated {
                 guard let service = HotkeyService.shared, service.registrations[slot]?.ref != nil else { return }
-                if kind == UInt32(kEventHotKeyPressed) {
-                    log.debug("Hotkey \(slot.rawValue) pressed")
-                    service.onPress?(slot, time)
-                } else if kind == UInt32(kEventHotKeyReleased) {
-                    service.onRelease?(slot)
+                if kind == UInt32(kEventHotKeyPressed) || kind == UInt32(kEventHotKeyReleased) {
+                    service.receive(slot, pressed: kind == UInt32(kEventHotKeyPressed), at: time)
                 }
             }
             return noErr

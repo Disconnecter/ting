@@ -142,6 +142,17 @@ part of an app or micro-app name and press `Return`.
   Ting scans these folders at startup and each time launcha opens. While the
   panel stays open, it checks every 15 seconds whether a refresh is due; these
   background scans run at most once per minute.
+- **Global app shortcuts:** select an app and press `⌘⇧K`, or open its context
+  menu and choose **Set Global Shortcut…**. Record a key or combination, then
+  press `Return` or **Save**. The shortcut opens that exact app bundle even when
+  launcha is closed. A new assignment replaces that app's old shortcut; if
+  another app uses the new key, Ting warns before Save and removes that
+  assignment on Save. The leader and separate launcha hotkey are reserved.
+  Use **Record Again** to capture another key, **Remove Global Shortcut** to
+  delete the shortcut, or `Esc` to cancel without changes. If macOS reports that
+  another app owns the key, Ting keeps the old assignment. Keys are physical and
+  work across keyboard layouts; no Accessibility or Input Monitoring permission
+  is needed. Shortcuts are stored under `appHotkeys` in `config.json`.
 - **Micro-apps:** every loaded micro-app is listed, with or without a binding,
   except files with `hidden: true` (they still start by their binding). The name
   is the binding label, else the micro-app's `name`, else the id. `Return` starts
@@ -179,7 +190,7 @@ part of an app or micro-app name and press `Return`.
   launcha or in Settings. macOS may then ask you to allow Ting to access each
   folder. Desktop apps are listed after that. Until then launcha says that these
   folders were skipped.
-- **Ranking:** Ting counts successful opens through selecta and launcha over the
+- **Ranking:** Ting counts successful opens through selecta, launcha and app shortcuts over the
   last 7 days. Matches rank by that count, then most recent launch, match quality
   and name. Failed opens and Finder reveals do not count. Ting does not watch
   apps you open in other ways.

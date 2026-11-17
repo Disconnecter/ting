@@ -9,6 +9,7 @@ struct LaunchaView: View {
     let chrome: LaunchaChrome
     let onActivate: (_ reveal: Bool) -> Void
     let onDismiss: () -> Void
+    var onEditShortcut: (LaunchaRow) -> Void = { _ in }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -16,7 +17,7 @@ struct LaunchaView: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
-            LaunchaCard(model: model, chrome: chrome, onActivate: onActivate, onDismiss: onDismiss)
+            LaunchaCard(model: model, chrome: chrome, onActivate: onActivate, onDismiss: onDismiss, onEditShortcut: onEditShortcut)
                 .padding(.top, 8)
         }
     }
@@ -27,9 +28,13 @@ private struct LaunchaCard: View {
     let chrome: LaunchaChrome
     let onActivate: (_ reveal: Bool) -> Void
     let onDismiss: () -> Void
+    let onEditShortcut: (LaunchaRow) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let editor = chrome.shortcutEditor {
+                LaunchaShortcutEditorView(editor: editor)
+            } else {
             if chrome.showHeader {
                 HStack(spacing: 8) {
                     TingMark(size: 14)
@@ -47,17 +52,22 @@ private struct LaunchaCard: View {
                 searchBox(trailingToken: true)
             }
             results
+            if let row = model.selectedRow, let problem = chrome.appShortcutProblems[row.id] {
+                notice(problem, symbol: "exclamationmark.triangle", color: .tingAmber)
+            }
             notices
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 10)
             HStack(spacing: 14) {
                 MonoLabel("↩ open", size: 9, weight: .regular, tracking: 1)
                 MonoLabel("⌘↩ reveal", size: 9, weight: .regular, tracking: 1)
+                MonoLabel("⌘⇧K shortcut", size: 9, weight: .regular, tracking: 1)
                 MonoLabel("esc pull up", size: 9, weight: .regular, tracking: 1)
                 Spacer()
                 LauncherMenuButton().frame(width: 18, height: 18)
             }
             .foregroundStyle(Color.tingMuted)
             .padding(.top, 10)
+            }
         }
         .foregroundStyle(Color.tingInk)
         .padding(.horizontal, 20)
@@ -199,7 +209,8 @@ private struct ResultList: View {
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        ResultRow(row: row, selected: index == selection, icons: chrome.icons) {
+                        ResultRow(row: row, selected: index == selection, icons: chrome.icons,
+                                  shortcut: chrome.appHotkeys.first { $0.id == row.id }?.hotkey) {
                             model.select(row.id)
                             onActivate(false)
                         }
@@ -230,6 +241,7 @@ private struct ResultRow: View {
     let row: LaunchaRow
     let selected: Bool
     let icons: LaunchaIconCache
+    let shortcut: Hotkey?
     let action: () -> Void
 
     var body: some View {
@@ -255,6 +267,11 @@ private struct ResultRow: View {
                     }
                 }
                 Spacer(minLength: 8)
+                if let shortcut {
+                    Text(shortcut.display).font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Color.tingMuted)
+                        .accessibilityLabel("Global shortcut \(shortcut.display)")
+                }
                 if selected {
                     Image(systemName: row.isCalculation ? "doc.on.doc" : row.isApp || row.isMicro ? "arrow.right" : "arrow.up.right")
                         .font(.system(size: 10, weight: .semibold))
@@ -272,6 +289,19 @@ private struct ResultRow: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityHint(accessibilityHint)
+        .contextMenu {
+            if row.isApp {
+                Button(shortcut == nil ? "Set Global Shortcut…" : "Change Global Shortcut…",
+                       systemImage: "keyboard") {
+                    NotificationCenter.default.post(name: .launchaEditAppShortcut, object: row.id)
+                }
+                if shortcut != nil {
+                    Button("Remove Global Shortcut", systemImage: "keyboard.badge.ellipsis", role: .destructive) {
+                        NotificationCenter.default.post(name: .launchaRemoveAppShortcut, object: row.id)
+                    }
+                }
+            }
+        }
     }
 
     private var help: String {
