@@ -101,8 +101,11 @@ final class MicroAppFlowSession {
         didSet {
             if case .form = state {} else { form = nil }
             if case .working = state {} else { progress = nil }
+            pendingLink = nil
         }
     }
+    /// A clicked link waiting for the user to read the link warning; cleared by every state change.
+    var pendingLink: URL?
     /// The running step and the live output of the last step; set only while `state` is `.working`.
     var progress: MicroAppRunProgress?
     /// The open parameter panel; set only while `state` is `.form`.
@@ -126,6 +129,10 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private(set) var catalog = MicroAppCatalog()
     private let approvals: MicroAppApprovalStore
     private let values: MicroAppValueStore
+    /// Whether the warning of the first link click was read.
+    private let linkNotice: MicroAppLinkNoticeStore
+    /// Follows a link of a result: opens it, or shows it in Finder.
+    private let linkOpener: @MainActor (URL) -> Void
     private let runner: MicroAppRunner
     /// The clipboard: stdin of `input: clipboard` and the `clipboard` target.
     private let pasteboard: NSPasteboard
@@ -155,9 +162,12 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
 
     init(approvals: MicroAppApprovalStore? = nil, values: MicroAppValueStore? = nil, runner: MicroAppRunner = MicroAppRunner(),
          pasteboard: NSPasteboard = .general, presentsWindow: Bool = true, contextReader: MicroAppContextReading? = nil,
-         keyboard: MicroAppKeyboardSending? = nil, frontmost: (@MainActor () -> MicroAppTarget?)? = nil) {
+         keyboard: MicroAppKeyboardSending? = nil, frontmost: (@MainActor () -> MicroAppTarget?)? = nil,
+         linkNotice: MicroAppLinkNoticeStore? = nil, linkOpener: (@MainActor (URL) -> Void)? = nil) {
         self.approvals = approvals ?? MicroAppApprovalStore()
         self.values = values ?? MicroAppValueStore()
+        self.linkNotice = linkNotice ?? MicroAppLinkNoticeStore()
+        self.linkOpener = linkOpener ?? MicroAppFlowController.follow
         self.runner = runner
         self.pasteboard = pasteboard
         self.presentsWindow = presentsWindow
@@ -442,6 +452,10 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             session.interaction?.move(1)
         case (.form, .toggleOptional):
             session.form?.toggleOptional()
+        case (_, .enter) where session.pendingLink != nil:
+            confirmLink()
+        case (_, .escape) where session.pendingLink != nil:
+            cancelLink()
         case (.result(let content), .enter):
             copyAll(content)
             close()
@@ -450,6 +464,53 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         default:
             // ↩ in the approval panel does nothing: only ⌘↩ approves.
             break
+        }
+    }
+
+    // MARK: Links
+
+    /// A click on a link of the output. The first click ever shows the link warning instead.
+    func clickLink(_ url: URL) {
+        switch session.state {
+        case .working, .result: break
+        default: return
+        }
+        if linkNotice.seen {
+            linkOpener(url)
+        } else {
+            session.pendingLink = url
+        }
+    }
+
+    /// Open Link in the warning: remembered, so the warning never shows again, and the link is followed.
+    func confirmLink() {
+        guard let url = session.pendingLink else { return }
+        session.pendingLink = nil
+        if !linkNotice.markSeen(), let error = linkNotice.error { onToast?(error) }
+        linkOpener(url)
+    }
+
+    /// Cancel in the warning: the link is not followed, and the warning shows on the next click.
+    func cancelLink() {
+        session.pendingLink = nil
+    }
+
+    /// Web and mail links open; a folder opens in Finder; any other file is shown selected in Finder.
+    private static func follow(_ url: URL) {
+        let workspace = NSWorkspace.shared
+        let action = MarkdownLinkAction.of(url) { url in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+                && !workspace.isFilePackage(atPath: url.path)
+        }
+        switch action {
+        case .open(let url):
+            workspace.open(url)
+        case .showFolder(let url):
+            workspace.selectFile(nil, inFileViewerRootedAtPath: url.path)
+        case .revealFile(let url):
+            guard FileManager.default.fileExists(atPath: url.path) else { NSSound.beep(); return }
+            workspace.activateFileViewerSelecting([url])
         }
     }
 
@@ -501,7 +562,10 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
                                         self.copyAll(content)
                                         self.close()
                                     },
-                                    onDismiss: { [weak self] in self?.close() })
+                                    onDismiss: { [weak self] in self?.close() },
+                                    onLink: { [weak self] url in self?.clickLink(url) },
+                                    onConfirmLink: { [weak self] in self?.confirmLink() },
+                                    onCancelLink: { [weak self] in self?.cancelLink() })
         let hosting = NSHostingView(rootView: view)
         hosting.sizingOptions = []
         panel.contentView = hosting

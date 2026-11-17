@@ -221,12 +221,32 @@ public struct MarkdownSpan: Equatable, Sendable {
     public var bold: Bool
     public var italic: Bool
     public var code: Bool
+    /// The target of a `[text](target)` link, see `MarkdownText.linkURL(_:)`.
+    public var link: URL?
 
-    public init(_ text: String, bold: Bool = false, italic: Bool = false, code: Bool = false) {
+    public init(_ text: String, bold: Bool = false, italic: Bool = false, code: Bool = false, link: URL? = nil) {
         self.text = text
         self.bold = bold
         self.italic = italic
         self.code = code
+        self.link = link
+    }
+}
+
+/// What a click on a link of the result panel does. Output can carry text from the web or an AI, so a
+/// file link never opens the file itself, which could run a script or start an app.
+public enum MarkdownLinkAction: Equatable, Sendable {
+    /// A web or mail link: opened by its app.
+    case open(URL)
+    /// A folder (not a package such as an `.app`): opened in Finder.
+    case showFolder(URL)
+    /// Any other file link: the file selected in its Finder folder.
+    case revealFile(URL)
+
+    /// `isFolder` tells whether a file URL is a folder that is not a package.
+    public static func of(_ url: URL, isFolder: (URL) -> Bool) -> MarkdownLinkAction {
+        guard url.isFileURL else { return .open(url) }
+        return isFolder(url) ? .showFolder(url) : .revealFile(url)
     }
 }
 
@@ -282,7 +302,7 @@ public enum MarkdownBlock: Equatable, Sendable {
 
 /// A small markdown reader for the result panel: ATX and setext headings, paragraphs, bullet and
 /// numbered lists (nested by indent), fenced code blocks, block quotes, rules, GitHub tables, and inline
-/// bold, italic, bold italic, code and backslash escapes. Everything else stays literal text.
+/// bold, italic, bold italic, code, links and backslash escapes. Everything else stays literal text.
 public enum MarkdownText {
     public static func parse(_ text: String) -> [MarkdownBlock] {
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
@@ -524,9 +544,10 @@ public enum MarkdownText {
     // MARK: Inline
 
     /// Inline markdown: `code`, **bold**, *italic*, ***both***, the same with underscores (not inside a
-    /// word), and backslash escapes. Emphasis follows the CommonMark delimiter-run rules, so runs that
-    /// close together (`**bold *italic***`) or open together (`***both** italic*`) are split between
-    /// the nested pairs. A delimiter without its pair stays literal.
+    /// word), `[text](target)` links and backslash escapes. Emphasis follows the CommonMark delimiter-run
+    /// rules, so runs that close together (`**bold *italic***`) or open together (`***both** italic*`) are
+    /// split between the nested pairs. A delimiter without its pair, and a link with a target that
+    /// `linkURL(_:)` refuses, stay literal.
     public static func inline(_ text: String) -> [MarkdownSpan] {
         var tokens = tokenize(Array(text))
         let matches = matchEmphasis(&tokens)
@@ -554,6 +575,11 @@ public enum MarkdownText {
                 append(text, bold: bold > 0, italic: italic > 0, code: false, to: &spans)
             case .code(let text):
                 append(text, bold: bold > 0, italic: italic > 0, code: true, to: &spans)
+            case .link(let text, let url):
+                for span in inline(text) {
+                    append(span.text, bold: bold > 0 || span.bold, italic: italic > 0 || span.italic, code: span.code,
+                           link: url, to: &spans)
+                }
             case .delimiter(let char):
                 // The part of the run that no pair used stays literal.
                 append(String(repeating: String(char), count: token.remaining), bold: bold > 0, italic: italic > 0,
@@ -563,19 +589,100 @@ public enum MarkdownText {
         return spans
     }
 
-    private static func append(_ text: String, bold: Bool, italic: Bool, code: Bool, to spans: inout [MarkdownSpan]) {
+    /// The body of a code block fenced as `links`: monospaced text in which only `[text](target)` links
+    /// are markdown (`\\` and `\]` escape in the text), so a tree drawn with `├──` lines stays aligned
+    /// and its names stay clickable. Everything else, `*` and `_` included, is literal.
+    public static func codeLinks(_ text: String) -> [MarkdownSpan] {
+        let chars = Array(text)
+        var spans: [MarkdownSpan] = []
+        var literal = ""
+        var i = 0
+        while i < chars.count {
+            if chars[i] == "[", let found = link(in: chars, at: i) {
+                append(literal, bold: false, italic: false, code: true, to: &spans)
+                literal = ""
+                let name = found.text.replacingOccurrences(of: #"\\(.)"#, with: "$1", options: .regularExpression)
+                append(name, bold: false, italic: false, code: true, link: found.url, to: &spans)
+                i = found.end
+            } else {
+                literal.append(chars[i])
+                i += 1
+            }
+        }
+        append(literal, bold: false, italic: false, code: true, to: &spans)
+        return spans
+    }
+
+    private static func append(_ text: String, bold: Bool, italic: Bool, code: Bool, link: URL? = nil,
+                               to spans: inout [MarkdownSpan]) {
         guard !text.isEmpty else { return }
-        if let last = spans.last, last.bold == bold, last.italic == italic, last.code == code {
+        if let last = spans.last, last.bold == bold, last.italic == italic, last.code == code, last.link == link {
             spans[spans.count - 1].text += text
         } else {
-            spans.append(MarkdownSpan(text, bold: bold, italic: italic, code: code))
+            spans.append(MarkdownSpan(text, bold: bold, italic: italic, code: code, link: link))
         }
+    }
+
+    /// The URL of a link target: `http`, `https` and `mailto` URLs, `file` URLs, and absolute paths
+    /// (`/…` or `~/…`) as file URLs. A target with spaces is written as `<…>`. Anything else is `nil`.
+    public static func linkURL(_ target: String) -> URL? {
+        guard !target.isEmpty, !target.contains(where: \.isNewline) else { return nil }
+        if target.hasPrefix("/") { return URL(fileURLWithPath: target) }
+        if target == "~" || target.hasPrefix("~/") {
+            return URL(fileURLWithPath: NSString(string: target).expandingTildeInPath)
+        }
+        guard let url = URL(string: target), let scheme = url.scheme?.lowercased() else { return nil }
+        switch scheme {
+        case "http", "https": return url.host?.isEmpty == false ? url : nil
+        case "mailto": return url
+        case "file": return url.path.hasPrefix("/") ? URL(fileURLWithPath: url.path) : nil
+        default: return nil
+        }
+    }
+
+    /// A `[text](target)` link at `start` (the `[`): the text, the URL and the index after the `)`.
+    /// The text has no unescaped `]`; the target is `<…>` or has no spaces and balanced parentheses.
+    private static func link(in chars: [Character], at start: Int) -> (text: String, url: URL, end: Int)? {
+        var i = start + 1
+        while i < chars.count, chars[i] != "]" {
+            if chars[i] == "\\" { i += 1 }
+            i += 1
+        }
+        guard i < chars.count, i > start + 1, i + 1 < chars.count, chars[i + 1] == "(" else { return nil }
+        let text = String(chars[(start + 1)..<i])
+        var j = i + 2
+        let target: String
+        if j < chars.count, chars[j] == "<" {
+            guard let close = chars[(j + 1)...].firstIndex(where: { $0 == ">" || $0 == "<" || $0.isNewline }),
+                  chars[close] == ">", close + 1 < chars.count, chars[close + 1] == ")" else { return nil }
+            target = String(chars[(j + 1)..<close])
+            j = close + 2
+        } else {
+            var depth = 0
+            let begin = j
+            while j < chars.count {
+                let char = chars[j]
+                if char.isWhitespace { return nil }
+                if char == "(" { depth += 1 }
+                if char == ")" {
+                    if depth == 0 { break }
+                    depth -= 1
+                }
+                j += 1
+            }
+            guard j < chars.count else { return nil }
+            target = String(chars[begin..<j])
+            j += 1
+        }
+        guard let url = linkURL(target) else { return nil }
+        return (text, url, j)
     }
 
     private struct InlineToken {
         enum Kind {
             case text(String)
             case code(String)
+            case link(String, URL)
             case delimiter(Character)
         }
 
@@ -625,6 +732,12 @@ public enum MarkdownText {
                     literal += String(repeating: "`", count: count)
                     i += count
                 }
+                continue
+            }
+            if char == "[", let link = link(in: chars, at: i) {
+                flush()
+                tokens.append(InlineToken(kind: .link(link.text, link.url)))
+                i = link.end
                 continue
             }
             if char == "*" || char == "_" {
