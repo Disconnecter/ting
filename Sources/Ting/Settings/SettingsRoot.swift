@@ -91,6 +91,7 @@ private struct GeneralSettings: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Toggle("Play a “ting” when opening an app, link or file", isOn: model.binding(\.playSound))
+                SoundSettings()
             } header: { MonoLabel("System", size: 9).foregroundStyle(Color.tingAmber) }
             if updates.isAvailable {
                 Section {
@@ -114,7 +115,42 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: updates.menuTitle != nil ? 720 : 620)
+        .frame(width: 560, height: updates.menuTitle != nil ? 800 : 700)
+    }
+}
+
+// MARK: - Sound
+
+/// The sound and its volume, under the "ting" toggle. Both are disabled while the toggle is off.
+private struct SoundSettings: View {
+    @Environment(AppModel.self) private var model
+    /// Read once: the sounds in /System/Library/Sounds do not change while Ting runs.
+    private static let systemNames = SystemSounds.names()
+
+    var body: some View {
+        let config = model.config
+        let names = Self.systemNames.contains(config.sound) ? Self.systemNames : Self.systemNames + [config.sound]
+        let sound = model.binding(\.sound)
+        // Choosing a sound saves it and plays it once; a reload of the file plays nothing.
+        let choice = Binding(get: { sound.wrappedValue },
+                             set: { sound.wrappedValue = $0; model.previewSound() })
+        Group {
+            Picker("Sound", selection: choice) {
+                ForEach(names, id: \.self) { Text($0).tag($0) }
+            }
+            LabeledContent("Volume") {
+                HStack {
+                    Slider(value: model.binding(\.soundVolume), in: 0...1) { editing in
+                        if !editing { model.previewSound() }
+                    }
+                    .frame(width: 160)
+                    Text("\(Int((config.soundVolume * 100).rounded())) %")
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                        .frame(width: 64, alignment: .leading)
+                }
+            }
+        }
+        .disabled(!config.playSound)
     }
 }
 

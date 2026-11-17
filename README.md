@@ -428,7 +428,11 @@ Spotlight.
 - **General:** light or dark theme (dark by default), the leader key, the menu
   delay, what an unknown key does, launch at login, the menu-bar icon, the quiet
   "ting" when Ting opens an app, link or file (on by default, `playSound` in the
-  config file), and update checks. “Show panel title” controls the `Ting · selecta`
+  config file), and update checks. Under the "ting" toggle, the **Sound** picker
+  chooses one of the macOS system sounds in `/System/Library/Sounds` (`sound`,
+  default `Tink`) and the **Volume** slider sets its volume from 0 to 1
+  (`soundVolume`, default 0.5); choosing a sound or releasing the slider plays it
+  once. Both are disabled while the toggle is off. “Show panel title” controls the `Ting · selecta`
   and `Ting · launcha` title rows (on by default); hiding them keeps the leader
   symbol, sequence and search input visible. With the title hidden, selecta uses
   the same compact gap below the amber top rule as launcha.
@@ -475,7 +479,9 @@ the file in your dotfiles if you like.
 - `leader` is a key name such as `home`, `f13` or `space`, optionally with
   modifiers: `option+shift+cmd+f`, `ctrl+space`.
 - Other settings: `unknownKey` (`shake` or `close`), `appearance` (`dark` or
-  `light`), `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound`.
+  `light`), `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound`,
+  `sound` (a system sound name without extension, default `Tink`; an unknown
+  name plays `Tink`), `soundVolume` (0–1, default 0.5).
 - `launcha`: `{"hotkey": null, "doubleTap": true,
   "doubleTapWindow": 0.3}`. `hotkey` uses the leader format and must differ
   from the leader.
