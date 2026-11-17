@@ -2,5 +2,5 @@
 /// tests), where Info.plist gives none. It must equal `MARKETING_VERSION` in `version.env`;
 /// a TingCore test fails when the two differ, so a release bumps both.
 public enum TingVersion {
-    public static let marketing = "0.7.5"
+    public static let marketing = "0.7.6"
 }
