@@ -31,6 +31,15 @@
   prepares, checks and installs the release. `Scripts/install.sh` installs an
   already notarized app without rebuilding. Verify that the running process is
   from `/Applications`, not `build/` or `dist/`.
+- `Scripts/release_next.sh` (no arguments) does the whole next patch release:
+  raise the last version number and `BUILD_NUMBER`, `release.sh`, commit
+  `Release Ting <version>`, push main, `publish.sh`, then the landing site build,
+  commit, push, deploy and a check of the live feed. Prepare the notes file of the
+  next version, commit the landing page changes (clean `../landing` on main) and
+  set `APP_IDENTITY` and `NOTARY_PROFILE`. After a failure, run the same command
+  again: it goes on with the same version. Test it only with the offline
+  `Scripts/test_release_next.sh`; never run it, `release.sh` or `publish.sh`
+  for a check, since they publish a real release.
 - Each release needs a higher `BUILD_NUMBER` in `version.env` and release notes in
   `docs/releases/v<version>.md`. Never modify a ZIP after `make_appcast.sh` signed it.
 - The Sparkle EdDSA private key stays in the login Keychain under account

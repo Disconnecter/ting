@@ -537,7 +537,44 @@ Releases are built on a trusted maintainer workstation with a Developer ID
 Application identity, a saved `notarytool` Keychain profile and the Sparkle
 EdDSA key in the login Keychain (account `io.bobuk.ting`). Unpack the verified
 Sparkle 2.10.1 release tools to `.build/sparkle-tools` or set `SPARKLE_BIN` to
-their `bin` directory. Then:
+their `bin` directory.
+
+### Next patch release in one command
+
+`Scripts/release_next.sh` does the whole next patch release (for example
+0.7.4 → 0.7.5) with no arguments. Prepare:
+
+- the release notes `docs/releases/v<next version>.md` (the script never writes them);
+- the Ting pages of the landing site, when the release needs it, committed in
+  `../landing` (or `LANDING`), which must be on `main` with a clean tree;
+- `main` of this checkout not behind `origin/main`, and no other changed files;
+- `APP_IDENTITY` and `NOTARY_PROFILE`, as for `release.sh`.
+
+Then run:
+
+```sh
+APP_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
+NOTARY_PROFILE=ting \
+./Scripts/release_next.sh
+```
+
+It checks everything before it changes a file, raises the last number of
+`MARKETING_VERSION` and `BUILD_NUMBER` in `version.env` and the version in
+`Sources/TingCore/TingVersion.swift`, runs `release.sh`, commits the release as
+`Release Ting <version>`, pushes `main` (with all local commits), runs
+`publish.sh`, then in the landing checkout runs `npm run sync:github`,
+`npm run build`, `npm test`, commits, pushes, runs `npm run deploy` and waits
+until `https://bobuk.io/apps/ting/appcast.xml` has the new build. It ends with
+`RELEASE_DONE: Ting <version> (build <n>)`.
+
+If a run fails, fix the cause and run the same command again. The script
+chooses what to do from GitHub and the live feed, not from a state file: while
+there is no GitHub release of the version in `version.env`, it builds that
+version again without raising it; when the release is published but the live
+feed lacks its build, it only copies the appcast to the landing site, updates
+the Homebrew cask and deploys the site. It never rolls anything back.
+
+### Release by hand
 
 1. Increase `MARKETING_VERSION` and `BUILD_NUMBER` in `version.env` and add
    `docs/releases/v<version>.md`.
