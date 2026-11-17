@@ -160,6 +160,21 @@ part of an app or micro-app name and press `Return`.
   `cos`, `tan` (radians) work. Results keep up to 12 digits after the point.
   Turn it off with **Calculate in launcha** in Settings › General
   (`"calculator": false` under `launcha` in the config file).
+- **Converter:** a conversion shows its value first in the same way. `to`, `in`,
+  `as` or `=` join a value and its target:
+  - units: `5 yd to m`, `100 f in c`, `1,5 l to ml`, `60 mph to km/h`,
+    `3 gib to mb`, `1 sq ft to m2` (length, mass, temperature, volume, area,
+    speed, time, data, energy, power, pressure, angle); `Return` copies the
+    number without its unit;
+  - number bases: `255 to hex`, `0xff to bin`, `0b1010 to dec`; a bare `0xff`,
+    `0b101` or `0o17` shows its decimal value;
+  - Unix time: `1700000000 to date` (13 digits are milliseconds), `to utc`,
+    `to iso`, and back with `now to unix` or `2026-01-01 10:00 to unix`;
+  - dates: `now + 2 days`, `today - 3 weeks`, `now + 1d 2h`, `in 90 min`,
+    `3 days ago`, and the time between two dates, `2026-12-25 - today`.
+
+  Turn it off with **Convert in launcha** in Settings › General
+  (`"converter": false` under `launcha`).
 - **Desktop, Documents and Downloads** are not searched until you allow it, in
   launcha or in Settings. macOS may then ask you to allow Ting to access each
   folder. Desktop apps are listed after that. Until then launcha says that these

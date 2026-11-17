@@ -1,5 +1,5 @@
 // State and logic of the launcha panel: name search over the app index, the value of a
-// calculation, a Spotlight file search only when no app matches, protected-folder consent and
+// calculation or a conversion, a Spotlight file search only when no app matches, protected-folder consent and
 // launch history.
 // No AppKit windows here, so it can be tested without a panel.
 import Foundation
@@ -14,7 +14,8 @@ struct LaunchaRow: Identifiable, Equatable {
         case file
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
         case micro(candidateID: String, start: LaunchaMicroStart, isWorking: Bool)
-        /// The value of the query as a calculation. Return copies it.
+        /// The value of the query as a calculation or a conversion. Return copies it; the row
+        /// name may show more, such as `4.572 m` for the value `4.572`.
         case calculation(value: String)
     }
 
@@ -101,6 +102,10 @@ final class LaunchaModel {
     /// A query of digits and an operator shows its value first (`launcha.calculator`).
     var calculator = true {
         didSet { if calculator != oldValue, isOpen { recompute(keepSelection: true) } }
+    }
+    /// A conversion such as `5 yd to m` or `now + 2 days` shows its value first (`launcha.converter`).
+    var converter = true {
+        didSet { if converter != oldValue, isOpen { recompute(keepSelection: true) } }
     }
 
     @ObservationIgnored private let makeServices: ServiceFactory
@@ -378,10 +383,13 @@ final class LaunchaModel {
             if spotlightQuery != nil { stopSpotlight() }
             rows = appRows
         }
-        // A calculation comes first, above the apps or files that match the same text.
+        // A calculation or a conversion comes first, above the apps or files that match the same text.
         if calculator, let value = Calculator.evaluate(trimmed) {
             rows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: value), name: value,
                                    url: URL(fileURLWithPath: "/"), detail: "Return copies the result"), at: 0)
+        } else if converter, let result = Converter.evaluate(trimmed) {
+            rows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: result.value),
+                                   name: result.display, url: URL(fileURLWithPath: "/"), detail: result.detail), at: 0)
         }
         if let previous, let index = rows.firstIndex(where: { $0.id == previous }) {
             selection = index

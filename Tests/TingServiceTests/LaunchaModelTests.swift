@@ -417,4 +417,38 @@ extension LaunchaModelTests {
         XCTAssertFalse(model.rows.contains(where: \.isCalculation))
         model.close()
     }
+
+    func testAConversionComesFirstAndReturnCopiesTheNumber() async throws {
+        let fixture = try makeModel(files: [])
+        let model = fixture.model
+        var copied: [String] = []
+        model.onCopyValue = { copied.append($0) }
+        model.open()
+        try await wait("index") { model.hasIndex }
+
+        // The row shows the unit; Return copies the number alone.
+        model.query = "5 yd to m"
+        XCTAssertEqual(model.rows.first?.kind, .calculation(value: "4.572"))
+        XCTAssertEqual(model.rows.first?.name, "4.572 m")
+        XCTAssertEqual(model.rows.first?.detail, "5 yd · Return copies 4.572")
+        _ = await model.activateSelection()
+        XCTAssertEqual(copied, ["4.572"])
+        XCTAssertTrue(fixture.opener.opened.isEmpty && fixture.opener.files.isEmpty)
+
+        // A bare 0xff converts too; plain words with "to" are not a conversion.
+        model.open()
+        model.query = "0xff"
+        XCTAssertEqual(model.rows.first?.kind, .calculation(value: "255"))
+        model.query = "go to market"
+        XCTAssertFalse(model.rows.contains(where: \.isCalculation))
+
+        // Turned off in Settings: no value, at once; the calculator stays.
+        model.query = "255 to hex"
+        XCTAssertEqual(model.rows.first?.kind, .calculation(value: "0xff"))
+        model.converter = false
+        XCTAssertFalse(model.rows.contains(where: \.isCalculation))
+        model.query = "2+2"
+        XCTAssertEqual(model.rows.first?.kind, .calculation(value: "4"))
+        model.close()
+    }
 }
