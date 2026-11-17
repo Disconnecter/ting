@@ -17,6 +17,10 @@ import Testing
         #expect(c.showMenuBarIcon)
         #expect(c.showPanelHeader)
         #expect(c.playSound)
+        #expect(c.sound == "Tink")
+        #expect(c.soundVolume == 0.5)
+        #expect(Config().sound == "Tink")
+        #expect(Config().soundVolume == 0.5)
         #expect(c.items.isEmpty)
         #expect(c.launcha == LaunchaSettings())
         #expect(c.launcha.hotkey == nil)
@@ -57,6 +61,22 @@ import Testing
         #expect(!hidden.showPanelHeader)
         #expect(try ConfigCodec.decode(ConfigCodec.encode(hidden)) == hidden)
     }
+    @Test func soundCompatibility() throws {
+        // A file without "sound" and "soundVolume" plays "Tink" at half volume, as before.
+        let old = try decode(#"{"version":1,"playSound":false,"showPanelHeader":false}"#)
+        #expect(old.sound == "Tink")
+        #expect(old.soundVolume == 0.5)
+        #expect(!old.playSound)
+        let custom = try decode(#"{"sound":"Glass","soundVolume":0.8}"#)
+        #expect(custom.sound == "Glass")
+        #expect(custom.soundVolume == 0.8)
+        #expect(try ConfigCodec.decode(ConfigCodec.encode(custom)) == custom)
+        // An unknown name is kept as written; the app falls back to "Tink" when playing.
+        #expect(try decode(#"{"sound":"Nope"}"#).sound == "Nope")
+    }
+    @Test(arguments: [-1.0, 0.0, 0.25, 1.0, 7.0]) func soundVolumeClamping(_ volume: Double) throws {
+        #expect(try decode("{\"soundVolume\":\(volume)}").soundVolume == min(1, max(0, volume)))
+    }
     @Test func exampleAndItemProperties() throws {
         let c = try decode(#"{"items":[{"key":"A","label":"Apps","items":[{"key":"s","app":"com.apple.Safari"},{"key":"g","label":"GitHub","url":"https://github.com","future":42}]}],"future":true}"#)
         let children: [Item] = [.app("s", "", "com.apple.Safari"), .url("g", "GitHub", "https://github.com")]
@@ -75,6 +95,7 @@ import Testing
         #"{"items":[{"key":"a","items":[],"url":"https://x"}]}"#,
         #"{"items":[{"key":"tab","app":"x"}]}"#,
         #"{"leader":"unknown"}"#, #"{"showDelay":"fast"}"#, #"{"showPanelHeader":"yes"}"#,
+        #"{"sound":1}"#, #"{"soundVolume":"loud"}"#,
         #"{"launcha":"yes"}"#, #"{"launcha":{"hotkey":"nope"}}"#, #"{"launcha":{"doubleTap":"yes"}}"#])
     func invalidFormat(_ json: String) {
         #expect(throws: (any Error).self) {
@@ -102,6 +123,8 @@ import Testing
         full.showMenuBarIcon = false
         full.showPanelHeader = false
         full.playSound = false
+        full.sound = "Glass"
+        full.soundVolume = 0.8
         full.launcha.hotkey = .combo(keyCode: 49, modifiers: [.option])
         full.launcha.doubleTap = false
         full.launcha.doubleTapWindow = 0.5
@@ -111,7 +134,7 @@ import Testing
             #expect(try ConfigCodec.decode(data) == c)
             #expect(ConfigCodec.encode(c) == data)
             let text = String(decoding: data, as: UTF8.self)
-            let rootKeys = ["appearance", "items", "launchAtLogin", "launcha", "leader", "playSound", "showDelay", "showMenuBarIcon", "showPanelHeader", "unknownKey", "version"]
+            let rootKeys = ["appearance", "items", "launchAtLogin", "launcha", "leader", "playSound", "showDelay", "showMenuBarIcon", "showPanelHeader", "sound", "soundVolume", "unknownKey", "version"]
             let positions = rootKeys.compactMap { text.range(of: "\"\($0)\"")?.lowerBound }
             #expect(positions == positions.sorted())
             #expect(text.hasSuffix("\n"))

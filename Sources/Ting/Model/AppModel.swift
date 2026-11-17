@@ -50,12 +50,8 @@ final class AppModel {
     /// Held-key guard for the launcha hotkey: a repeat while held never toggles twice.
     @ObservationIgnored private var launchaKey = LeaderDoubleTap(isEnabled: false)
     @ObservationIgnored private lazy var recordingGate = HotkeyRecordingGate { [weak self] in self?.setRecordingHotkey($0) }
-    /// The "ting" for an opened app, link or file: the system "Tink" at half volume.
-    @ObservationIgnored private lazy var tink: NSSound? = {
-        let sound = NSSound(named: "Tink")
-        sound?.volume = 0.5
-        return sound
-    }()
+    /// Loaded "ting" sounds by name; nil marks a name that cannot be loaded.
+    @ObservationIgnored private var sounds: [String: NSSound?] = [:]
 
     /// `presentsWindows` false: the launchers keep their state but show no window (tests).
     init(presentsWindows: Bool = true) {
@@ -369,8 +365,25 @@ final class AppModel {
         launcha.resumeKeys()
     }
 
+    /// The "ting" for an opened app, link or file: `config.sound` at `config.soundVolume`.
     private func playSound() {
-        if config.playSound { tink?.play() }
+        if config.playSound { previewSound() }
+    }
+
+    /// Plays the configured sound once, whatever `playSound` says (the Settings preview).
+    /// A name that cannot be loaded plays the default "Tink".
+    func previewSound() {
+        guard let sound = loadSound(config.sound) ?? loadSound(SystemSounds.defaultName) else { return }
+        sound.stop()
+        sound.volume = Float(config.soundVolume)
+        sound.play()
+    }
+
+    private func loadSound(_ name: String) -> NSSound? {
+        if let cached = sounds[name] { return cached }
+        let sound = NSSound(named: NSSound.Name(name))
+        sounds[name] = sound
+        return sound
     }
 
     /// Opens a selecta binding and counts a successful launch once. A micro-app binding starts

@@ -141,7 +141,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" (Hotkey string or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
-/// "launcha" (`LaunchaSettings`), "items".
+/// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
     public static let currentVersion = 1
@@ -159,6 +159,10 @@ public struct Config: Equatable, Sendable, Codable {
     /// Show the title row above selecta and launcha panels.
     public var showPanelHeader: Bool = true
     public var playSound: Bool = true
+    /// Name of a system sound without extension, e.g. "Glass". Played when `playSound` is on.
+    public var sound: String = SystemSounds.defaultName
+    /// Volume of `sound`, relative to the system output volume. Clamped to 0...1 when decoding.
+    public var soundVolume: Double = 0.5
     /// Launcha settings. Older files without "launcha" get the defaults.
     public var launcha: LaunchaSettings = LaunchaSettings()
     public var items: [Item] = []
@@ -183,7 +187,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, launcha, items
+        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -199,6 +203,9 @@ public struct Config: Equatable, Sendable, Codable {
         showMenuBarIcon = try container.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? defaults.showMenuBarIcon
         showPanelHeader = try container.decodeIfPresent(Bool.self, forKey: .showPanelHeader) ?? defaults.showPanelHeader
         playSound = try container.decodeIfPresent(Bool.self, forKey: .playSound) ?? defaults.playSound
+        sound = try container.decodeIfPresent(String.self, forKey: .sound) ?? defaults.sound
+        let volume = try container.decodeIfPresent(Double.self, forKey: .soundVolume) ?? defaults.soundVolume
+        soundVolume = min(max(volume, 0), 1)
         launcha = try container.decodeIfPresent(LaunchaSettings.self, forKey: .launcha) ?? defaults.launcha
         items = try container.decodeIfPresent([Item].self, forKey: .items) ?? defaults.items
     }
@@ -218,6 +225,8 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(showMenuBarIcon, forKey: .showMenuBarIcon)
         try container.encode(showPanelHeader, forKey: .showPanelHeader)
         try container.encode(playSound, forKey: .playSound)
+        try container.encode(sound, forKey: .sound)
+        try container.encode(soundVolume, forKey: .soundVolume)
         try container.encode(launcha, forKey: .launcha)
         try container.encode(items, forKey: .items)
     }
