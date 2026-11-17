@@ -216,6 +216,8 @@ package struct MicroAppRunner: Sendable {
     /// The base environment of the steps and the `${NAME}` variables; `nil` uses the login shell's,
     /// or Ting's own when the shell gave none.
     package var environment: [String: String]?
+    /// Snapshot in newest-first order. nil means history access is unavailable.
+    package var clipboardHistory: [String?]?
     package var workingDirectory: String = NSHomeDirectory()
     /// Overrides the time limit of every micro-app (for tests); `nil` uses the file's `timeout`.
     package var timeLimit: TimeInterval?
@@ -457,6 +459,17 @@ struct MicroAppPipeline: Sendable {
                 throw MicroAppStepError.failed("error", "`${\(name)}` is not set: add it to the environment of your login shell and reload the micro-apps folder")
             }
             return value
+        case .clipboard(let index):
+            guard let history = runner.clipboardHistory else {
+                throw MicroAppStepError.failed("error", "Clipboard history is unavailable; enable Clipbawd in Ting.")
+            }
+            guard index < 0, index >= -history.count else {
+                throw MicroAppStepError.failed("error", "Clipboard history has no item at index \(index).")
+            }
+            guard let text = history[-(index + 1)] else {
+                throw MicroAppStepError.failed("error", "Clipboard item \(index) is an image, not text.")
+            }
+            return text
         case .keychain(let service):
             do {
                 return try runner.keychain(service)

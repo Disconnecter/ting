@@ -54,7 +54,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
 - Each item has `key`, an optional `label` (shown in the menu) and exactly one
   action: `items` (a group), `app` (a bundle identifier), `url` (any URL,
   including schemes such as `raycast://`), `micro` (a micro-app id) or `open`
-  (a Ting window: `"launcha"` or `"clipboarda"`).
+  (a Ting window: `"launcha"` or `"clipbawd"`).
 - `key`: a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`. Keys
   are Latin even when the person types with another layout.
 - In one group a key is used once.
@@ -67,13 +67,14 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true,
   "converter": true}`; `calculator` shows the value of a query such as `2*(3+4)` first in
   launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`),
-  `clipboarda` (`{"hotkey": null, "enabled": true, "fetchLinks": false, "maxItems": 200,
-  "excludedApps": [], "ignoredPrefixes": []}`; `enabled: false` turns clipboarda off: Ting never reads the clipboard,
+  `clipbawd` (`{"hotkey": null, "enabled": true, "fetchLinks": false, "maxItems": 200,
+  "excludedApps": [], "ignoredPrefixes": []}`; `enabled: false` turns clipbawd off: Ting never reads the clipboard,
   the hotkey is free and the window does not open;
   `fetchLinks` loads the title, icon or image of a copied link, `maxItems` is
   20–1000, `excludedApps` lists bundle identifiers whose copies are never kept,
   `ignoredPrefixes` lists case-sensitive starts of text that is never kept). The
-  clipboarda hotkey cannot be the leader or the launcha hotkey.
+  Clipbawd hotkey cannot be the leader or the launcha hotkey. Clipbawd is also searchable by name in launcha while enabled.
+- Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 
 ### Direct application hotkeys
 

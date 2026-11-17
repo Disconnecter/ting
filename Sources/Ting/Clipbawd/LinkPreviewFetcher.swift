@@ -1,5 +1,5 @@
 // Loads the title and icon of a copied web page, or the size of a copied image link, when
-// Settings › clipboarda allows it. One plain GET: no cookies, no cache, no scripts, no
+// Settings › clipbawd allows it. One plain GET: no cookies, no cache, no scripts, no
 // credentials, never a local network address, and only a few bytes of each answer.
 import Foundation
 import ImageIO

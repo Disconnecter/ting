@@ -1,53 +1,53 @@
-// Settings › clipboarda: recording, the hotkey, what is never kept, private windows and links.
+// Settings › clipbawd: recording, the hotkey, what is never kept, private windows and links.
 import AppKit
 import SwiftUI
 import TingCore
 
-struct ClipboardaSettingsView: View {
+struct ClipbawdSettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var prefix = ""
     @State private var message: String?
     @State private var automation: [String: Bool] = [:]
 
     var body: some View {
-        let settings = model.config.clipboarda
+        let settings = model.config.clipbawd
         Form {
             Section {
-                Toggle("Use clipboarda", isOn: model.binding(\.clipboarda.enabled))
+                Toggle("Use Clipbawd", isOn: model.binding(\.clipbawd.enabled))
                 Text(settings.enabled
-                     ? "Ting keeps what you copy in memory, for this session only. Turning clipboarda off forgets it."
+                     ? "Ting keeps what you copy in memory, for this session only. Turning Clipbawd off forgets it."
                      : "Off: Ting never reads the clipboard, the hotkey is free and the window does not open.")
                     .font(.caption).foregroundStyle(.secondary)
-            } header: { MonoLabel("clipboarda", size: 9).foregroundStyle(Color.tingAmber) }
+            } header: { MonoLabel("Clipbawd", size: 9).foregroundStyle(Color.tingAmber) }
             if settings.enabled { sections(settings) }
         }
         .formStyle(.grouped)
         .frame(width: 560, height: 700)
     }
 
-    @ViewBuilder private func sections(_ settings: ClipboardaSettings) -> some View {
+    @ViewBuilder private func sections(_ settings: ClipbawdSettings) -> some View {
             Section {
-                LabeledContent("Hotkey") { ClipboardaHotkeyField() }
-                Text("A selecta binding can open clipboarda too: add one in Bindings.")
+                LabeledContent("Hotkey") { ClipbawdHotkeyField() }
+                Text("A selecta binding can open Clipbawd too: add one in Bindings.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Keep at most") {
-                    Stepper(value: model.binding(\.clipboarda.maxItems), in: ClipboardaSettings.maxItemsRange, step: 10) {
+                    Stepper(value: model.binding(\.clipbawd.maxItems), in: ClipbawdSettings.maxItemsRange, step: 10) {
                         Text("\(settings.maxItems) items").font(.system(size: 12, design: .monospaced))
                     }
                 }
                 HStack {
-                    let history = model.clipboarda.history
+                    let history = model.clipbawd.history
                     Text("\(history.entries.count) items, \(ByteCountFormatter.string(fromByteCount: Int64(history.totalBytes), countStyle: .memory)) in memory")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Clear History") { model.clipboarda.clear() }
+                    Button("Clear History") { model.clipbawd.clear() }
                         .disabled(history.entries.isEmpty)
                 }
             } header: { MonoLabel("History", size: 9).foregroundStyle(Color.tingAmber) }
 
             Section {
                 if settings.excludedApps.isEmpty {
-                    Text("No apps. “Never Keep from…” in clipboarda adds the app of an item.")
+                    Text("No apps. “Never Keep from…” in Clipbawd adds the app of an item.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(settings.excludedApps, id: \.self) { id in
@@ -58,7 +58,7 @@ struct ClipboardaSettingsView: View {
                         Text(Self.appName(id))
                         Text(id).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Remove") { model.update { $0.clipboarda.excludedApps.removeAll { $0 == id } } }
+                        Button("Remove") { model.update { $0.clipbawd.excludedApps.removeAll { $0 == id } } }
                             .accessibilityLabel("Keep copies from \(Self.appName(id)) again")
                     }
                 }
@@ -73,7 +73,7 @@ struct ClipboardaSettingsView: View {
                     HStack {
                         Text(value).font(.system(size: 12, design: .monospaced))
                         Spacer()
-                        Button("Remove") { model.update { $0.clipboarda.ignoredPrefixes.removeAll { $0 == value } } }
+                        Button("Remove") { model.update { $0.clipbawd.ignoredPrefixes.removeAll { $0 == value } } }
                             .accessibilityLabel("Remove the start \(value)")
                     }
                 }
@@ -89,7 +89,7 @@ struct ClipboardaSettingsView: View {
             } header: { MonoLabel("Never keep text that starts with", size: 9).foregroundStyle(Color.tingAmber) }
 
             Section {
-                Text("Never kept: copies while Secure Keyboard Entry is on (password fields, Terminal’s secure entry), copies password managers mark as secret, and copies from private windows of Firefox and its forks. Safari does not tell other apps about its private windows.")
+                Text("Never kept: copies while Secure Keyboard Entry is on (password fields, Terminal’s secure entry), copies password managers mark as secret, and recognised private windows of Firefox and its forks (requires Accessibility and a matching window title). Detection is best-effort. Safari does not tell other apps about its private windows.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 let browsers = Self.runningChromium()
@@ -117,8 +117,8 @@ struct ClipboardaSettingsView: View {
             .task { await refreshAutomation() }
 
             Section {
-                Toggle("Fetch link titles, icons and images", isOn: model.binding(\.clipboarda.fetchLinks))
-                Text("Off by default. When on, Ting loads a copied http or https link once, without cookies and without running scripts, to show its title, icon or image. The site then learns that the link was copied. Local network addresses are never loaded.")
+                Toggle("Fetch link titles, icons and images", isOn: model.binding(\.clipbawd.fetchLinks))
+                Text("Off by default. When on, Ting loads a copied http or https link once, without cookies and without running scripts, to show its title, icon or image. The site then learns that the link was copied. Ting checks for local network addresses, but DNS rebinding remains possible. Leave this off on sensitive networks.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } header: { MonoLabel("Links", size: 9).foregroundStyle(Color.tingAmber) }
@@ -127,7 +127,7 @@ struct ClipboardaSettingsView: View {
     private func addPrefix() {
         let value = prefix.trimmingCharacters(in: .whitespaces)
         guard !value.isEmpty else { return }
-        model.update { if !$0.clipboarda.ignoredPrefixes.contains(value) { $0.clipboarda.ignoredPrefixes.append(value) } }
+        model.update { if !$0.clipbawd.ignoredPrefixes.contains(value) { $0.clipbawd.ignoredPrefixes.append(value) } }
         prefix = ""
     }
 
@@ -141,7 +141,7 @@ struct ClipboardaSettingsView: View {
             return
         }
         message = nil
-        model.update { _ = $0.clipboarda.exclude(app: id) }
+        model.update { _ = $0.clipbawd.exclude(app: id) }
     }
 
     private func allow(_ id: String) {

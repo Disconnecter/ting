@@ -15,7 +15,7 @@ private final class FakePrivacy: ClipPrivacyChecking {
 }
 
 @MainActor
-final class ClipboardaServiceTests: XCTestCase {
+final class ClipbawdServiceTests: XCTestCase {
     private var pasteboard: NSPasteboard!
     private var secure = false
     private static let editor = ClipboardMonitor.FrontApp(pid: 1, bundleID: "com.example.editor", name: "Editor")
@@ -32,11 +32,11 @@ final class ClipboardaServiceTests: XCTestCase {
         pasteboard.releaseGlobally()
     }
 
-    private func makeHistory() -> ClipboardaHistory {
+    private func makeHistory() -> ClipbawdHistory {
         let monitor = ClipboardMonitor(pasteboard: pasteboard, frontmost: { [unowned self] in front },
                                        secureInput: { [unowned self] in secure }, privacy: privacy)
-        let history = ClipboardaHistory(monitor: monitor, pasteboard: pasteboard)
-        history.configure(ClipboardaSettings())
+        let history = ClipbawdHistory(monitor: monitor, pasteboard: pasteboard)
+        history.configure(ClipbawdSettings())
         return history
     }
 
@@ -116,6 +116,21 @@ final class ClipboardaServiceTests: XCTestCase {
         XCTAssertEqual(history.entries.map(\.title), ["normal tab"])
     }
 
+    func testPendingBrowserCaptureDoesNotReturnAfterDisable() async {
+        let history = makeHistory()
+        defer { history.monitor.stop() }
+        front = ClipboardMonitor.FrontApp(pid: 2, bundleID: "org.mozilla.firefox", name: "Firefox")
+        copy("must be forgotten")
+        history.monitor.poll()
+        var settings = ClipbawdSettings()
+        settings.enabled = false
+        history.configure(settings)
+        settings.enabled = true
+        history.configure(settings)
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertTrue(history.entries.isEmpty)
+    }
+
     func testFilesAndImages() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ting-clip-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -150,14 +165,14 @@ final class ClipboardaServiceTests: XCTestCase {
         defer { history.monitor.stop() }
         copy("kept")
         history.monitor.poll()
-        var settings = ClipboardaSettings()
+        var settings = ClipbawdSettings()
         settings.exclude(app: "com.example.editor")
         history.configure(settings)
         XCTAssertTrue(history.entries.isEmpty)
         copy("from an excluded app")
         history.monitor.poll()
         XCTAssertTrue(history.entries.isEmpty)
-        settings = ClipboardaSettings()
+        settings = ClipbawdSettings()
         history.configure(settings)
         copy("again")
         history.monitor.poll()
@@ -170,31 +185,31 @@ final class ClipboardaServiceTests: XCTestCase {
 }
 
 @MainActor
-final class ClipboardaPanelTests: XCTestCase {
+final class ClipbawdPanelTests: XCTestCase {
     func testKeyRoutes() {
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 36, latin: nil, flags: .command), .copy)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 76, latin: nil, flags: .command), .copy)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 51, latin: nil, flags: [.command, .shift]), .delete)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 51, latin: nil, flags: .command), .editor)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 51, latin: nil, flags: .option), .editor)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 9, latin: "v", flags: .command), .action(#selector(NSText.paste(_:))))
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 40, latin: "k", flags: [.command, .shift]), .swallow)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 12, latin: "q", flags: .command), .swallow)
-        XCTAssertEqual(ClipboardaPanel.route(keyCode: 0, latin: "a", flags: []), .editor)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 36, latin: nil, flags: .command), .copy)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 76, latin: nil, flags: .command), .copy)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 51, latin: nil, flags: [.command, .shift]), .delete)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 51, latin: nil, flags: .command), .editor)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 51, latin: nil, flags: .option), .editor)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 9, latin: "v", flags: .command), .action(#selector(NSText.paste(_:))))
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 40, latin: "k", flags: [.command, .shift]), .swallow)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 12, latin: "q", flags: .command), .swallow)
+        XCTAssertEqual(ClipbawdPanel.route(keyCode: 0, latin: "a", flags: []), .editor)
     }
 
-    private func controller() -> (ClipboardaController, ClipboardaHistory, NSPasteboard) {
+    private func controller() -> (ClipbawdController, ClipbawdHistory, NSPasteboard) {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString))
         addTeardownBlock { pasteboard.releaseGlobally() }
         let monitor = ClipboardMonitor(pasteboard: pasteboard, frontmost: { nil }, secureInput: { false })
-        let history = ClipboardaHistory(monitor: monitor, pasteboard: pasteboard)
-        history.configure(ClipboardaSettings())
+        let history = ClipbawdHistory(monitor: monitor, pasteboard: pasteboard)
+        history.configure(ClipbawdSettings())
         addTeardownBlock { history.monitor.stop() }
         for text in ["alpha", "beta", "gamma"] {
             history.record(ClipCapture(types: [ClipboardTypes.plainText], text: text,
                                        representations: [ClipRepresentation(type: ClipboardTypes.plainText, data: Data(text.utf8))]))
         }
-        return (ClipboardaController(history: history, presentsWindow: false), history, pasteboard)
+        return (ClipbawdController(history: history, presentsWindow: false), history, pasteboard)
     }
 
     func testSelectionSearchAndRemove() {
@@ -233,76 +248,86 @@ final class ClipboardaPanelTests: XCTestCase {
 }
 
 @MainActor
-final class ClipboardaHotkeyTests: XCTestCase {
+final class ClipbawdHotkeyTests: XCTestCase {
     private func model() throws -> (AppModel, HotkeyService) {
         _ = NSApplication.shared
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ting-clipboarda-" + UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ting-clipbawd-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let service = HotkeyService(register: { _, _ in .active })
         let model = AppModel(presentsWindows: false, store: ConfigStore(url: directory.appendingPathComponent("config.json")),
                              hotkeys: service)
-        addTeardownBlock { model.clipboarda.monitor.stop() }
+        addTeardownBlock { model.clipbawd.monitor.stop() }
         return (model, service)
     }
 
+    func testOpeningLaunchaClosesClipbawd() throws {
+        let (model, _) = try model()
+        model.openClipbawd()
+        XCTAssertTrue(model.clipbawdPanel.isOpen)
+        model.openLauncha()
+        XCTAssertFalse(model.clipbawdPanel.isOpen)
+        XCTAssertTrue(model.launcha.isOpen)
+        model.launcha.close()
+    }
+
     func testSlotIDs() {
-        XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.clipboarda.rawValue), .clipboarda)
+        XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.clipbawd.rawValue), .clipbawd)
         XCTAssertEqual(HotkeyService.Slot(rawValue: 3), .application(0))
     }
 
     func testHotkeyRegistersAndToggles() throws {
         let (model, service) = try model()
         model.update { $0.leader = Hotkey(string: "f13") }
-        model.setClipboardaHotkey(Hotkey(string: "cmd+shift+v"))
-        XCTAssertEqual(service.hotkey(.clipboarda), Hotkey(string: "cmd+shift+v"))
-        XCTAssertEqual(model.clipboardaHotkeyStatus, .active)
-        XCTAssertNil(model.clipboardaHotkeyProblem)
+        model.setClipbawdHotkey(Hotkey(string: "cmd+shift+v"))
+        XCTAssertEqual(service.hotkey(.clipbawd), Hotkey(string: "cmd+shift+v"))
+        XCTAssertEqual(model.clipbawdHotkeyStatus, .active)
+        XCTAssertNil(model.clipbawdHotkeyProblem)
 
-        model.hotkeyPressed(.clipboarda, at: 1)
-        XCTAssertTrue(model.clipboardaPanel.isOpen)
+        model.hotkeyPressed(.clipbawd, at: 1)
+        XCTAssertTrue(model.clipbawdPanel.isOpen)
         // A held key repeats: never toggles twice.
-        model.hotkeyPressed(.clipboarda, at: 1.05)
-        XCTAssertTrue(model.clipboardaPanel.isOpen)
-        model.hotkeyReleased(.clipboarda)
-        model.hotkeyPressed(.clipboarda, at: 2)
-        XCTAssertFalse(model.clipboardaPanel.isOpen)
+        model.hotkeyPressed(.clipbawd, at: 1.05)
+        XCTAssertTrue(model.clipbawdPanel.isOpen)
+        model.hotkeyReleased(.clipbawd)
+        model.hotkeyPressed(.clipbawd, at: 2)
+        XCTAssertFalse(model.clipbawdPanel.isOpen)
 
         // The same key as the leader: reported, never registered.
-        model.setClipboardaHotkey(Hotkey(string: "f13"))
-        XCTAssertNil(service.hotkey(.clipboarda))
-        XCTAssertNotNil(model.clipboardaHotkeyProblem)
-        model.setClipboardaHotkey(nil)
-        XCTAssertNil(model.clipboardaHotkeyProblem)
+        model.setClipbawdHotkey(Hotkey(string: "f13"))
+        XCTAssertNil(service.hotkey(.clipbawd))
+        XCTAssertNotNil(model.clipbawdHotkeyProblem)
+        model.setClipbawdHotkey(nil)
+        XCTAssertNil(model.clipbawdHotkeyProblem)
     }
 
     func testTurnedOffFreesEverything() throws {
         let (model, service) = try model()
-        model.setClipboardaHotkey(Hotkey(string: "cmd+shift+v"))
-        XCTAssertTrue(model.clipboarda.monitor.isRunning)
-        model.openClipboarda()
-        XCTAssertTrue(model.clipboardaPanel.isOpen)
+        model.setClipbawdHotkey(Hotkey(string: "cmd+shift+v"))
+        XCTAssertTrue(model.clipbawd.monitor.isRunning)
+        model.openClipbawd()
+        XCTAssertTrue(model.clipbawdPanel.isOpen)
 
-        model.update { $0.clipboarda.enabled = false }
-        XCTAssertFalse(model.clipboardaPanel.isOpen)
-        XCTAssertFalse(model.clipboarda.monitor.isRunning)
-        XCTAssertNil(service.hotkey(.clipboarda))
-        model.openClipboarda()
-        XCTAssertFalse(model.clipboardaPanel.isOpen)
-        model.hotkeyPressed(.clipboarda, at: 1)
-        XCTAssertFalse(model.clipboardaPanel.isOpen)
+        model.update { $0.clipbawd.enabled = false }
+        XCTAssertFalse(model.clipbawdPanel.isOpen)
+        XCTAssertFalse(model.clipbawd.monitor.isRunning)
+        XCTAssertNil(service.hotkey(.clipbawd))
+        model.openClipbawd()
+        XCTAssertFalse(model.clipbawdPanel.isOpen)
+        model.hotkeyPressed(.clipbawd, at: 1)
+        XCTAssertFalse(model.clipbawdPanel.isOpen)
 
-        model.update { $0.clipboarda.enabled = true }
-        XCTAssertEqual(service.hotkey(.clipboarda), Hotkey(string: "cmd+shift+v"))
-        XCTAssertTrue(model.clipboarda.monitor.isRunning)
+        model.update { $0.clipbawd.enabled = true }
+        XCTAssertEqual(service.hotkey(.clipbawd), Hotkey(string: "cmd+shift+v"))
+        XCTAssertTrue(model.clipbawd.monitor.isRunning)
     }
 
     func testPausedHotkeyDoesNotOpen() throws {
         let (model, service) = try model()
-        model.setClipboardaHotkey(Hotkey(string: "cmd+shift+v"))
+        model.setClipbawdHotkey(Hotkey(string: "cmd+shift+v"))
         model.isPaused = true
-        XCTAssertNil(service.hotkey(.clipboarda))
-        model.openClipboarda()
-        XCTAssertFalse(model.clipboardaPanel.isOpen)
+        XCTAssertNil(service.hotkey(.clipbawd))
+        model.openClipbawd()
+        XCTAssertFalse(model.clipbawdPanel.isOpen)
     }
 }

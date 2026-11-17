@@ -2,7 +2,7 @@ import Foundation
 
 /// A Ting window a binding can open.
 public enum TingPanel: String, Equatable, Sendable, Codable, CaseIterable {
-    case launcha, clipboarda
+    case launcha, clipbawd
 }
 
 /// One binding: a key and what it does.
@@ -15,7 +15,7 @@ public struct Item: Equatable, Sendable, Codable {
         case url(String)
         /// A micro-app id, e.g. "format-json". The micro-app does not have to be loaded.
         case micro(String)
-        /// A Ting window: launcha or clipboarda.
+        /// A Ting window: launcha or clipbawd.
         case open(TingPanel)
     }
 
@@ -47,7 +47,7 @@ public struct Item: Equatable, Sendable, Codable {
     }
 
     // JSON: {"key": "a", "label": "Apps", "items": [...]} | {..., "app": "com.x"} | {..., "url": "https://..."}
-    // | {..., "micro": "format-json"} | {..., "open": "clipboarda"}.
+    // | {..., "micro": "format-json"} | {..., "open": "clipbawd"}.
     // Decoding: exactly one of "items"/"app"/"url"/"micro"/"open" must be present; "key" is normalized with
     // SequenceKey.normalize ("A" → "a"); an invalid key or a wrong number of action fields throws
     // DecodingError.dataCorrupted. "label" is optional and defaults to "".
@@ -157,7 +157,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" (Hotkey string or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
-/// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipboarda" (`ClipboardaSettings`),
+/// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipbawd" (`ClipbawdSettings`),
 /// "appHotkeys", "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
@@ -182,8 +182,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var soundVolume: Double = 0.5
     /// Launcha settings. Older files without "launcha" get the defaults.
     public var launcha: LaunchaSettings = LaunchaSettings()
-    /// clipboarda settings. Older files without "clipboarda" get the defaults.
-    public var clipboarda: ClipboardaSettings = ClipboardaSettings()
+    /// clipbawd settings. Older files without "clipbawd" get the defaults.
+    public var clipbawd: ClipbawdSettings = ClipbawdSettings()
     /// Direct global shortcuts assigned from launcha; older files default to none.
     public var appHotkeys: [AppShortcut] = []
     public var items: [Item] = []
@@ -208,7 +208,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipboarda, appHotkeys, items
+        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, appHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -228,7 +228,7 @@ public struct Config: Equatable, Sendable, Codable {
         let volume = try container.decodeIfPresent(Double.self, forKey: .soundVolume) ?? defaults.soundVolume
         soundVolume = min(max(volume, 0), 1)
         launcha = try container.decodeIfPresent(LaunchaSettings.self, forKey: .launcha) ?? defaults.launcha
-        clipboarda = try container.decodeIfPresent(ClipboardaSettings.self, forKey: .clipboarda) ?? defaults.clipboarda
+        clipbawd = try container.decodeIfPresent(ClipbawdSettings.self, forKey: .clipbawd) ?? defaults.clipbawd
         appHotkeys = try container.decodeIfPresent([AppShortcut].self, forKey: .appHotkeys) ?? defaults.appHotkeys
         items = try container.decodeIfPresent([Item].self, forKey: .items) ?? defaults.items
     }
@@ -251,7 +251,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(sound, forKey: .sound)
         try container.encode(soundVolume, forKey: .soundVolume)
         try container.encode(launcha, forKey: .launcha)
-        try container.encode(clipboarda, forKey: .clipboarda)
+        try container.encode(clipbawd, forKey: .clipbawd)
         try container.encode(appHotkeys, forKey: .appHotkeys)
         try container.encode(items, forKey: .items)
     }
@@ -339,10 +339,10 @@ public struct ConfigIssue: Equatable, Sendable {
         case invalidLaunchaHotkey
         /// The launcha hotkey is the same as the leader.
         case launchaHotkeyConflict
-        /// The clipboarda hotkey is not `isValid`.
-        case invalidClipboardaHotkey
-        /// The clipboarda hotkey is the same as the leader or the launcha hotkey.
-        case clipboardaHotkeyConflict
+        /// The clipbawd hotkey is not `isValid`.
+        case invalidClipbawdHotkey
+        /// The clipbawd hotkey is the same as the leader or the launcha hotkey.
+        case clipbawdHotkeyConflict
         /// Invalid, reserved or duplicate application hotkey assignment.
         case appHotkey
     }
@@ -360,7 +360,7 @@ public struct ConfigIssue: Equatable, Sendable {
 }
 
 public enum ConfigValidator {
-    /// Leader issues first, then launcha and clipboarda hotkey issues, then app hotkey issues, then all item issues depth-first in item order. For a duplicate key, report one issue per duplicate
+    /// Leader issues first, then launcha and clipbawd hotkey issues, then app hotkey issues, then all item issues depth-first in item order. For a duplicate key, report one issue per duplicate
     /// after the first, with the duplicate's sequence.
     public static func validate(_ config: Config) -> [ConfigIssue] {
         var issues: [ConfigIssue] = []
@@ -381,16 +381,16 @@ public enum ConfigValidator {
                                           message: "\(hotkey.display) is already the leader. Choose another key for launcha."))
             }
         }
-        if let hotkey = config.clipboarda.activeHotkey {
+        if let hotkey = config.clipbawd.activeHotkey {
             if !hotkey.isValid {
-                issues.append(ConfigIssue(kind: .invalidClipboardaHotkey, sequence: [],
-                                          message: "\(hotkey.display) cannot open clipboarda. Choose a key that is not a modifier."))
+                issues.append(ConfigIssue(kind: .invalidClipbawdHotkey, sequence: [],
+                                          message: "\(hotkey.display) cannot open clipbawd. Choose a key that is not a modifier."))
             } else if hotkey == config.leader {
-                issues.append(ConfigIssue(kind: .clipboardaHotkeyConflict, sequence: [],
-                                          message: "\(hotkey.display) is already the leader. Choose another key for clipboarda."))
+                issues.append(ConfigIssue(kind: .clipbawdHotkeyConflict, sequence: [],
+                                          message: "\(hotkey.display) is already the leader. Choose another key for clipbawd."))
             } else if hotkey == config.launcha.hotkey {
-                issues.append(ConfigIssue(kind: .clipboardaHotkeyConflict, sequence: [],
-                                          message: "\(hotkey.display) already opens launcha. Choose another key for clipboarda."))
+                issues.append(ConfigIssue(kind: .clipbawdHotkeyConflict, sequence: [],
+                                          message: "\(hotkey.display) already opens launcha. Choose another key for clipbawd."))
             }
         }
         var appIDs: Set<String> = []

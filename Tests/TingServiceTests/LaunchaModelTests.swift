@@ -65,6 +65,25 @@ final class LaunchaModelTests: XCTestCase {
         var consent: URL
     }
 
+    func testClipbawdSearchOpenAndDisabled() async throws {
+        let fixture = try makeModel()
+        let model = fixture.model
+        var opened = 0
+        model.onOpenClipbawd = { opened += 1 }
+        model.clipbawdEnabled = true
+        model.open()
+        model.query = "Clipbawd"
+        XCTAssertEqual(model.rows.first?.kind, .clipbawd)
+        _ = await model.activateSelection()
+        XCTAssertEqual(opened, 1)
+        XCTAssertTrue(fixture.opener.files.isEmpty)
+        model.clipbawdEnabled = false
+        model.open()
+        model.query = "Clipbawd"
+        XCTAssertFalse(model.rows.contains { $0.kind == .clipbawd })
+        model.close()
+    }
+
     private var policies: [ProtectedFolderPolicy] = []
 
     private func makeModel(files: [URL] = [], spotlightDelay: Duration = .zero) throws -> Fixture {

@@ -208,6 +208,12 @@ private struct ApprovalBody: View {
                         Text(app.requiredContext.map(\.summary).joined(separator: ", ")).font(.system(size: 12))
                     }
                 }
+                if app.readsClipboardHistory {
+                    GridRow {
+                        MonoLabel("reads", size: 9, weight: .regular).foregroundStyle(Color.tingMuted)
+                        Text("Clipbawd clipboard history; steps may send it to other services").font(.system(size: 12))
+                    }
+                }
                 if app.sendsInput {
                     GridRow {
                         MonoLabel("sends", size: 9, weight: .regular).foregroundStyle(Color.tingMuted)

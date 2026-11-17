@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TingCore
 
-@Suite struct ClipboardaTests {
+@Suite struct ClipbawdTests {
     private let now = Date(timeIntervalSince1970: 1_000_000)
     private let safari = ClipSource(bundleID: "com.apple.Safari", name: "Safari")
     private let notes = ClipSource(bundleID: "com.apple.Notes", name: "Notes")
@@ -17,25 +17,40 @@ import Testing
         return ClipCapture(types: types, text: value, representations: representations, source: source)
     }
 
+    @Test func htmlHeadHandlesUnicodeBeforeTags() {
+        let base = URL(string: "https://example.org/")!
+        let head = ClipHTMLHead.parse(Data("İ<TITLE>İstanbul</TITLE><LINK REL='icon' HREF='/icon.png'>".utf8), base: base)
+        #expect(head.title == "İstanbul")
+        #expect(head.icon?.absoluteString == "https://example.org/icon.png")
+    }
+
+    @Test func linkPolicyRejectsTranslatedAndMalformedAddresses() {
+        #expect(ClipLinkPolicy.ipv4("-1.2.3.4") == nil)
+        for host in ["::FFFF:127.0.0.1", "::127.0.0.1", "64:ff9b::7f00:1", "fe80::1"] {
+            #expect(!ClipLinkPolicy.isPublicHost(host))
+        }
+        #expect(ClipLinkPolicy.isPublicHost("2606:4700:4700::1111"))
+    }
+
     // MARK: Settings
 
     @Test func settingsDefaultsAndRoundTrip() throws {
         let old = try ConfigCodec.decode(Data("{}".utf8))
-        #expect(old.clipboarda == ClipboardaSettings())
-        #expect(old.clipboarda.enabled)
-        #expect(!old.clipboarda.fetchLinks)
+        #expect(old.clipbawd == ClipbawdSettings())
+        #expect(old.clipbawd.enabled)
+        #expect(!old.clipbawd.fetchLinks)
         var config = Config()
-        config.clipboarda.hotkey = Hotkey(string: "cmd+shift+v")
-        config.clipboarda.excludedApps = ["com.example.bank"]
-        config.clipboarda.ignoredPrefixes = ["sk-", "ghp_"]
-        config.clipboarda.fetchLinks = true
+        config.clipbawd.hotkey = Hotkey(string: "cmd+shift+v")
+        config.clipbawd.excludedApps = ["com.example.bank"]
+        config.clipbawd.ignoredPrefixes = ["sk-", "ghp_"]
+        config.clipbawd.fetchLinks = true
         #expect(try ConfigCodec.decode(ConfigCodec.encode(config)) == config)
-        let clamped = try ConfigCodec.decode(Data(#"{"clipboarda":{"maxItems":5}}"#.utf8))
-        #expect(clamped.clipboarda.maxItems == ClipboardaSettings.maxItemsRange.lowerBound)
+        let clamped = try ConfigCodec.decode(Data(#"{"clipbawd":{"maxItems":5}}"#.utf8))
+        #expect(clamped.clipbawd.maxItems == ClipbawdSettings.maxItemsRange.lowerBound)
     }
 
     @Test func excludeAddsAnAppOnce() {
-        var settings = ClipboardaSettings()
+        var settings = ClipbawdSettings()
         let added = [settings.exclude(app: "com.example.bank"), settings.exclude(app: "com.example.bank"),
                      settings.exclude(app: "  ")]
         #expect(added == [true, false, false])
@@ -46,23 +61,23 @@ import Testing
         var config = Config()
         config.leader = Hotkey(string: "f13")
         config.launcha.hotkey = Hotkey(string: "cmd+space")
-        config.clipboarda.hotkey = Hotkey(string: "f13")
-        #expect(ConfigValidator.validate(config).map(\.kind) == [.clipboardaHotkeyConflict])
-        config.clipboarda.hotkey = Hotkey(string: "cmd+space")
-        #expect(ConfigValidator.validate(config).map(\.kind) == [.clipboardaHotkeyConflict])
-        config.clipboarda.hotkey = .modifierTap(.leftCommand)
-        #expect(ConfigValidator.validate(config).map(\.kind) == [.invalidClipboardaHotkey])
-        config.clipboarda.hotkey = Hotkey(string: "cmd+shift+v")
+        config.clipbawd.hotkey = Hotkey(string: "f13")
+        #expect(ConfigValidator.validate(config).map(\.kind) == [.clipbawdHotkeyConflict])
+        config.clipbawd.hotkey = Hotkey(string: "cmd+space")
+        #expect(ConfigValidator.validate(config).map(\.kind) == [.clipbawdHotkeyConflict])
+        config.clipbawd.hotkey = .modifierTap(.leftCommand)
+        #expect(ConfigValidator.validate(config).map(\.kind) == [.invalidClipbawdHotkey])
+        config.clipbawd.hotkey = Hotkey(string: "cmd+shift+v")
         #expect(ConfigValidator.validate(config).isEmpty)
-        #expect(AppShortcutRules.problem(for: Hotkey(string: "cmd+shift+v")!, in: config) == .clipboarda)
+        #expect(AppShortcutRules.problem(for: Hotkey(string: "cmd+shift+v")!, in: config) == .clipbawd)
 
         // Off: the key is free and never reported.
-        config.clipboarda.enabled = false
-        config.clipboarda.hotkey = Hotkey(string: "f13")
-        #expect(config.clipboarda.activeHotkey == nil)
+        config.clipbawd.enabled = false
+        config.clipbawd.hotkey = Hotkey(string: "f13")
+        #expect(config.clipbawd.activeHotkey == nil)
         #expect(ConfigValidator.validate(config).isEmpty)
         #expect(AppShortcutRules.problem(for: Hotkey(string: "f13")!, in: config) == .leader)
-        config.clipboarda.hotkey = Hotkey(string: "cmd+shift+v")
+        config.clipbawd.hotkey = Hotkey(string: "cmd+shift+v")
         #expect(AppShortcutRules.problem(for: Hotkey(string: "cmd+shift+v")!, in: config) == nil)
     }
 
@@ -244,8 +259,8 @@ import Testing
 
 @Suite struct OpenBindingTests {
     @Test func decodeEncodeAndCandidates() throws {
-        let config = try ConfigCodec.decode(Data(#"{"items":[{"key":"v","label":"Clips","open":"clipboarda"},{"key":"l","open":"launcha"}]}"#.utf8))
-        #expect(config.items == [.open("v", "Clips", .clipboarda), .open("l", "", .launcha)])
+        let config = try ConfigCodec.decode(Data(#"{"items":[{"key":"v","label":"Clips","open":"clipbawd"},{"key":"l","open":"launcha"}]}"#.utf8))
+        #expect(config.items == [.open("v", "Clips", .clipbawd), .open("l", "", .launcha)])
         #expect(try ConfigCodec.decode(ConfigCodec.encode(config)) == config)
         #expect(ConfigValidator.validate(config).map(\.kind) == [.missingLeader])
         #expect(LaunchaCandidate.from(config.items).isEmpty)

@@ -88,6 +88,15 @@ extension Array where Element == MicroAppLibrarySource {
 extension MicroApp {
     /// The steps of the micro-app and, in place of each `call`, the steps of its library, also nested.
     public var allSteps: [MicroAppStep] { steps.flattened }
+
+    /// Includes templates in nested library calls.
+    public var readsClipboardHistory: Bool {
+        allSteps.contains { step in
+            step.templates.contains { template in
+                template.variables.contains { if case .clipboard = $0 { return true }; return false }
+            }
+        }
+    }
 }
 
 extension Array where Element == MicroAppStep {

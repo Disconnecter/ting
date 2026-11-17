@@ -247,7 +247,9 @@ private struct ResultRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                if row.isMicro {
+                if case .clipbawd = row.kind {
+                    Image(systemName: "list.clipboard").font(.system(size: 22)).frame(width: 32, height: 32)
+                } else if row.isMicro {
                     MicroRowIcon(isWorking: row.isWorking)
                 } else if row.isCalculation {
                     CalculationRowIcon()
@@ -307,6 +309,7 @@ private struct ResultRow: View {
     private var help: String {
         if row.isMicro { return row.detail.isEmpty ? row.name : "\(row.name): \(row.detail)" }
         if row.isCalculation { return row.name }
+        if case .clipbawd = row.kind { return "Open Clipbawd clipboard history" }
         return row.isApp ? row.name : row.url.path
     }
 
@@ -317,6 +320,7 @@ private struct ResultRow: View {
         case .micro(_, _, let isWorking):
             isWorking ? "\(row.name), micro-app" : "\(row.name), micro-app, not working. \(row.detail)"
         case .calculation: "Result \(row.name)"
+        case .clipbawd: "Clipbawd, clipboard history"
         }
     }
 
@@ -326,6 +330,7 @@ private struct ResultRow: View {
         case .file: "Opens the file with its usual app"
         case .micro(_, _, let isWorking): isWorking ? "Starts the micro-app" : "Shows the error of the file"
         case .calculation: "Copies the result"
+        case .clipbawd: "Opens clipboard history"
         }
     }
 }

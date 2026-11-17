@@ -55,14 +55,14 @@ final class MicroAppKeyboard: MicroAppKeyboardSending {
         }
     }
 
-    /// Presses ⌘V in `target` to paste what is on the clipboard now (a clipboarda item).
+    /// Presses ⌘V in `target` to paste what is on the clipboard now (a clipbawd item).
     func pressPaste(in target: MicroAppTarget?) async throws {
         try await ready(target)
         post(.combo(keyCode: KeyCodes.ansi["v"]!, modifiers: .command))
     }
 
     /// The selected text of `target` by ⌘C, with the clipboard put back; `nil` when nothing was copied.
-    /// clipboarda does not record this copy.
+    /// clipbawd does not record this copy.
     func copySelection(from target: MicroAppTarget) async -> String? {
         guard (try? await ready(target)) != nil else { return nil }
         ClipboardQuiet.begin()

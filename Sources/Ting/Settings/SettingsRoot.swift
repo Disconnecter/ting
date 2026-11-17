@@ -31,7 +31,7 @@ struct SettingsRoot: View {
             TabView {
                 GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
                 BindingsSettings().tabItem { Label("Bindings", systemImage: "keyboard") }
-                ClipboardaSettingsView().tabItem { Label("clipboarda", systemImage: "list.clipboard") }
+                ClipbawdSettingsView().tabItem { Label("Clipbawd", systemImage: "list.clipboard") }
                 AdvancedSettings().tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
             }
         }
@@ -60,7 +60,7 @@ private struct GeneralSettings: View {
             .pickerStyle(.segmented)
             Section {
                 Toggle("Show panel title", isOn: model.binding(\.showPanelHeader))
-                Text("Show the Ting · selecta / launcha / clipboarda title row. The leader symbol and input stay visible.")
+                Text("Show the Ting · selecta / launcha / Clipbawd title row. The leader symbol and input stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: { MonoLabel("Panel", size: 9).foregroundStyle(Color.tingAmber) }
             Section {

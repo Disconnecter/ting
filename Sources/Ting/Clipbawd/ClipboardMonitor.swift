@@ -1,4 +1,4 @@
-// Watches the clipboard for clipboarda. macOS has no change notification, so the monitor reads
+// Watches the clipboard for clipbawd. macOS has no change notification, so the monitor reads
 // only `changeCount` twice a second and loads the data of a few known types after a change.
 import AppKit
 import Carbon
@@ -77,6 +77,7 @@ final class ClipboardMonitor {
     /// Change counts of Ting's own writes (copy or paste from the history).
     private var ignored: Set<Int> = []
     private var timer: Timer?
+    private var generation = 0
 
     init(pasteboard: NSPasteboard = .general,
          frontmost: @escaping @MainActor () -> FrontApp? = { FrontApp.current() },
@@ -104,6 +105,7 @@ final class ClipboardMonitor {
     }
 
     func stop() {
+        generation += 1
         timer?.invalidate()
         timer = nil
         ignored.removeAll()
@@ -130,9 +132,11 @@ final class ClipboardMonitor {
         if !capture.privateContext, !marked, let app, let id = app.bundleID,
            let check = ClipPrivateWindow.check(for: id) {
             let pid = app.pid
+            let token = generation
             Task { [weak self, privacy] in
                 capture.privateContext = await privacy.isPrivate(check, pid: pid, bundleID: id)
-                self?.onCapture?(capture)
+                guard let self, self.generation == token else { return }
+                self.onCapture?(capture)
             }
             return
         }

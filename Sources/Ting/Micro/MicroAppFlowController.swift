@@ -133,6 +133,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private let linkNotice: MicroAppLinkNoticeStore
     /// Follows a link of a result: opens it, or shows it in Finder.
     private let linkOpener: @MainActor (URL) -> Void
+    /// Read only after approval, once per run, never into persisted parameter values.
+    var clipboardSnapshot: (() -> [String?]?)?
     private let runner: MicroAppRunner
     /// The clipboard: stdin of `input: clipboard` and the `clipboard` target.
     private let pasteboard: NSPasteboard
@@ -310,6 +312,9 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         show(.working(app))
         let stdin = app.input == .clipboard ? (pasteboard.string(forType: .string) ?? "") : nil
         var runner = self.runner
+        if app.readsClipboardHistory {
+            runner.clipboardHistory = clipboardSnapshot?()
+        }
         let target = self.target
         let context = self.context
         runner.interact = { [weak self] request in

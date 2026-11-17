@@ -751,6 +751,7 @@ public enum MicroAppChecker {
                 ("${steps.", "read a step output as `\"$TING_STEP_ID\"`"),
                 ("${input", "the input of the step is its stdin"),
                 ("${keychain.", "put the secret into a variable with `env:` and read that variable"),
+                ("${clipboard[", "put the history item into a variable with `env:` and read that variable"),
                 ("${context.", "read a context value as `\"$TING_CONTEXT_SOURCE_FIELD\"`, such as `\"$TING_CONTEXT_APP_NAME\"`"),
             ]
             for (prefix, hint) in hints {
@@ -1195,7 +1196,7 @@ public enum MicroAppChecker {
                         }
                     case .context(let field):
                         if !useContext(field, shown: "${context.\(field)}", what: what, line: at, usage: &usage) { ok = false }
-                    case .input, .env, .keychain:
+                    case .input, .env, .keychain, .clipboard:
                         break
                     }
                 }

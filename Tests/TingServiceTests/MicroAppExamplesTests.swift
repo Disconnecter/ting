@@ -494,9 +494,9 @@ final class MicroAppExamplesTests: XCTestCase {
         let start = try XCTUnwrap(readme.range(of: "```yaml\n"))
         let end = try XCTUnwrap(readme.range(of: "```", range: start.upperBound..<readme.endIndex))
         let text = String(readme[start.upperBound..<end.lowerBound])
-        guard case .success(let app) = MicroAppChecker.check(text, fileName: "change-case.yaml") else {
-            return XCTFail("\(MicroAppChecker.check(text, fileName: "change-case.yaml"))")
+        guard case .success(let app) = MicroAppChecker.check(text, fileName: "clipboard-history.yaml") else {
+            return XCTFail("\(MicroAppChecker.check(text, fileName: "clipboard-history.yaml"))")
         }
-        XCTAssertEqual(app.params.map(\.name), ["mode"])
+        XCTAssertTrue(app.readsClipboardHistory)
     }
 }

@@ -18,7 +18,7 @@ final class AppModel {
     private(set) var issues: [ConfigIssue] = []
     private(set) var hotkeyStatus: HotkeyService.Status = .inactive
     private(set) var launchaHotkeyStatus: HotkeyService.Status = .inactive
-    private(set) var clipboardaHotkeyStatus: HotkeyService.Status = .inactive
+    private(set) var clipbawdHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var loginItemError: String?
     /// Every file of the micro-apps folder, good and broken, by file name.
     private(set) var microApps: [MicroAppEntry] = []
@@ -44,8 +44,8 @@ final class AppModel {
     @ObservationIgnored private let launchaModel: LaunchaModel
     @ObservationIgnored let launcha: LaunchaController
     /// The clipboard history of this session.
-    @ObservationIgnored let clipboarda: ClipboardaHistory
-    @ObservationIgnored let clipboardaPanel: ClipboardaController
+    @ObservationIgnored let clipbawd: ClipbawdHistory
+    @ObservationIgnored let clipbawdPanel: ClipbawdController
     /// True while the gear menu tracks: the launchers stay open but take no keys or hotkeys.
     @ObservationIgnored private(set) var isMenuTracking = false
     /// The one open micro-app flow: approval, working state and result.
@@ -54,19 +54,19 @@ final class AppModel {
     @ObservationIgnored let accessibility = AccessibilityWindowController()
     /// Held-key guard for the launcha hotkey: a repeat while held never toggles twice.
     @ObservationIgnored private var launchaKey = LeaderDoubleTap(isEnabled: false)
-    @ObservationIgnored private var clipboardaKey = LeaderDoubleTap(isEnabled: false)
+    @ObservationIgnored private var clipbawdKey = LeaderDoubleTap(isEnabled: false)
     @ObservationIgnored private lazy var recordingGate = HotkeyRecordingGate { [weak self] in self?.setRecordingHotkey($0) }
     /// Loaded "ting" sounds by name; nil marks a name that cannot be loaded.
     @ObservationIgnored private var sounds: [String: NSSound?] = [:]
 
     /// `presentsWindows` false: the launchers keep their state but show no window (tests).
     init(presentsWindows: Bool = true, store: ConfigStore? = nil, hotkeys: HotkeyService? = nil,
-         clipboarda: ClipboardaHistory? = nil) {
+         clipbawd: ClipbawdHistory? = nil) {
         self.store = store ?? ConfigStore()
         // Tests (no windows) never watch the person's clipboard.
-        self.clipboarda = clipboarda ?? ClipboardaHistory(pasteboard: presentsWindows ? .general
+        self.clipbawd = clipbawd ?? ClipbawdHistory(pasteboard: presentsWindows ? .general
             : NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString)))
-        clipboardaPanel = ClipboardaController(history: self.clipboarda, presentsWindow: presentsWindows)
+        clipbawdPanel = ClipbawdController(history: self.clipbawd, presentsWindow: presentsWindows)
         self.hotkeys = hotkeys ?? HotkeyService()
         leader = LeaderController(presentsWindow: presentsWindows)
         let runner = ActionRunner()
@@ -96,7 +96,7 @@ final class AppModel {
 
     /// The menu-bar item shows its problem mark.
     var needsAttention: Bool {
-        configError != nil || hotkeyProblem != nil || launchaHotkeyProblem != nil || clipboardaHotkeyProblem != nil
+        configError != nil || hotkeyProblem != nil || launchaHotkeyProblem != nil || clipbawdHotkeyProblem != nil
             || !microAppIssues.isEmpty
             || !launcha.chrome.appShortcutProblems.isEmpty || issues.contains { $0.kind == .appHotkey }
     }
@@ -114,13 +114,13 @@ final class AppModel {
         }
     }
 
-    /// Why the clipboarda hotkey does not work: invalid, the same as another Ting key, or taken.
-    var clipboardaHotkeyProblem: String? {
-        guard config.clipboarda.enabled else { return nil }
-        if let issue = issues.first(where: { $0.kind == .invalidClipboardaHotkey || $0.kind == .clipboardaHotkeyConflict }) {
+    /// Why the clipbawd hotkey does not work: invalid, the same as another Ting key, or taken.
+    var clipbawdHotkeyProblem: String? {
+        guard config.clipbawd.enabled else { return nil }
+        if let issue = issues.first(where: { $0.kind == .invalidClipbawdHotkey || $0.kind == .clipbawdHotkeyConflict }) {
             return issue.message
         }
-        switch clipboardaHotkeyStatus {
+        switch clipbawdHotkeyStatus {
         case .failed(let reason): return reason
         case .inactive, .active: return nil
         }
@@ -133,7 +133,7 @@ final class AppModel {
             switch slot {
             case .leader: self?.hotkeyStatus = status
             case .launcha: self?.launchaHotkeyStatus = status
-            case .clipboarda: self?.clipboardaHotkeyStatus = status
+            case .clipbawd: self?.clipbawdHotkeyStatus = status
             case .application: self?.refreshAppShortcutProblems()
             }
         }
@@ -150,16 +150,18 @@ final class AppModel {
             }
         }
         runner.onError = { [weak self] message in self?.toast.show(message) }
-        clipboardaPanel.onToast = { [weak self] message in self?.toast.show(message) }
-        clipboardaPanel.onPasteError = { [weak self] error in
+        clipbawdPanel.onToast = { [weak self] message in self?.toast.show(message) }
+        clipbawdPanel.onPasteError = { [weak self] error in
             if error.needsAccessibility { self?.accessibility.show() }
             self?.toast.show("Copied, not pasted: \(error.localizedDescription)")
         }
-        clipboardaPanel.onExclude = { [weak self] source in
+        clipbawdPanel.onExclude = { [weak self] source in
             guard let id = source.bundleID else { return }
-            self?.update { _ = $0.clipboarda.exclude(app: id) }
-            self?.toast.show("clipboarda will never keep copies from \(source.name).")
+            self?.update { _ = $0.clipbawd.exclude(app: id) }
+            self?.toast.show("clipbawd will never keep copies from \(source.name).")
         }
+        launchaModel.onOpenClipbawd = { [weak self] in self?.openClipbawd() }
+        microFlow.clipboardSnapshot = { [weak self] in self?.clipbawd.microAppSnapshot() }
         microFlow.onToast = { [weak self] message in self?.toast.show(message) }
         microFlow.onAccessibilityNeeded = { [weak self] in self?.accessibility.show() }
         accessibility.onGranted = { [weak self] in self?.toast.show("Accessibility is on. Start the micro-app again.") }
@@ -264,9 +266,9 @@ final class AppModel {
         update { $0.launcha.hotkey = hotkey }
     }
 
-    /// nil removes the clipboarda hotkey.
-    func setClipboardaHotkey(_ hotkey: Hotkey?) {
-        update { $0.clipboarda.hotkey = hotkey }
+    /// nil removes the clipbawd hotkey.
+    func setClipbawdHotkey(_ hotkey: Hotkey?) {
+        update { $0.clipbawd.hotkey = hotkey }
     }
 
     /// Saves exactly the retained app selected in launcha, never a different bundle-ID match.
@@ -317,18 +319,19 @@ final class AppModel {
     func openLauncha() {
         guard !isPaused, !isRecordingHotkey else { return }
         leader.close()
+        clipbawdPanel.close()
         launcha.open()
     }
 
-    func openClipboarda() {
+    func openClipbawd() {
         guard !isPaused, !isRecordingHotkey else { return }
-        guard config.clipboarda.enabled else {
-            toast.show("clipboarda is off. Turn it on in Settings › clipboarda.")
+        guard config.clipbawd.enabled else {
+            toast.show("Clipbawd is off. Turn it on in Settings › Clipbawd.")
             return
         }
         leader.close()
         launcha.close()
-        clipboardaPanel.open()
+        clipbawdPanel.open()
     }
 
     /// Call only after the user read what this allows and which macOS prompts may follow.
@@ -394,8 +397,9 @@ final class AppModel {
         runner.prepare(next.items)
         leader.configure(next)
         launcha.configure(next)
-        clipboarda.configure(next.clipboarda)
-        clipboardaPanel.configure(next)
+        launchaModel.clipbawdEnabled = next.clipbawd.enabled
+        clipbawd.configure(next.clipbawd)
+        clipbawdPanel.configure(next)
         microFlow.configure(next)
         // Binding labels name the micro-apps in launcha.
         launchaModel.setMicroApps(microCatalog.launchaCandidates(bindings: next.items), folder: microStore.folderURL)
@@ -412,35 +416,35 @@ final class AppModel {
         activeAppShortcuts = wanted
         if isPaused || isRecordingHotkey {
             leader.close()
-            clipboardaPanel.close()
+            clipbawdPanel.close()
             if isPaused || launcha.chrome.shortcutEditor == nil { launcha.close() }
             hotkeys.activate(nil, for: .launcha)
-            hotkeys.activate(nil, for: .clipboarda)
+            hotkeys.activate(nil, for: .clipbawd)
             hotkeys.activate(nil, for: .leader)
         } else {
             // The leader wins a conflict, then launcha: free the other slots first.
             let separate = config.launcha.hotkey.flatMap { $0.isValid && $0 != config.leader ? $0 : nil }
-            let clipboard = config.clipboarda.activeHotkey.flatMap {
+            let clipboard = config.clipbawd.activeHotkey.flatMap {
                 $0.isValid && $0 != config.leader && $0 != config.launcha.hotkey ? $0 : nil
             }
             if hotkeys.hotkey(.launcha) != separate { hotkeys.activate(nil, for: .launcha) }
-            if hotkeys.hotkey(.clipboarda) != clipboard { hotkeys.activate(nil, for: .clipboarda) }
+            if hotkeys.hotkey(.clipbawd) != clipboard { hotkeys.activate(nil, for: .clipbawd) }
             hotkeys.activate(config.leader, for: .leader)
             hotkeys.activate(separate, for: .launcha)
-            hotkeys.activate(clipboard, for: .clipboarda)
+            hotkeys.activate(clipboard, for: .clipbawd)
             hotkeys.activateApplications(wanted)
         }
         refreshAppShortcutProblems()
         hotkeyStatus = hotkeys.status(.leader)
         launchaHotkeyStatus = hotkeys.status(.launcha)
-        clipboardaHotkeyStatus = hotkeys.status(.clipboarda)
+        clipbawdHotkeyStatus = hotkeys.status(.clipbawd)
     }
 
     func hotkeyReleased(_ slot: HotkeyService.Slot) {
         switch slot {
         case .leader: leader.leaderReleased()
         case .launcha: launchaKey.release()
-        case .clipboarda: clipboardaKey.release()
+        case .clipbawd: clipbawdKey.release()
         case .application: break
         }
     }
@@ -451,14 +455,16 @@ final class AppModel {
         case .leader:
             // The leader switches from launcha back to selecta. A repeat of a held leader
             // is ignored and leaves launcha open.
-            leader.leaderPressed(at: time) { [launcha] in
+            leader.leaderPressed(at: time) { [launcha, clipbawdPanel] in
                 if launcha.isOpen { launcha.close() }
+                clipbawdPanel.close()
             }
         case .application(let index):
             guard !isPaused, !isRecordingHotkey, activeAppShortcuts.indices.contains(index) else { return }
             let shortcut = activeAppShortcuts[index]
             leader.close()
             launcha.close()
+            clipbawdPanel.close()
             playSound()
             Task { [runner, launchaModel] in
                 let outcome = await runner.openApp(at: URL(fileURLWithPath: shortcut.path), name: shortcut.name)
@@ -467,13 +473,14 @@ final class AppModel {
         case .launcha:
             guard launchaKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
             if leader.isOpen { leader.close() }
+            clipbawdPanel.close()
             launcha.toggle()
-        case .clipboarda:
-            guard !isPaused, !isRecordingHotkey, config.clipboarda.enabled,
-                  clipboardaKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
+        case .clipbawd:
+            guard !isPaused, !isRecordingHotkey, config.clipbawd.enabled,
+                  clipbawdKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
             if leader.isOpen { leader.close() }
             if launcha.isOpen { launcha.close() }
-            clipboardaPanel.toggle()
+            clipbawdPanel.toggle()
         }
     }
 
@@ -481,7 +488,7 @@ final class AppModel {
         isMenuTracking = true
         leader.keysSuspended = true
         launcha.keysSuspended = true
-        clipboardaPanel.keysSuspended = true
+        clipbawdPanel.keysSuspended = true
     }
 
     /// The menu ended. A launcher takes keys again unless a chosen item opened another window.
@@ -489,7 +496,7 @@ final class AppModel {
         isMenuTracking = false
         leader.resumeKeys()
         launcha.resumeKeys()
-        clipboardaPanel.resumeKeys()
+        clipbawdPanel.resumeKeys()
     }
 
     /// The "ting" for an opened app, link or file: `config.sound` at `config.soundVolume`.
@@ -525,7 +532,7 @@ final class AppModel {
             DispatchQueue.main.async { [weak self] in
                 switch panel {
                 case .launcha: self?.openLauncha()
-                case .clipboarda: self?.openClipboarda()
+                case .clipbawd: self?.openClipbawd()
                 }
             }
             return

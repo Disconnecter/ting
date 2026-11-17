@@ -80,7 +80,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(note(problem, symbol: "exclamationmark.triangle"))
         }
         let launchaIssues: Set<ConfigIssue.Kind> = [.missingLeader, .invalidLaunchaHotkey, .launchaHotkeyConflict,
-                                                    .invalidClipboardaHotkey, .clipboardaHotkeyConflict]
+                                                    .invalidClipbawdHotkey, .clipbawdHotkeyConflict]
         if let error = model.configError ?? model.issues.first(where: { !launchaIssues.contains($0.kind) })?.message {
             menu.addItem(note(error, symbol: "exclamationmark.triangle"))
         }
@@ -103,14 +103,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(note(problem, symbol: "exclamationmark.triangle"))
         }
         // Off in Settings: no menu item at all.
-        if model.config.clipboarda.enabled {
-            let clipboarda = item("Open clipboarda", #selector(openClipboarda))
-            if let hotkey = model.config.clipboarda.hotkey, model.clipboardaHotkeyProblem == nil {
-                clipboarda.title = "Open clipboarda (\(hotkey.display))"
+        if model.config.clipbawd.enabled {
+            let clipbawd = item("Open Clipbawd", #selector(openClipbawd))
+            if let hotkey = model.config.clipbawd.hotkey, model.clipbawdHotkeyProblem == nil {
+                clipbawd.title = "Open Clipbawd (\(hotkey.display))"
             }
-            if model.isPaused { clipboarda.action = nil }
-            menu.addItem(clipboarda)
-            if let problem = model.clipboardaHotkeyProblem {
+            if model.isPaused { clipbawd.action = nil }
+            menu.addItem(clipbawd)
+            if let problem = model.clipbawdHotkeyProblem {
                 menu.addItem(note(problem, symbol: "exclamationmark.triangle"))
             }
         }
@@ -156,8 +156,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Let the menu finish closing first, so the panel keeps keyboard focus.
         DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openLauncha() } }
     }
-    @objc private func openClipboarda() {
-        DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openClipboarda() } }
+    @objc private func openClipbawd() {
+        DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openClipbawd() } }
     }
     @objc private func togglePause() { model.isPaused.toggle() }
     @objc private func showSettings() { openSettings() }

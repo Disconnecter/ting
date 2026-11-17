@@ -1,4 +1,4 @@
-// Global hotkeys: the leader, optional launcha and clipboarda keys and direct application shortcuts.
+// Global hotkeys: the leader, optional launcha and clipbawd keys and direct application shortcuts.
 // Each is any non-modifier key, alone or with modifiers. Registered with Carbon `RegisterEventHotKey`, which needs no
 // Accessibility or Input Monitoring permission. Carbon reports both press and release.
 import AppKit
@@ -14,17 +14,17 @@ final class HotkeyService {
     enum Slot: Hashable, Sendable {
         case leader
         case launcha
-        case clipboarda
+        case clipbawd
         case application(Int)
 
         /// Far above any application index.
-        static let clipboardaID: UInt32 = 0x7FFF_0000
+        static let clipbawdID: UInt32 = 0x7FFF_0000
 
         var rawValue: UInt32 {
             switch self {
             case .leader: 1
             case .launcha: 2
-            case .clipboarda: Self.clipboardaID
+            case .clipbawd: Self.clipbawdID
             case .application(let index): UInt32(index) + 3
             }
         }
@@ -34,7 +34,7 @@ final class HotkeyService {
             case 0: return nil
             case 1: self = .leader
             case 2: self = .launcha
-            case Self.clipboardaID: self = .clipboarda
+            case Self.clipbawdID: self = .clipbawd
             default: self = .application(Int(rawValue - 3))
             }
         }
@@ -43,7 +43,7 @@ final class HotkeyService {
             switch self {
             case .leader: "be a leader"
             case .launcha: "open launcha"
-            case .clipboarda: "open clipboarda"
+            case .clipbawd: "open clipbawd"
             case .application: "open an application"
             }
         }
@@ -104,7 +104,7 @@ final class HotkeyService {
             switch other {
             case .leader: role = "the leader"
             case .launcha: role = "launcha"
-            case .clipboarda: role = "clipboarda"
+            case .clipbawd: role = "clipbawd"
             case .application: role = "another application"
             }
             setStatus(.failed("\(hotkey.display) is already used for \(role)."), for: slot)

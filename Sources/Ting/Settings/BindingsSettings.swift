@@ -55,7 +55,7 @@ struct BindingsSettings: View {
                 Menu {
                     Button("Application…", action: addApplication)
                     Button("URL", action: addURL)
-                    Button("clipboarda") { add(.open("", "Clipboard history", .clipboarda)) }
+                    Button("Clipbawd") { add(.open("", "Clipboard history", .clipbawd)) }
                     Button("launcha") { add(.open("", "Search", .launcha)) }
                     Menu("Micro-app") {
                         let choices = model.microCatalog.bindingChoices()

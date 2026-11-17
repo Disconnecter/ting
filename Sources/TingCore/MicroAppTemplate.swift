@@ -11,6 +11,8 @@ public enum MicroAppVariable: Hashable, Sendable, CustomStringConvertible {
     case context(MicroAppContextField)
     /// A generic password of the login keychain, found by its service name.
     case keychain(String)
+    /// Negative history index: -1 is newest, -2 is the preceding item.
+    case clipboard(Int)
     /// A variable of the user's login-shell environment.
     case env(String)
 
@@ -21,6 +23,7 @@ public enum MicroAppVariable: Hashable, Sendable, CustomStringConvertible {
         case .step(let id): "steps.\(id)"
         case .context(let field): "context.\(field)"
         case .keychain(let service): "keychain.\(service)"
+        case .clipboard(let index): "clipboard[\(index)]"
         case .env(let name): name
         }
     }
@@ -161,6 +164,11 @@ public struct MicroAppTemplate: Equatable, Sendable, CustomStringConvertible {
                         "`${\(name)}`: `\(source.rawValue)` has the fields \(source.fields.joined(separator: ", "))"))
                 }
                 variable = .context(field)
+            } else if name.hasPrefix("clipboard[") {
+                guard name.hasSuffix("]"), let index = Int(name.dropFirst(10).dropLast()), index < 0 else {
+                    return .failure(ParseError(lineOffset: offset(open), message: "Use `${clipboard[-1]}` for the newest history item, or another negative index."))
+                }
+                variable = .clipboard(index)
             } else if name.hasPrefix("keychain.") {
                 let service = name.dropFirst("keychain.".count)
                 guard isKeychainService(service) else {

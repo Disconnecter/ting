@@ -1,11 +1,11 @@
-// The clipboarda card in the Ting style: graphite card, amber top rule, a search input, the
+// The clipbawd card in the Ting style: graphite card, amber top rule, a search input, the
 // history on the left and the preview of the selected item on the right.
 import AppKit
 import SwiftUI
 import TingCore
 
-struct ClipboardaView: View {
-    let state: ClipboardaState
+struct ClipbawdView: View {
+    let state: ClipbawdState
     let onChoose: (_ id: Int?, _ paste: Bool) -> Void
     let onDismiss: () -> Void
     let onExclude: (ClipSource) -> Void
@@ -15,14 +15,14 @@ struct ClipboardaView: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
-            ClipboardaCard(state: state, onChoose: onChoose, onDismiss: onDismiss, onExclude: onExclude)
+            ClipbawdCard(state: state, onChoose: onChoose, onDismiss: onDismiss, onExclude: onExclude)
                 .padding(.top, 8)
         }
     }
 }
 
-private struct ClipboardaCard: View {
-    @Bindable var state: ClipboardaState
+private struct ClipbawdCard: View {
+    @Bindable var state: ClipbawdState
     let onChoose: (_ id: Int?, _ paste: Bool) -> Void
     let onDismiss: () -> Void
     let onExclude: (ClipSource) -> Void
@@ -32,7 +32,7 @@ private struct ClipboardaCard: View {
             if state.showHeader {
                 HStack(spacing: 8) {
                     TingMark(size: 14)
-                    MonoLabel("Ting  ·  clipboarda", size: 10, tracking: 2).foregroundStyle(Color.tingAmber)
+                    MonoLabel("Ting  ·  Clipbawd", size: 10, tracking: 2).foregroundStyle(Color.tingAmber)
                     Spacer()
                     if !state.shortcut.isEmpty {
                         MonoLabel(state.shortcut, size: 10, weight: .regular, tracking: 1).foregroundStyle(Color.tingMuted)
@@ -60,14 +60,14 @@ private struct ClipboardaCard: View {
         .padding(.horizontal, 20)
         .padding(.top, state.showHeader ? 20 : 18)
         .padding(.bottom, 16)
-        .frame(width: ClipboardaPanel.width - 40)
+        .frame(width: ClipbawdPanel.width - 40)
         .background(Color.soundPanel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(alignment: .top) { Rectangle().fill(Color.tingAmber).frame(height: 3) }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
         .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("clipboarda")
+        .accessibilityLabel("Clipbawd")
     }
 
     private var searchBox: some View {
@@ -77,7 +77,7 @@ private struct ClipboardaCard: View {
                            onSubmit: { onChoose(nil, true) },
                            onCancel: onDismiss,
                            accessibilityLabel: "Search the clipboard history",
-                           accessibilityHelp: "Up and down arrows choose an item. Return pastes it. Command-Return copies it. Command-Delete removes it. Escape closes clipboarda.")
+                           accessibilityHelp: "Up and down arrows choose an item. Return pastes it. Command-Return copies it. Shift-Command-Delete removes it. Escape closes Clipbawd.")
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
             .frame(height: 40)
@@ -111,7 +111,7 @@ private struct ClipboardaCard: View {
     }
 
     private var emptyMessage: String {
-        if !state.isRecording { return "Recording is off. Turn it on in Settings › clipboarda." }
+        if !state.isRecording { return "Recording is off. Turn it on in Settings › Clipbawd." }
         if !state.query.isEmpty { return "Nothing copied in this session matches." }
         return "Nothing copied yet in this session."
     }
@@ -136,8 +136,8 @@ private struct ClipList: View {
                     ForEach(results) { entry in
                         ClipRow(entry: entry, selected: entry.id == selectedID, images: images) {
                             onSelect(entry.id)
-                            onChoose(entry.id)
                         }
+                        .simultaneousGesture(TapGesture(count: 2).onEnded { onChoose(entry.id) })
                         .id(entry.id)
                     }
                 }
@@ -188,7 +188,7 @@ private struct ClipRow: View {
         .accessibilityLabel("\(ClipFormat.kindName(entry.content)): \(entry.title)")
         .accessibilityValue(ClipFormat.subtitle(entry))
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityHint("Pastes it into the app in front")
+        .accessibilityHint("Selects for preview. Return or double-click pastes into the app in front.")
     }
 }
 
@@ -260,7 +260,7 @@ private struct ClipPreview: View {
                     Label("Never Keep from \(source.name)", systemImage: "hand.raised")
                 }
                 .buttonStyle(QuietButtonStyle())
-                .help("Removes the items of \(source.name) and never records it again. Undo in Settings › clipboarda.")
+                .help("Removes the items of \(source.name) and never records it again. Undo in Settings › Clipbawd.")
             }
         }
     }

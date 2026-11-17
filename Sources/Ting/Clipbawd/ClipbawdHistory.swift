@@ -1,4 +1,4 @@
-// The clipboarda history of this session: the monitor feeds it, the panel reads it, copy and
+// The clipbawd history of this session: the monitor feeds it, the panel reads it, copy and
 // paste put an item back. Lives in memory only and is gone when Ting quits.
 import AppKit
 import Observation
@@ -6,9 +6,9 @@ import TingCore
 
 @MainActor
 @Observable
-final class ClipboardaHistory {
+final class ClipbawdHistory {
     private(set) var history = ClipHistory()
-    @ObservationIgnored private(set) var settings = ClipboardaSettings()
+    @ObservationIgnored private(set) var settings = ClipbawdSettings()
     @ObservationIgnored let monitor: ClipboardMonitor
     @ObservationIgnored private let pasteboard: NSPasteboard
     @ObservationIgnored private let now: () -> Date
@@ -27,8 +27,21 @@ final class ClipboardaHistory {
 
     var entries: [ClipEntry] { history.entries }
 
+    /// Immutable text snapshot for an approved micro-app; image positions are preserved.
+    func microAppSnapshot() -> [String?]? {
+        guard settings.enabled else { return nil }
+        monitor.poll()
+        return entries.map { entry in
+            switch entry.content {
+            case .text(let text, _), .link(let text), .color(let text): return text
+            case .files(let files): return files.map(\.path).joined(separator: "\n")
+            case .image: return nil
+            }
+        }
+    }
+
     /// Applies the config. Turning recording off forgets the history.
-    func configure(_ next: ClipboardaSettings) {
+    func configure(_ next: ClipbawdSettings) {
         let wasFetching = settings.fetchLinks
         settings = next
         history.maxItems = next.maxItems

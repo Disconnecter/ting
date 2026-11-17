@@ -110,16 +110,16 @@ final class LinkPreviewFetcherTests: XCTestCase {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString))
         defer { pasteboard.releaseGlobally() }
         let monitor = ClipboardMonitor(pasteboard: pasteboard, frontmost: { nil }, secureInput: { false })
-        let history = ClipboardaHistory(monitor: monitor, pasteboard: pasteboard, fetcher: fetcher())
+        let history = ClipbawdHistory(monitor: monitor, pasteboard: pasteboard, fetcher: fetcher())
         defer { monitor.stop() }
         let link = ClipCapture(types: [ClipboardTypes.plainText], text: "https://example.org/",
                                representations: [ClipRepresentation(type: ClipboardTypes.plainText, data: Data("https://example.org/".utf8))])
-        history.configure(ClipboardaSettings())
+        history.configure(ClipbawdSettings())
         history.record(link)
         XCTAssertNil(history.entries[0].link)
         XCTAssertTrue(StubProtocol.requested.isEmpty)
 
-        var settings = ClipboardaSettings()
+        var settings = ClipbawdSettings()
         settings.fetchLinks = true
         history.configure(settings)
         for _ in 0..<200 where history.entries[0].link?.state != .done { try await Task.sleep(nanoseconds: 10_000_000) }

@@ -1,10 +1,10 @@
-// The clipboarda window: a non-activating panel like launcha, so the app in front keeps its
+// The clipbawd window: a non-activating panel like launcha, so the app in front keeps its
 // place and ↩ pastes into it. Search on top, the history on the left, the preview on the right.
 import AppKit
 import SwiftUI
 import TingCore
 
-final class ClipboardaPanel: NSPanel {
+final class ClipbawdPanel: NSPanel {
     static let width: CGFloat = 800
 
     var onMove: ((Int) -> Void)?
@@ -84,16 +84,16 @@ final class ClipboardaPanel: NSPanel {
     }
 }
 
-/// What the clipboarda window shows: the search, the selection and the presentation settings.
+/// What the clipbawd window shows: the search, the selection and the presentation settings.
 @MainActor
 @Observable
-final class ClipboardaState {
-    let history: ClipboardaHistory
+final class ClipbawdState {
+    let history: ClipbawdHistory
     var query = ""
     var selectedID: Int?
     var showHeader = true
     var isRecording = true
-    /// The real keys that open clipboarda, for the footer.
+    /// The real keys that open clipbawd, for the footer.
     var shortcut = ""
     var listHeight: CGFloat = 380
     /// Bumped on every open to move focus into the search field.
@@ -101,7 +101,7 @@ final class ClipboardaState {
     var isOpen = false
     @ObservationIgnored let images = ClipImageCache()
 
-    init(history: ClipboardaHistory) { self.history = history }
+    init(history: ClipbawdHistory) { self.history = history }
 
     /// The matching items, newest first.
     var results: [ClipEntry] { history.history.search(query) }
@@ -131,11 +131,11 @@ final class ClipboardaState {
     }
 }
 
-/// Shows and hides the clipboarda panel, and pastes or copies the chosen item.
+/// Shows and hides the clipbawd panel, and pastes or copies the chosen item.
 @MainActor
-final class ClipboardaController: NSObject, NSWindowDelegate {
-    let state: ClipboardaState
-    private var panel: ClipboardaPanel?
+final class ClipbawdController: NSObject, NSWindowDelegate {
+    let state: ClipbawdState
+    private var panel: ClipbawdPanel?
     private var observers: [NSObjectProtocol] = []
     private let presentsWindow: Bool
     private let keyboard: MicroAppKeyboard
@@ -152,8 +152,8 @@ final class ClipboardaController: NSObject, NSWindowDelegate {
 
     var isOpen: Bool { state.isOpen }
 
-    init(history: ClipboardaHistory, presentsWindow: Bool = true, keyboard: MicroAppKeyboard? = nil) {
-        state = ClipboardaState(history: history)
+    init(history: ClipbawdHistory, presentsWindow: Bool = true, keyboard: MicroAppKeyboard? = nil) {
+        state = ClipbawdState(history: history)
         self.presentsWindow = presentsWindow
         self.keyboard = keyboard ?? MicroAppKeyboard()
         super.init()
@@ -169,9 +169,9 @@ final class ClipboardaController: NSObject, NSWindowDelegate {
 
     func configure(_ config: Config) {
         state.showHeader = config.showPanelHeader
-        state.isRecording = config.clipboarda.enabled
-        state.shortcut = config.clipboarda.activeHotkey.flatMap { $0.isValid ? $0.display : nil } ?? ""
-        if !config.clipboarda.enabled { close() }
+        state.isRecording = config.clipbawd.enabled
+        state.shortcut = config.clipbawd.activeHotkey.flatMap { $0.isValid ? $0.display : nil } ?? ""
+        if !config.clipbawd.enabled { close() }
     }
 
     func toggle() {
@@ -191,7 +191,7 @@ final class ClipboardaController: NSObject, NSWindowDelegate {
         if let visible = screen?.visibleFrame {
             let top = visible.maxY - max(40, visible.height * 0.16)
             let height = max(320, min(640, top - visible.minY - 20))
-            let width = min(ClipboardaPanel.width, visible.width - 40)
+            let width = min(ClipbawdPanel.width, visible.width - 40)
             panel.setFrame(NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: false)
             // Header, input and footer take about 190 points.
             state.listHeight = max(200, min(420, height - 200))
@@ -233,13 +233,13 @@ final class ClipboardaController: NSObject, NSWindowDelegate {
         state.focusToken += 1
     }
 
-    private func makePanel() -> ClipboardaPanel {
-        let panel = ClipboardaPanel()
+    private func makePanel() -> ClipbawdPanel {
+        let panel = ClipbawdPanel()
         panel.delegate = self
         panel.onMove = { [weak self] delta in self?.state.move(by: delta) }
         panel.onCopy = { [weak self] in self?.choose(paste: false) }
         panel.onDelete = { [weak self] in self?.removeSelected() }
-        let view = ClipboardaView(state: state,
+        let view = ClipbawdView(state: state,
                                   onChoose: { [weak self] id, paste in self?.choose(id: id, paste: paste) },
                                   onDismiss: { [weak self] in self?.close() },
                                   onExclude: { [weak self] source in self?.exclude(source) })

@@ -7,13 +7,13 @@ import TingCore
 @Observable
 final class HotkeyRecording: HotkeyRecordingOwner {
     enum Target {
-        case leader, launcha, clipboarda
+        case leader, launcha, clipbawd
 
         var role: String {
             switch self {
             case .leader: "be a leader"
             case .launcha: "open launcha"
-            case .clipboarda: "open clipboarda"
+            case .clipbawd: "open Clipbawd"
             }
         }
     }
@@ -77,8 +77,8 @@ final class HotkeyRecording: HotkeyRecordingOwner {
                 warning = "\(hotkey.display) is the leader. Press another key."
             } else if target != .launcha, hotkey == config?.launcha.hotkey {
                 warning = "\(hotkey.display) already opens launcha. Press another key."
-            } else if target != .clipboarda, hotkey == config?.clipboarda.activeHotkey {
-                warning = "\(hotkey.display) already opens clipboarda. Press another key."
+            } else if target != .clipbawd, hotkey == config?.clipbawd.activeHotkey {
+                warning = "\(hotkey.display) already opens Clipbawd. Press another key."
             } else {
                 finish(hotkey)
             }
@@ -94,7 +94,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
         switch target {
         case .leader: model?.setLeader(hotkey)
         case .launcha: model?.setLaunchaHotkey(hotkey)
-        case .clipboarda: model?.setClipboardaHotkey(hotkey)
+        case .clipbawd: model?.setClipbawdHotkey(hotkey)
         }
     }
 }
@@ -165,22 +165,22 @@ struct LaunchaHotkeyField: View {
     var body: some View { WindowHotkeyField(target: .launcha) }
 }
 
-/// Records the clipboarda hotkey. It starts unset; Clear removes it.
-struct ClipboardaHotkeyField: View {
-    var body: some View { WindowHotkeyField(target: .clipboarda) }
+/// Records the clipbawd hotkey. It starts unset; Clear removes it.
+struct ClipbawdHotkeyField: View {
+    var body: some View { WindowHotkeyField(target: .clipbawd) }
 }
 
-/// The hotkey of a Ting window (launcha or clipboarda).
+/// The hotkey of a Ting window (launcha or clipbawd).
 private struct WindowHotkeyField: View {
     let target: HotkeyRecording.Target
     @Environment(AppModel.self) private var model
     @State private var recording = HotkeyRecording()
 
-    private var name: String { target == .clipboarda ? "clipboarda" : "launcha" }
-    private var hotkey: Hotkey? { target == .clipboarda ? model.config.clipboarda.hotkey : model.config.launcha.hotkey }
-    private var problem: String? { target == .clipboarda ? model.clipboardaHotkeyProblem : model.launchaHotkeyProblem }
+    private var name: String { target == .clipbawd ? "Clipbawd" : "launcha" }
+    private var hotkey: Hotkey? { target == .clipbawd ? model.config.clipbawd.hotkey : model.config.launcha.hotkey }
+    private var problem: String? { target == .clipbawd ? model.clipbawdHotkeyProblem : model.launchaHotkeyProblem }
     private func set(_ hotkey: Hotkey?) {
-        if target == .clipboarda { model.setClipboardaHotkey(hotkey) } else { model.setLaunchaHotkey(hotkey) }
+        if target == .clipbawd { model.setClipbawdHotkey(hotkey) } else { model.setLaunchaHotkey(hotkey) }
     }
 
     var body: some View {

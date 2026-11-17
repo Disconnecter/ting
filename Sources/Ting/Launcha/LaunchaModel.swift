@@ -12,6 +12,7 @@ struct LaunchaRow: Identifiable, Equatable {
         /// An indexed app. `candidateID` is the launch-history identity.
         case app(candidateID: String)
         case file
+        case clipbawd
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
         case micro(candidateID: String, start: LaunchaMicroStart, isWorking: Bool)
         /// The value of the query as a calculation or a conversion. Return copies it; the row
@@ -99,6 +100,10 @@ final class LaunchaModel {
     @ObservationIgnored var onStartMicro: ((LaunchaMicroStart) -> Void)?
     /// Copies the value of a calculation, after the panel closed.
     @ObservationIgnored var onCopyValue: ((String) -> Void)?
+    @ObservationIgnored var onOpenClipbawd: (() -> Void)?
+    var clipbawdEnabled = false {
+        didSet { if clipbawdEnabled != oldValue, isOpen { recompute(keepSelection: true) } }
+    }
     /// A query of digits and an operator shows its value first (`launcha.calculator`).
     var calculator = true {
         didSet { if calculator != oldValue, isOpen { recompute(keepSelection: true) } }
@@ -223,6 +228,10 @@ final class LaunchaModel {
             onCopyValue?(value)
             return nil
         }
+        if case .clipbawd = row.kind {
+            if !reveal { onOpenClipbawd?() }
+            return nil
+        }
         if reveal { return opener.reveal(row.url) }
         if case .micro(let candidateID, let start, let isWorking) = row.kind {
             // The same flow as a binding: approval, parameters, result. A broken file shows its own errors.
@@ -239,7 +248,7 @@ final class LaunchaModel {
             return outcome
         case .file:
             return await opener.openFile(row.url, name: row.name)
-        case .micro, .calculation:
+        case .micro, .calculation, .clipbawd:
             return nil
         }
     }
@@ -353,9 +362,14 @@ final class LaunchaModel {
         let byID = Dictionary(apps.map { ($0.candidate.id, $0) }, uniquingKeysWith: { first, _ in first })
         let microByID = Dictionary(microApps.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let folder = microFolder ?? home
-        let candidates = microApps.map(\.candidate) + apps.map(\.candidate)
+        let builtins = clipbawdEnabled ? [LaunchaCandidate(id: "ting:clipbawd", name: "Clipbawd", target: .url("ting:clipbawd"))] : []
+        let candidates = builtins + microApps.map(\.candidate) + apps.map(\.candidate)
         let matches = LaunchaSearch.results(for: trimmed, in: candidates, history: history, now: Date())
         let appRows = matches.compactMap { match -> LaunchaRow? in
+            if match.candidate.id == "ting:clipbawd" {
+                return LaunchaRow(id: "ting:clipbawd", kind: .clipbawd, name: "Clipbawd",
+                                  url: URL(fileURLWithPath: "/"), detail: "Clipboard history")
+            }
             if let micro = microByID[match.candidate.id] {
                 return LaunchaRow(id: micro.id,
                                   kind: .micro(candidateID: micro.id, start: micro.start, isWorking: micro.isWorking),

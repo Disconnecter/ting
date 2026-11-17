@@ -276,7 +276,7 @@ extension TingPanel {
     var symbol: String {
         switch self {
         case .launcha: "magnifyingglass"
-        case .clipboarda: "list.clipboard"
+        case .clipbawd: "list.clipboard"
         }
     }
 }

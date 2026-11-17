@@ -1,28 +1,28 @@
 import CryptoKit
 import Foundation
 
-// clipboarda: the clipboard history of this session. Pure logic only: the app reads the
+// clipbawd: the clipboard history of this session. Pure logic only: the app reads the
 // pasteboard, builds a `ClipCapture` and keeps one `ClipHistory` in memory. Nothing is
 // written to disk.
 
 // MARK: - Settings
 
-/// clipboarda settings.
+/// clipbawd settings.
 /// JSON: {"hotkey": Hotkey string or null, "enabled": Bool, "fetchLinks": Bool, "maxItems": Int,
 ///       "excludedApps": [bundle id], "ignoredPrefixes": [String]}.
 /// Every key is optional when decoding; a missing key takes the default below.
-public struct ClipboardaSettings: Equatable, Sendable, Codable {
+public struct ClipbawdSettings: Equatable, Sendable, Codable {
     /// Allowed range of `maxItems`. Decoding clamps to it.
     public static let maxItemsRange: ClosedRange<Int> = 20...1000
 
-    /// Separate global hotkey for clipboarda. nil (default) means no separate hotkey.
+    /// Separate global hotkey for clipbawd. nil (default) means no separate hotkey.
     public var hotkey: Hotkey? = nil
-    /// clipboarda as a whole. Off: Ting never reads the clipboard, the hotkey is free, the
+    /// clipbawd as a whole. Off: Ting never reads the clipboard, the hotkey is free, the
     /// window does not open and the history is forgotten. On by default; the history lives
     /// only until Ting quits.
     public var enabled: Bool = true
 
-    /// The hotkey that is in use: none while clipboarda is off.
+    /// The hotkey that is in use: none while clipbawd is off.
     public var activeHotkey: Hotkey? { enabled ? hotkey : nil }
     /// Fetch the title, icon or image of a copied link. Off by default: a fetch tells the site
     /// that the link was copied.
@@ -43,12 +43,12 @@ public struct ClipboardaSettings: Equatable, Sendable, Codable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let defaults = ClipboardaSettings()
+        let defaults = ClipbawdSettings()
         hotkey = try container.decodeIfPresent(Hotkey.self, forKey: .hotkey)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? defaults.enabled
         fetchLinks = try container.decodeIfPresent(Bool.self, forKey: .fetchLinks) ?? defaults.fetchLinks
         let count = try container.decodeIfPresent(Int.self, forKey: .maxItems) ?? defaults.maxItems
-        let range = ClipboardaSettings.maxItemsRange
+        let range = ClipbawdSettings.maxItemsRange
         maxItems = min(max(count, range.lowerBound), range.upperBound)
         excludedApps = try container.decodeIfPresent([String].self, forKey: .excludedApps) ?? defaults.excludedApps
         ignoredPrefixes = try container.decodeIfPresent([String].self, forKey: .ignoredPrefixes) ?? defaults.ignoredPrefixes
@@ -85,7 +85,7 @@ public struct ClipboardaSettings: Equatable, Sendable, Codable {
 
 // MARK: - Pasteboard types
 
-/// Pasteboard type identifiers clipboarda reads or respects.
+/// Pasteboard type identifiers clipbawd reads or respects.
 public enum ClipboardTypes {
     public static let plainText = "public.utf8-plain-text"
     public static let rtf = "public.rtf"
@@ -213,7 +213,7 @@ public enum ClipContent: Equatable, Sendable {
         }
     }
 
-    /// The content of a capture, or nil when there is nothing clipboarda keeps.
+    /// The content of a capture, or nil when there is nothing clipbawd keeps.
     /// Files win (Finder also puts the icon and the name). Text wins over an image, since
     /// Word or Keynote add a picture of the copied text, unless the text is only the link of the
     /// image, as a browser's Copy Image gives.
@@ -389,7 +389,7 @@ public struct ClipEntry: Equatable, Sendable, Identifiable {
 public enum ClipSkipReason: Equatable, Sendable {
     /// Recording is off.
     case disabled
-    /// Nothing clipboarda keeps: empty text or only unknown types.
+    /// Nothing clipbawd keeps: empty text or only unknown types.
     case empty
     /// A password manager or a program marked the value (nspasteboard.org markers).
     case marked
@@ -446,7 +446,7 @@ public struct ClipHistory: Sendable {
     public var maxItems: Int
     private var nextID = 1
 
-    public init(maxItems: Int = ClipboardaSettings().maxItems) {
+    public init(maxItems: Int = ClipbawdSettings().maxItems) {
         self.maxItems = maxItems
     }
 
@@ -470,6 +470,7 @@ public struct ClipHistory: Sendable {
             let kept = content.kept(capture.representations)
             if !kept.isEmpty { entry.representations = kept }
             entries.insert(entry, at: 0)
+            prune()
             return .merged(entry.id)
         }
         let entry = ClipEntry(id: nextID, digest: digest, capture: capture, content: content, at: date)
@@ -612,7 +613,8 @@ public enum ClipLinkPolicy {
         let parts = host.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 4 else { return nil }
         let octets = parts.compactMap { part -> Int? in
-            guard !part.isEmpty, part.count <= 3, part.allSatisfy(\.isASCII), let value = Int(part), value <= 255 else { return nil }
+            guard !part.isEmpty, part.count <= 3, part.allSatisfy({ $0.isASCII && $0.isNumber }),
+                  let value = Int(part), value <= 255 else { return nil }
             return value
         }
         return octets.count == 4 ? octets : nil
@@ -628,7 +630,7 @@ public enum ClipLinkPolicy {
     }
 
     static func isPublicIPv6(_ host: String) -> Bool {
-        let address = host.split(separator: "%").first.map(String.init) ?? host
+        let address = (host.split(separator: "%").first.map(String.init) ?? host).lowercased()
         if address == "::1" || address == "::" { return false }
         guard let first = address.split(separator: ":", omittingEmptySubsequences: false).first,
               let group = UInt16(first.isEmpty ? "0" : first, radix: 16) else { return false }
@@ -636,7 +638,9 @@ public enum ClipLinkPolicy {
         if group & 0xffc0 == 0xfe80 { return false }   // fe80::/10 link local
         if group & 0xff00 == 0xff00 { return false }   // multicast
         if address.hasPrefix("::ffff:") { return false } // mapped IPv4: not resolved here
-        return true
+        // Permit only global unicast. Reject IPv4-compatible/mapped, NAT64 and other
+        // translation ranges as well as their alternate uppercase spellings.
+        return group & 0xe000 == 0x2000
     }
 }
 
@@ -656,14 +660,13 @@ public struct ClipHTMLHead: Equatable, Sendable {
 
     public static func parse(_ data: Data, base: URL) -> ClipHTMLHead {
         let text = String(decoding: data.prefix(readLimit), as: UTF8.self)
-        let lower = text.lowercased()
-        return ClipHTMLHead(title: title(in: text, lower: lower), icon: icon(in: text, lower: lower, base: base))
+        return ClipHTMLHead(title: title(in: text), icon: icon(in: text, base: base))
     }
 
-    static func title(in text: String, lower: String) -> String? {
-        guard let open = lower.range(of: "<title"),
-              let openEnd = lower[open.upperBound...].firstIndex(of: ">"),
-              let close = lower.range(of: "</title", range: lower.index(after: openEnd)..<lower.endIndex) else { return nil }
+    static func title(in text: String) -> String? {
+        guard let open = text.range(of: "<title", options: .caseInsensitive),
+              let openEnd = text[open.upperBound...].firstIndex(of: ">"),
+              let close = text.range(of: "</title", options: .caseInsensitive, range: text.index(after: openEnd)..<text.endIndex) else { return nil }
         let raw = text[text.index(after: openEnd)..<close.lowerBound]
         let words = decodeEntities(String(raw)).split(whereSeparator: { $0.isWhitespace || $0.isNewline })
         let title = words.joined(separator: " ")
@@ -671,11 +674,11 @@ public struct ClipHTMLHead: Equatable, Sendable {
         return title.count > 300 ? String(title.prefix(300)) + "…" : title
     }
 
-    static func icon(in text: String, lower: String, base: URL) -> URL? {
+    static func icon(in text: String, base: URL) -> URL? {
         var best: (rank: Int, url: URL)?
-        var cursor = lower.startIndex
-        while let open = lower.range(of: "<link", range: cursor..<lower.endIndex) {
-            guard let end = lower[open.upperBound...].firstIndex(of: ">") else { break }
+        var cursor = text.startIndex
+        while let open = text.range(of: "<link", options: .caseInsensitive, range: cursor..<text.endIndex) {
+            guard let end = text[open.upperBound...].firstIndex(of: ">") else { break }
             let tag = String(text[open.upperBound..<end])
             cursor = end
             let attributes = attributes(of: tag)
