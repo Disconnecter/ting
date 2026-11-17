@@ -3,7 +3,7 @@ import Foundation
 /// One step of a micro-app script. The output of a step is the input (stdin) of the next one.
 public struct MicroAppStep: Equatable, Sendable {
     public enum Kind: String, Equatable, Sendable, CaseIterable {
-        case command, python, url, ai, text, json, open, notify, call, keys, paste
+        case command, python, url, ai, text, json, open, notify, call, keys, paste, choose, ask
     }
 
     /// A `key: template` line of `env`, `query`, `headers` or `form`, in file order.
@@ -86,6 +86,23 @@ public struct MicroAppStep: Equatable, Sendable {
         }
     }
 
+    public struct AskStep: Equatable, Sendable {
+        public var prompt: MicroAppTemplate
+        public var defaultValue: MicroAppTemplate?
+        public var placeholder: MicroAppTemplate?
+        public var multiline: Bool
+        public var required: Bool
+
+        public init(prompt: MicroAppTemplate, defaultValue: MicroAppTemplate? = nil,
+                    placeholder: MicroAppTemplate? = nil, multiline: Bool = false, required: Bool = true) {
+            self.prompt = prompt
+            self.defaultValue = defaultValue
+            self.placeholder = placeholder
+            self.multiline = multiline
+            self.required = required
+        }
+    }
+
     public enum Action: Equatable, Sendable {
         /// Shell code for `/bin/sh -c`, as written.
         case command(String)
@@ -94,6 +111,8 @@ public struct MicroAppStep: Equatable, Sendable {
         case url(URLRequestStep)
         case ai(AIStep)
         case text(MicroAppTemplate)
+        case choose(MicroAppTemplate)
+        case ask(AskStep)
         case json(MicroAppJSONPath)
         case open(target: MicroAppTemplate, app: MicroAppTemplate?)
         case notify(message: MicroAppTemplate, title: MicroAppTemplate?)
@@ -141,6 +160,8 @@ public struct MicroAppStep: Equatable, Sendable {
         case .url: .url
         case .ai: .ai
         case .text: .text
+        case .choose: .choose
+        case .ask: .ask
         case .json: .json
         case .open: .open
         case .notify: .notify
@@ -152,6 +173,15 @@ public struct MicroAppStep: Equatable, Sendable {
 
     /// `keys` and `paste` steps send input to the app where the micro-app started.
     public var sendsInput: Bool { kind == .keys || kind == .paste }
+
+    /// Interaction is a barrier even when a later program requests streaming input.
+    public var waitsForUser: Bool {
+        switch action {
+        case .ask, .choose: true
+        case .call(let library): library.steps.contains(where: \.waitsForUser)
+        default: false
+        }
+    }
 
     /// Command and python steps run a program; only they can stream their input.
     public var runsProgram: Bool { kind == .command || kind == .python }
@@ -178,8 +208,10 @@ public struct MicroAppStep: Equatable, Sendable {
             }
         case .ai(let a):
             result += [a.prompt, a.model] + [a.key, a.system, a.baseURL, a.temperature, a.maxTokens].compactMap { $0 }
-        case .text(let t):
+        case .text(let t), .choose(let t):
             result.append(t)
+        case .ask(let ask):
+            result += [ask.prompt] + [ask.defaultValue, ask.placeholder].compactMap { $0 }
         case .open(let target, let app):
             result += [target] + [app].compactMap { $0 }
         case .notify(let message, let title):

@@ -159,7 +159,7 @@ context: [app, finder]
 
 `steps` is a list. The **kind key** of a step says what it does and holds its main
 value: `command`, `python`, `url`, `ai`, `text`, `json`, `open`, `notify`, `keys`,
-`paste` or `call`. Exactly one kind key per step. Every step can also have:
+`paste`, `call`, `ask` or `choose`. Exactly one kind key per step. Every step can also have:
 
 | Key | Value |
 |---|---|
@@ -168,6 +168,79 @@ value: `command`, `python`, `url`, `ai`, `text`, `json`, `open`, `notify`, `keys
 | `timeout` | Whole seconds, 1 to the file's `timeout`. |
 | `params` | A map of `name: value` lines (values with variables): params of this step only, read as `${params.NAME}` and `$TING_NAME` over a file param with the same name. For `call`, the library's params. |
 | `stream` | `true`: a `command` or `python` step starts with the step before it and reads its output while it comes. Not for the first step, not with `stdin`. |
+
+### `ask` and `choose`
+
+Interactive steps ask for an answer **during** the run, unlike file `params`,
+which are asked before it starts. Their output is the next step's input;
+`id` also makes it available as `${steps.ID}` or `$TING_STEP_ID` later.
+
+```yaml
+format: ting.microapp/2
+description: Ask for a topic and choose a question.
+input: none
+steps:
+  - ask: Which topic?
+    id: topic
+    placeholder: Enter a topic
+  - text: |
+      What is useful about ${input}?
+      What is difficult about ${input}?
+  - choose: Choose a question
+    id: question
+  - ask: What do you already know?
+    multiline: true
+    required: false
+  - text: |
+      Topic: ${steps.topic}
+      Question: ${steps.question}
+      Notes: ${input}
+output:
+  to: [panel]
+```
+
+`ask` is the prompt, with variables. Options:
+
+| Key | Value |
+|---|---|
+| `default` | Initial text, with variables; empty by default. Use `${input}` explicitly to edit the previous output. |
+| `placeholder` | One-line hint shown in the empty field, with variables; not part of the answer. |
+| `multiline` | `false` by default: Return continues. With `true`, Return inserts a line break and Command-Return continues. |
+| `required` | `true` by default: an empty or whitespace-only answer cannot continue. With `false`, an empty answer is allowed. |
+
+`choose` is the prompt, with variables. Its input is either one option per
+nonempty line or a JSON array. Line values are preserved, including spaces;
+blank lines are ignored. JSON accepts strings or objects:
+
+```json
+[
+  {"title": "June report", "subtitle": "PDF · Downloads", "value": "/tmp/report.pdf"},
+  {"title": "Ask another question", "value": "question"}
+]
+```
+
+Objects need nonempty string `title` and string `value`; `subtitle` is an
+optional string. Ting displays the title and subtitle, but passes only `value`
+on. A JSON string is both its label and value. Input starting with `[` or `{`
+is parsed strictly as JSON; malformed JSON or invalid items fail the step.
+Use a JSON array for line values that begin with those characters or contain
+line breaks. An empty list stops the run with “No options”; no later step runs.
+
+Type to filter titles and subtitles, use Up/Down to select, and Return to
+confirm. There is no custom answer or multiple selection. Even one option
+needs confirmation. Filtering to no matches disables Continue; clear the
+filter to see the list again.
+
+Esc cancels the whole micro-app without running later steps. Answers are not
+remembered between runs. Time spent waiting for either answer does not count
+toward the micro-app or enclosing library timeout. Interactive steps do not
+expire while waiting, even with a step `timeout`. After an interactive step
+(or a library containing one), a program with `stream: true` starts only after
+the answer, with its complete input.
+
+Both steps require Ting's panel. `ting-micro check` validates them, but
+headless `ting-micro run` refuses a file containing either step, including in
+libraries, **before running any step**.
 
 ### `command` and `python`
 

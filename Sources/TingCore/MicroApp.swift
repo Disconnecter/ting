@@ -227,6 +227,7 @@ public enum MicroAppChecker {
         .url: ["method", "query", "headers", "body", "form"],
         .ai: ["provider", "model", "key", "system", "base_url", "temperature", "max_tokens"],
         .text: [], .json: [], .open: ["app"], .notify: ["title"], .call: [], .keys: [], .paste: [],
+        .choose: [], .ask: ["default", "placeholder", "multiline", "required"],
     ]
     /// The most key presses of one `keys` step.
     public static let maxKeyPresses = 100
@@ -993,6 +994,22 @@ public enum MicroAppChecker {
                 action = checkKeys(value, what: k).map { .keys($0) }
             case .paste:
                 action = template(value, k, oneLine: false, ctx: &ctx, usage: &usage).map { .paste($0) }
+            case .choose:
+                action = template(value, k, ctx: &ctx, usage: &usage).map { .choose($0) }
+            case .ask:
+                let prompt = template(value, k, ctx: &ctx, usage: &usage)
+                let initial = keys["default"].flatMap {
+                    template($0.value, "\(what).default", oneLine: false, nonEmpty: false, ctx: &ctx, usage: &usage)
+                }
+                let placeholder = keys["placeholder"].flatMap {
+                    template($0.value, "\(what).placeholder", nonEmpty: false, ctx: &ctx, usage: &usage)
+                }
+                let multiline = keys["multiline"].flatMap { bool($0.value, "\(what).multiline") } ?? false
+                let required = keys["required"].flatMap { bool($0.value, "\(what).required") } ?? true
+                if let prompt {
+                    action = .ask(.init(prompt: prompt, defaultValue: initial, placeholder: placeholder,
+                                        multiline: multiline, required: required))
+                }
             }
             guard issues.count == before, let action else { return nil }
             return MicroAppStep(id: id, action: action, stdin: stdin, env: env, timeLimit: stepTime, stream: stream, params: stepParams,

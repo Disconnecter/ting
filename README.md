@@ -185,8 +185,14 @@ into the app or press keys there. Its work is one shell command or a short
 script of **steps**: shell or Python code, HTTP requests, questions to OpenAI,
 Anthropic or a compatible server (Ollama, LM Studio, OpenRouter), text templates,
 JSON fields, opening a URL, notifications, key presses and pasted text. The
-output of each step is the input of the next one, as in a shell pipe. Each
-micro-app is one YAML file in a strict, checked format, described in
+output of each step is the input of the next one, as in a shell pipe.
+An **`ask`** step asks for text during the run; **`choose`** filters a list from
+an earlier step and passes the chosen value on. Both support an `id` for later
+steps. Esc cancels the run; waiting for an answer does not consume the timeout,
+and answers are not remembered. These interactive steps require Ting's panel;
+`ting-micro check` validates them, but headless `run` rejects them before any
+step runs. See [interactive steps](docs/micro-apps/FORMAT.md#ask-and-choose).
+Each micro-app is one YAML file in a strict, checked format, described in
 [docs/micro-apps/FORMAT.md](docs/micro-apps/FORMAT.md), which holds the full
 text of fifteen working [examples](docs/micro-apps/examples/): Format JSON,
 Change case, Encode / decode, Count words, DNS lookup, Wikipedia summary, Search

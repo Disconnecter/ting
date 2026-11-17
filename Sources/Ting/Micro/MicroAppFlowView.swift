@@ -7,6 +7,7 @@ import TingCore
 struct MicroAppFlowView: View {
     let session: MicroAppFlowSession
     let onApprove: () -> Void
+    var onSubmitAnswer: () -> Void = {}
     let onCopyAll: () -> Void
     let onDismiss: () -> Void
 
@@ -30,6 +31,15 @@ struct MicroAppFlowView: View {
                     MicroAppFormBody(model: model, maxHeight: session.formMaxHeight)
                 }
                 .padding(.top, 8)
+                }
+            case .interaction(let app):
+                if let model = session.interaction {
+                    Card(title: app.shownName, showHeader: session.showHeader,
+                         footer: model.isChoice ? ["↑↓ choose", "↩ continue", "esc cancel"] :
+                            [model.multiline ? "⌘↩ continue" : "↩ continue", "esc cancel"]) {
+                        MicroAppInteractionBody(model: model, onSubmit: onSubmitAnswer)
+                    }
+                    .padding(.top, 8)
                 }
             case .working(let app):
                 Card(title: app.shownName, showHeader: session.showHeader, footer: ["esc stop"]) {

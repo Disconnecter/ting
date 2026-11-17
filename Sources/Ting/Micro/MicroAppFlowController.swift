@@ -9,8 +9,10 @@ import TingCore
 /// The flow window: a non-activating panel that takes keyboard focus, like launcha.
 /// ↩, ⌘↩, ⌘O and Esc go to the flow; other keys go to the panel's views (the fields, the result text).
 final class MicroAppFlowPanel: NSPanel {
-    enum Key { case enter, commandEnter, escape, toggleOptional }
+    enum Key { case enter, commandEnter, escape, toggleOptional, up, down }
     var onKey: ((Key) -> Void)?
+    var multilineInput = false
+    var choosing = false
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
@@ -38,7 +40,13 @@ final class MicroAppFlowPanel: NSPanel {
             case 53:
                 onKey?(.escape)
                 return
+            case 125, 126:
+                if choosing && flags.isEmpty {
+                    onKey?(event.keyCode == 125 ? .down : .up)
+                    return
+                }
             case 36, 76:
+                if flags.isEmpty && multilineInput { super.sendEvent(event); return }
                 if flags.isEmpty { onKey?(.enter); return }
                 if flags == .command { onKey?(.commandEnter); return }
                 return
@@ -85,6 +93,7 @@ final class MicroAppFlowSession {
         case approval(MicroApp, file: String)
         case form(MicroApp)
         case working(MicroApp)
+        case interaction(MicroApp)
         case result(MicroAppPanelContent)
     }
 
@@ -98,6 +107,7 @@ final class MicroAppFlowSession {
     var progress: MicroAppRunProgress?
     /// The open parameter panel; set only while `state` is `.form`.
     var form: MicroAppFormModel?
+    var interaction: MicroAppInteractionModel?
     var showHeader = true
     /// The highest parameter form height in the current panel; beyond it the form scrolls.
     var formMaxHeight = CGFloat(MicroAppFormLayout.maxFormHeight(panelHeight: MicroAppFormLayout.panelCap))
@@ -136,6 +146,8 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     private let presentsWindow: Bool
     private var panel: MicroAppFlowPanel?
     private var task: Task<Void, Never>?
+    private var answerContinuation: CheckedContinuation<String, Error>?
+    private var questionID: UUID?
     /// Bumped by every start and close, so a late result of a stopped flow is dropped.
     private var generation = 0
     /// The hash waiting for ⌘↩ in the approval panel.
@@ -203,6 +215,10 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     func close() {
         generation += 1
         task?.cancel()
+        answerContinuation?.resume(throwing: CancellationError())
+        answerContinuation = nil
+        questionID = nil
+        session.interaction = nil
         task = nil
         pendingHash = ""
         session.state = .closed
@@ -286,6 +302,10 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         var runner = self.runner
         let target = self.target
         let context = self.context
+        runner.interact = { [weak self] request in
+            guard let self else { throw CancellationError() }
+            return try await self.requestAnswer(request, app: app, generation: current)
+        }
         runner.keyboard = { [weak self] action in
             guard let self else { throw CancellationError() }
             try await self.deliver(action, to: target, generation: current)
@@ -311,6 +331,38 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             self.present(MicroAppResultPlan.make(app: app, result: result, outputLimit: runner.outputLimit,
                                                  timeLimit: runner.timeLimit(for: app)), title: app.shownName)
         }
+    }
+
+    private func requestAnswer(_ request: MicroAppInteraction, app: MicroApp, generation current: Int) async throws -> String {
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            guard generation == current else { throw CancellationError() }
+            return try await withCheckedThrowingContinuation { continuation in
+                answerContinuation = continuation
+                questionID = id
+                session.interaction = MicroAppInteractionModel(request)
+                show(.interaction(app))
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self, self.questionID == id else { return }
+                self.answerContinuation?.resume(throwing: CancellationError())
+                self.answerContinuation = nil
+                self.questionID = nil
+                self.session.interaction = nil
+            }
+        }
+    }
+
+    func submitAnswer() {
+        guard case .interaction(let app) = session.state,
+              let answer = session.interaction?.answer(), let continuation = answerContinuation else { return }
+        answerContinuation = nil
+        questionID = nil
+        session.interaction = nil
+        show(.working(app))
+        continuation.resume(returning: answer)
     }
 
     /// A `keys` or `paste` step: the panel goes away until the result, so the keys reach the app.
@@ -382,6 +434,12 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             approve()
         case (.form, .enter):
             submitForm()
+        case (.interaction, .enter), (.interaction, .commandEnter):
+            submitAnswer()
+        case (.interaction, .up):
+            session.interaction?.move(-1)
+        case (.interaction, .down):
+            session.interaction?.move(1)
         case (.form, .toggleOptional):
             session.form?.toggleOptional()
         case (.result(let content), .enter):
@@ -405,6 +463,12 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
 
     private func show(_ state: MicroAppFlowSession.State) {
         let panel = self.panel ?? makePanel()
+        panel.multilineInput = false
+        panel.choosing = false
+        if case .interaction = state {
+            panel.multilineInput = session.interaction?.multiline ?? false
+            panel.choosing = session.interaction?.isChoice ?? false
+        }
         guard presentsWindow else {
             session.state = state
             return
@@ -431,6 +495,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
         panel.onKey = { [weak self] key in self?.handle(key) }
         let view = MicroAppFlowView(session: session,
                                     onApprove: { [weak self] in self?.approve() },
+                                    onSubmitAnswer: { [weak self] in self?.submitAnswer() },
                                     onCopyAll: { [weak self] in
                                         guard let self, case .result(let content) = self.session.state else { return }
                                         self.copyAll(content)
@@ -448,7 +513,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     /// keeps running; its result comes back to the front.
     func windowDidResignKey(_ notification: Notification) {
         switch session.state {
-        case .approval, .form, .result: close()
+        case .approval, .form, .interaction, .result: close()
         case .working, .closed: break
         }
     }

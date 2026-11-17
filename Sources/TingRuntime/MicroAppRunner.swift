@@ -233,6 +233,8 @@ package struct MicroAppRunner: Sendable {
     /// Sends the key presses of a `keys` step and the text of a `paste` step to the app where the
     /// micro-app started. `nil`: such a step fails, because only Ting can send them.
     package var keyboard: (@Sendable (MicroAppKeyboardAction) async throws -> Void)?
+    /// Requests an answer from the front end. Headless clients fail explicitly when not supplied.
+    package var interact: (@Sendable (MicroAppInteraction) async throws -> String)?
     /// `true` when `/usr/bin/python3` is a real Python, not the stub that asks for the Command Line Tools.
     package var commandLineToolsInstalled: @Sendable () async -> Bool = { await MicroAppRunner.hasCommandLineTools() }
 
@@ -310,6 +312,8 @@ struct MicroAppPipeline: Sendable {
     /// `TING_CONTEXT_…` of every source the micro-app and its libraries read.
     let contextEnvironment: [String: String]
     let deadline: Date
+    let waiting: MicroAppWaitingClock
+    let initialWait: TimeInterval
     let limit: TimeInterval
     let progress: (@Sendable (MicroAppRunProgress) -> Void)?
     /// The outputs of the finished steps with an `id`.
@@ -317,7 +321,8 @@ struct MicroAppPipeline: Sendable {
 
     init(runner: MicroAppRunner, app: MicroApp, path: String, base: [String: String], params: [String: String],
          context: MicroAppContext = MicroAppContext(), contextEnvironment: [String: String] = [:],
-         deadline: Date, limit: TimeInterval, progress: (@Sendable (MicroAppRunProgress) -> Void)?) {
+         deadline: Date, limit: TimeInterval, progress: (@Sendable (MicroAppRunProgress) -> Void)?,
+         waiting: MicroAppWaitingClock = MicroAppWaitingClock()) {
         self.runner = runner
         self.app = app
         self.path = path
@@ -326,6 +331,8 @@ struct MicroAppPipeline: Sendable {
         self.context = context
         self.contextEnvironment = contextEnvironment
         self.deadline = deadline
+        self.waiting = waiting
+        self.initialWait = waiting.elapsed
         self.limit = limit
         self.progress = progress
     }
@@ -334,7 +341,9 @@ struct MicroAppPipeline: Sendable {
     static func groups(_ steps: [MicroAppStep]) -> [[Int]] {
         var groups: [[Int]] = []
         for (i, step) in steps.enumerated() {
-            if step.stream, !groups.isEmpty { groups[groups.count - 1].append(i) } else { groups.append([i]) }
+            if step.stream, i > 0, !steps[i - 1].waitsForUser, !groups.isEmpty {
+                groups[groups.count - 1].append(i)
+            } else { groups.append([i]) }
         }
         return groups
     }
@@ -373,6 +382,8 @@ struct MicroAppPipeline: Sendable {
                             return (index, nil)
                         } catch let error as MicroAppStepError {
                             return (index, error)
+                        } catch is CancellationError {
+                            return (index, MicroAppStepError(reason: .cancelled))
                         } catch {
                             return (index, .failed("error", "\(error)"))
                         }
@@ -425,7 +436,7 @@ struct MicroAppPipeline: Sendable {
 
     /// The time this step may take: its own limit or what is left of the micro-app's.
     private func timeBudget(_ step: MicroAppStep) -> (seconds: TimeInterval, total: Bool) {
-        let left = max(0.05, deadline.timeIntervalSinceNow)
+        let left = max(0.05, deadline.timeIntervalSinceNow + waiting.elapsed - initialWait)
         if let own = step.timeLimit, own < left { return (own, false) }
         return (left, true)
     }
@@ -499,7 +510,8 @@ struct MicroAppPipeline: Sendable {
         var nested = MicroAppPipeline(runner: runner, app: inner, path: path, base: base,
                                       params: MicroAppRunRules.paramValues(library.params, values: arguments),
                                       context: context, contextEnvironment: contextEnvironment,
-                                      deadline: Date().addingTimeInterval(budget.seconds), limit: budget.seconds, progress: mapped)
+                                      deadline: Date().addingTimeInterval(budget.seconds), limit: budget.seconds, progress: mapped,
+                                      waiting: waiting)
         let result = await nested.run(stdin: stepInput)
         switch result {
         case .success(let out):
@@ -539,6 +551,17 @@ struct MicroAppPipeline: Sendable {
             }
             try await runProgram(step, executable: python, arguments: ["-I", "-c", code], code: code, input: stepInput, source: source,
                                  output: output, budget: budget)
+        case .choose(let prompt):
+            let choices = try MicroAppInteraction.choices(from: String(decoding: stepInput, as: UTF8.self))
+            let request = MicroAppInteraction.choose(prompt: try render(prompt, input: stepInput), choices: choices)
+            output.write(Data(try await interact(request).utf8))
+        case .ask(let ask):
+            let request = MicroAppInteraction.ask(
+                prompt: try render(ask.prompt, input: stepInput),
+                defaultValue: try ask.defaultValue.map { try render($0, input: stepInput) } ?? "",
+                placeholder: try ask.placeholder.map { try render($0, input: stepInput) } ?? "",
+                multiline: ask.multiline, required: ask.required)
+            output.write(Data(try await interact(request).utf8))
         case .text(let template):
             output.write(Data(try render(template, input: stepInput).utf8))
         case .json(let jsonPath):
@@ -594,6 +617,18 @@ struct MicroAppPipeline: Sendable {
             }
             try await withDeadline(budget) { try await ask(request, provider: aiStep.provider, output: output) }
         }
+    }
+
+    private func interact(_ request: MicroAppInteraction) async throws -> String {
+        try Task.checkCancellation()
+        guard let handler = runner.interact else {
+            throw MicroAppStepError.failed("input unavailable", "ask and choose steps require Ting's interactive panel")
+        }
+        let started = ProcessInfo.processInfo.systemUptime
+        defer { waiting.add(ProcessInfo.processInfo.systemUptime - started) }
+        let answer = try await handler(request)
+        try Task.checkCancellation()
+        return try request.validate(answer)
     }
 
     /// Sends a `keys` or `paste` step through the runner's keyboard.
