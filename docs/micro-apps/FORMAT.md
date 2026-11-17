@@ -365,6 +365,59 @@ Every value of a step except shell and Python code can hold variables:
 Filters after `|`, applied left to right: `url` (percent-encode), `json` (escape
 for inside a JSON string), `trim`, `base64`. `$${` is a literal `${`.
 
+### Clipboard history (Ting 0.7.6)
+
+Use negative indices into Clipbawd's newest-first history:
+
+- `${clipboard[-1]}`: newest entry.
+- `${clipboard[-2]}`: preceding entry.
+- `${clipboard[-3]}`: third newest entry, and so on.
+
+Only negative integer indices are accepted; `0` and positive indices are errors.
+Use the full `${clipboard[-1]}` syntax, not `$clipboard[-1]`.
+Indices address all retained entries, not only text entries. An image at `-1`
+does not silently select an older text entry: it fails. Text, links and colors
+return text; files return newline-separated paths. An out-of-range index,
+disabled Clipbawd or a headless `ting-micro run` fails explicitly.
+
+Ting takes a snapshot when an approved micro-app starts executing, after its
+parameter form. The snapshot stays fixed through all steps and library calls;
+copying something during the run does not change its indices. Clipbawd's
+exclusions still apply. The approval panel identifies history access; review
+steps that may send this text to a server or save it to disk.
+
+For example, show the last two entries without changing the clipboard:
+
+```yaml
+format: ting.microapp/2
+description: Show the last two clipboard history entries
+input: none
+steps:
+  - text: |
+      Newest: ${clipboard[-1]}
+      Previous: ${clipboard[-2]}
+output:
+  to: [panel]
+```
+
+For a shell command, use `env:` and quote the variable. Never interpolate
+history into shell or Python code:
+
+```yaml
+format: ting.microapp/2
+description: Print the preceding clipboard history entry
+input: none
+steps:
+  - command: 'printf "%s" "$CLIP"'
+    env:
+      CLIP: ${clipboard[-2]}
+output:
+  to: [panel]
+```
+
+Filters work as usual, for example `${clipboard[-1]|trim|url}`.
+Clipbawd must be enabled in Settings › Clipbawd; no separate hotkey is required.
+
 ## Libraries
 
 A library is a file `~/.config/ting/micro/libs/NAME.yaml` (kebab-case name) with
