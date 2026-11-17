@@ -31,7 +31,9 @@ let package = Package(
             name: "TingServiceTests",
             dependencies: ["Ting", "TingCore", "TingRuntime"],
             path: "Tests/TingServiceTests",
-            swiftSettings: [.swiftLanguageMode(.v5)]),
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            // Swift Build leaves Sparkle.framework next to the test bundle, outside its default rpath.
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../.."])]),
         .testTarget(
             name: "TingCoreTests",
             dependencies: ["TingCore"],

@@ -85,9 +85,21 @@ output:                          # optional; without it nothing is shown or copi
 - Every param must be read by some step. Required params are always shown in
   the parameter panel, optional ones behind `⌘O`. Remembered values are stored as
   plain text: never use a remembered param for a secret.
-- `output.as`: `markdown` shows headings, lists, bold, italic, code, quotes and
-  tables; `console` shows ANSI colours; `text` is plain; `code` is monospaced.
-  Errors always show as console text.
+- `output.as`: `markdown` shows headings, lists, bold, italic, code, quotes,
+  tables and links; `console` shows ANSI colours; `text` is plain; `code` is
+  monospaced. Errors always show as console text.
+- A markdown link is `[text](target)`. The target is an `http`, `https` or
+  `mailto` URL, a `file` URL or an absolute path (`/…` or `~/…`); write a target
+  with spaces as `[text](<~/My Folder>)`. Other targets stay literal text. A click
+  opens a web or mail link; a folder opens in Finder; any other file is shown
+  selected in Finder and is never opened, so output from the web or an AI cannot
+  start a script or an app. Every link is underlined: a web or mail link has the
+  link colour, a file link keeps the text colour with a faint underline. The
+  first click on any link shows a warning with its target; the user opens the
+  link once, and Ting does not ask again.
+- A code block fenced as ```` ```links ```` stays monospaced, so a tree drawn
+  with `├──` lines stays aligned, but its `[text](target)` links work. Only links
+  are markdown there; write `\\` and `\]` in a link text for `\` and `]`.
 - `output.to: [app]` pastes the result into the app that was in front at the
   start, as a [`paste` step](#keys-and-paste) does, and puts the clipboard back;
   `[clipboard, app]` leaves the result on the clipboard. `app` cannot go with
