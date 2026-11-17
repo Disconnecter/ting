@@ -201,7 +201,7 @@ final class LeaderController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func select(_ key: String) {
+    func select(_ key: String) {
         guard machine.isOpen else { return }
         doubleTap.sequenceInput()
         apply(machine.handle(.key(key)))

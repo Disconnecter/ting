@@ -36,7 +36,7 @@ final class AppModel {
     @ObservationIgnored let store = ConfigStore()
     @ObservationIgnored private(set) lazy var microStore = MicroAppStore(configURL: store.url)
     @ObservationIgnored private let hotkeys = HotkeyService()
-    @ObservationIgnored let leader = LeaderController()
+    @ObservationIgnored let leader: LeaderController
     @ObservationIgnored private let runner: ActionRunner
     @ObservationIgnored private let toast = ToastController()
     @ObservationIgnored private let launchaModel: LaunchaModel
@@ -57,11 +57,13 @@ final class AppModel {
         return sound
     }()
 
-    init() {
+    /// `presentsWindows` false: the launchers keep their state but show no window (tests).
+    init(presentsWindows: Bool = true) {
+        leader = LeaderController(presentsWindow: presentsWindows)
         let runner = ActionRunner()
         self.runner = runner
         launchaModel = LaunchaModel(opener: runner, historyStore: LaunchaHistoryStore(), consent: LaunchaConsentStore())
-        launcha = LaunchaController(model: launchaModel)
+        launcha = LaunchaController(model: launchaModel, presentsWindow: presentsWindows)
     }
 
     var leaderDisplay: String { config.leader?.display ?? "Not set" }

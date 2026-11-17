@@ -131,8 +131,12 @@ final class LaunchaController: NSObject, NSWindowDelegate {
 
     var isOpen: Bool { model.isOpen }
 
-    init(model: LaunchaModel) {
+    /// Tests exercise the controller without showing a window or taking keyboard focus.
+    private let presentsWindow: Bool
+
+    init(model: LaunchaModel, presentsWindow: Bool = true) {
         self.model = model
+        self.presentsWindow = presentsWindow
         super.init()
         model.onRequestClose = { [weak self] in self?.hidePanel() }
         // A Space change leaves the panel behind on the old Space: close it.
@@ -167,6 +171,10 @@ final class LaunchaController: NSObject, NSWindowDelegate {
 
     func open() {
         guard !isOpen else { return }
+        guard presentsWindow else {
+            model.open()
+            return
+        }
         let panel = self.panel ?? makePanel()
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         if let visible = screen?.visibleFrame {
