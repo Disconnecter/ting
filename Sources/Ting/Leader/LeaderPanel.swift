@@ -143,8 +143,18 @@ final class LeaderController: NSObject, NSWindowDelegate {
 
     // MARK: Events
 
+    /// Set while a menu tracks over the panel: no keys, and losing key status keeps it open.
+    var keysSuspended = false
+
+    /// The menu is gone: take keys again, or close if another window took focus meanwhile.
+    func resumeKeys() {
+        keysSuspended = false
+        guard machine.isOpen, presentsWindow, let panel else { return }
+        if let key = NSApp.keyWindow, key !== panel { close() } else { panel.makeKeyAndOrderFront(nil) }
+    }
+
     func handleKeyDown(_ event: NSEvent) {
-        guard machine.isOpen else { return }
+        guard machine.isOpen, !keysSuspended else { return }
         let plain = event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
         if plain, event.keyCode == 125 || event.keyCode == 126 {
             doubleTap.sequenceInput()
@@ -283,7 +293,7 @@ final class LeaderController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard machine.isOpen else { return }
+        guard machine.isOpen, !keysSuspended else { return }
         close()
     }
 }

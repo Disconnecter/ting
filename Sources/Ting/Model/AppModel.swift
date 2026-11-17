@@ -36,11 +36,13 @@ final class AppModel {
     @ObservationIgnored let store = ConfigStore()
     @ObservationIgnored private(set) lazy var microStore = MicroAppStore(configURL: store.url)
     @ObservationIgnored private let hotkeys = HotkeyService()
-    @ObservationIgnored private let leader = LeaderController()
+    @ObservationIgnored let leader = LeaderController()
     @ObservationIgnored private let runner: ActionRunner
     @ObservationIgnored private let toast = ToastController()
     @ObservationIgnored private let launchaModel: LaunchaModel
-    @ObservationIgnored private let launcha: LaunchaController
+    @ObservationIgnored let launcha: LaunchaController
+    /// True while the gear menu tracks: the launchers stay open but take no keys or hotkeys.
+    @ObservationIgnored private(set) var isMenuTracking = false
     /// The one open micro-app flow: approval, working state and result.
     @ObservationIgnored private let microFlow = MicroAppFlowController()
     /// The Accessibility window, and whether Ting may use Accessibility.
@@ -337,6 +339,7 @@ final class AppModel {
     }
 
     private func hotkeyPressed(_ slot: HotkeyService.Slot, at time: TimeInterval) {
+        guard !isMenuTracking else { return }
         switch slot {
         case .leader:
             // The leader switches from launcha back to selecta. A repeat of a held leader
@@ -351,9 +354,17 @@ final class AppModel {
         }
     }
 
-    func closeLaunchers() {
-        leader.close()
-        launcha.close()
+    func beginMenuTracking() {
+        isMenuTracking = true
+        leader.keysSuspended = true
+        launcha.keysSuspended = true
+    }
+
+    /// The menu ended. A launcher takes keys again unless a chosen item opened another window.
+    func endMenuTracking() {
+        isMenuTracking = false
+        leader.resumeKeys()
+        launcha.resumeKeys()
     }
 
     private func playSound() {

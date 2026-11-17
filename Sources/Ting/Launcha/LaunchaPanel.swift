@@ -214,8 +214,18 @@ final class LaunchaController: NSObject, NSWindowDelegate {
         Task { await model.activateSelection(reveal: reveal) }
     }
 
+    /// Set while a menu tracks over the panel: losing key status keeps it open.
+    var keysSuspended = false
+
+    /// The menu is gone: take keys again, or close if another window took focus meanwhile.
+    func resumeKeys() {
+        keysSuspended = false
+        guard isOpen, let panel else { return }
+        if let key = NSApp.keyWindow, key !== panel { close() } else { panel.makeKeyAndOrderFront(nil) }
+    }
+
     func windowDidResignKey(_ notification: Notification) {
-        guard isOpen else { return }
+        guard isOpen, !keysSuspended else { return }
         close()
     }
 }
