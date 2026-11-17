@@ -14,6 +14,15 @@ mkdir -p "$HOME" "$TMP/bin"
 printf '[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n' > "$GIT_CONFIG_GLOBAL"
 export STATE="$TMP/state" TING_FEED_URL=https://feed.invalid/appcast.xml TING_FEED_WAIT=0 TING_FEED_INTERVAL=0
 export REAL_GIT
+# Inherited Git locations or configuration must not lead the test into a real repository.
+unset $("$REAL_GIT" rev-parse --local-env-vars) GIT_CONFIG_SYSTEM
+# A sentinel landing checkout: an inherited LANDING must never be used.
+SENTINEL="$TMP/sentinel"
+"$REAL_GIT" init -q --bare "$SENTINEL.git"
+(cd "$TMP" && "$REAL_GIT" clone -q "$SENTINEL.git" sentinel 2>/dev/null && cd sentinel \
+  && "$REAL_GIT" commit -q --allow-empty -m sentinel && "$REAL_GIT" push -q origin main)
+SENTINEL_HEAD=$("$REAL_GIT" -C "$SENTINEL" rev-parse HEAD)
+export LANDING="$SENTINEL"
 
 # Mocks record their calls in $STATE/calls.log.
 cat > "$TMP/bin/git" <<'MOCK'
@@ -26,9 +35,10 @@ cat > "$TMP/bin/gh" <<'MOCK'
 set -euo pipefail
 echo "gh $*" >> "$STATE/calls.log"
 [[ ! -e "$STATE/gh_fail" ]] || { echo 'gh: network error' >&2; exit 1; }
-[[ "$1 $2 $3 $4 $5 $6 $7 $8 $9" == 'release list --repo bobuk-io/ting --limit 100 --json tagName,isDraft --jq' ]] \
+[[ $# -eq 5 && "$1 $2 $3 $4" == 'api --paginate repos/bobuk-io/ting/releases?per_page=100 --jq' ]] \
   || { echo "Unexpected gh call: $*" >&2; exit 1; }
-jq -r "${10}" "$STATE/releases.json"
+# releases.json holds the pages of the API; --paginate applies the filter to each page.
+jq -c '.[]' "$STATE/releases.json" | while IFS= read -r page; do jq -r "$5" <<<"$page"; done
 MOCK
 cat > "$TMP/bin/npm" <<'MOCK'
 #!/usr/bin/env bash
@@ -54,12 +64,13 @@ setup() {
   mkdir -p "$TMP/w" "$STATE"
   : > "$STATE/calls.log"
   if [[ -n "$1" ]]; then
-    jq -n --argjson draft "$1" '[{tagName:"v0.7.4",isDraft:$draft}]' > "$STATE/releases.json"
+    jq -n --argjson draft "$1" '[[{tag_name:"v0.7.4",draft:$draft}]]' > "$STATE/releases.json"
   else
-    echo '[]' > "$STATE/releases.json"
+    echo '[[]]' > "$STATE/releases.json"
   fi
   feed "$2" > "$STATE/live.xml"
   TING="$TMP/w/ting" LAND="$TMP/w/landing"
+  export LANDING="$LAND"
   mkdir -p "$TING/Scripts" "$TING/Sources/TingCore" "$TING/docs/releases"
   cp "$ROOT/Scripts/release_next.sh" "$TING/Scripts/"
   cat > "$TING/Scripts/release.sh" <<'STUB'
@@ -82,7 +93,7 @@ echo "publish.sh $*" >> "$STATE/calls.log"
 [[ "$(git rev-parse HEAD)" == "$(git ls-remote origin refs/heads/main | cut -f1)" ]] || { echo 'not pushed' >&2; exit 1; }
 cp dist/appcast.xml "$LANDING/public/apps/ting/appcast.xml"
 source version.env
-jq --arg tag "v$MARKETING_VERSION" '. + [{tagName:$tag,isDraft:false}]' "$STATE/releases.json" > "$STATE/releases.new"
+jq --arg tag "v$MARKETING_VERSION" '[[{tag_name:$tag,draft:false}]] + .' "$STATE/releases.json" > "$STATE/releases.new"
 mv "$STATE/releases.new" "$STATE/releases.json"
 STUB
   cat > "$TING/Scripts/update_homebrew.sh" <<'STUB'
@@ -106,7 +117,7 @@ STUB
   (cd "$TING" && echo change > feature.txt && "$REAL_GIT" add feature.txt && "$REAL_GIT" commit -qm feature)
 }
 notes() { echo "Notes of $1." > "$TING/docs/releases/v$1.md"; }
-run() { (cd "$TING" && APP_IDENTITY="${APP_IDENTITY-Developer ID Application: Test}" \
+run() { (cd "$TING" && LANDING="$LAND" APP_IDENTITY="${APP_IDENTITY-Developer ID Application: Test}" \
   NOTARY_PROFILE="${NOTARY_PROFILE-test}" bash Scripts/release_next.sh "$@" >"$STATE/out" 2>"$STATE/err"); }
 fail() { echo "FAIL: $*" >&2; echo '--- stdout' >&2; cat "$STATE/out" >&2; echo '--- stderr' >&2; cat "$STATE/err" >&2
   echo '--- calls' >&2; cat "$STATE/calls.log" >&2; exit 1; }
@@ -177,6 +188,22 @@ stopped 'Cannot read the GitHub releases'
 setup false 19; notes 0.7.5; touch "$STATE/curl_fail"; snapshot
 stopped 'Cannot read the live feed'
 
+# A draft or a published current release beyond the first page of the API is found.
+others() { jq -n '[range(100) | {tag_name: "v0.0.\(.)", draft: false}]'; }
+setup true 19; notes 0.7.5
+jq --argjson others "$(others)" '[$others] + .' "$STATE/releases.json" > "$STATE/r" && mv "$STATE/r" "$STATE/releases.json"
+snapshot
+stopped 'draft release v0.7.4'
+setup false 19; notes 0.7.5
+jq --argjson others "$(others)" '[$others] + .' "$STATE/releases.json" > "$STATE/r" && mv "$STATE/r" "$STATE/releases.json"
+run || fail 'run with the release on page 2 failed'
+grep -q 'mode new' "$STATE/out" || fail 'release on page 2 not found'
+version_is 0.7.5 20 || fail 'release on page 2: version not raised'
+
+setup false 19; notes 0.7.5
+jq '. + .' "$STATE/releases.json" > "$STATE/r" && mv "$STATE/r" "$STATE/releases.json"; snapshot
+stopped 'More than one GitHub release has the tag v0.7.4'
+
 # 2 and 5. A full new release, in order.
 setup false 19; notes 0.7.5
 run || fail 'good run failed'
@@ -224,6 +251,15 @@ in_order '^update_homebrew\.sh --publish$' '^npm run sync:github$' '^npm run bui
   || fail 'appcast not committed in landing'
 [[ "$(tail -1 "$STATE/out")" == 'RELEASE_DONE: Ting 0.7.4 (build 19)' ]] || fail 'tail last line'
 
+# The tail stops when the manifest does not list this archive or its digest differs.
+setup false 18; (cd "$TING" && bash Scripts/release.sh) && : > "$STATE/calls.log"
+echo other > "$TING/dist/other.txt"
+(cd "$TING/dist" && shasum -a 256 other.txt > SHA256SUMS.txt); snapshot
+stopped 'has no entry for Ting-0.7.4-universal.zip'
+(cd "$TING/dist" && shasum -a 256 Ting-0.7.4-universal.zip other.txt > SHA256SUMS.txt)
+echo corrupted >> "$TING/dist/Ting-0.7.4-universal.zip"
+stopped 'does not match dist/Ting-0.7.4-universal.zip'
+
 # The tail stops on a dirty ting tree, and a feed that never goes live fails the run.
 setup false 18; (cd "$TING" && bash Scripts/release.sh) && : > "$STATE/calls.log"
 echo x >> "$TING/docs/releases/v0.7.4.md"; snapshot
@@ -235,5 +271,9 @@ setup false 19; notes 0.7.5
 printf '%s\n' '#!/usr/bin/env bash' 'echo "npm $*" >> "$STATE/calls.log"' > "$TMP/bin/npm"
 if run; then fail 'accepted a feed that never went live'; fi
 grep -q 'still has no build 20' "$STATE/err" || fail 'feed timeout message'
+
+[[ "$("$REAL_GIT" -C "$SENTINEL" rev-parse HEAD)" == "$SENTINEL_HEAD" \
+  && "$("$REAL_GIT" -C "$SENTINEL.git" rev-parse main)" == "$SENTINEL_HEAD" \
+  && -z "$("$REAL_GIT" -C "$SENTINEL" status --porcelain)" ]] || fail 'the inherited LANDING checkout was touched'
 
 echo 'release_next tests passed.'

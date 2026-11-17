@@ -54,9 +54,12 @@ LANDING=$(cd "$LANDING" && pwd -P)
 
 # The GitHub release state of vV: empty (none), true (draft) or false (published).
 TAG="v${CURRENT_VERSION}"
-RELEASE_STATE=$(gh release list --repo "$REPOSITORY" --limit 100 --json tagName,isDraft \
-  --jq ".[] | select(.tagName == \"$TAG\") | .isDraft") \
+# All pages are read (drafts are listed only here, not by the tag endpoint); a failed page
+# fails the whole query, so an empty answer really means that there is no release vV.
+RELEASE_STATE=$(gh api --paginate "repos/$REPOSITORY/releases?per_page=100" \
+  --jq ".[] | select(.tag_name == \"$TAG\") | .draft") \
   || die "Cannot read the GitHub releases of $REPOSITORY."
+[[ "$RELEASE_STATE" != *$'\n'* ]] || die "More than one GitHub release has the tag $TAG."
 FEED=$(curl -fsSL --max-time 30 "$FEED_URL?v=$(date +%s)") || die "Cannot read the live feed $FEED_URL."
 grep -q 'sparkle:version>[0-9]*<' <<<"$FEED" || die "The live feed $FEED_URL has no build number."
 FEED_HAS_BUILD=false
@@ -112,7 +115,11 @@ if [[ "$MODE" == tail ]]; then
     [[ -f "$file" ]] || die "Missing $file of the published release $TAG."
   done
   grep -q "sparkle:version>${BUILD}<" dist/appcast.xml || die "dist/appcast.xml is not for build $BUILD."
-  (cd dist && shasum -a 256 -c SHA256SUMS.txt >/dev/null) || die "dist/SHA256SUMS.txt does not match the archive."
+  # The manifest must list this archive, and the archive must have that digest.
+  EXPECTED=$(sed -n -E "s/^([0-9a-f]{64})  Ting-${VERSION//./\\.}-universal\.zip$/\1/p" dist/SHA256SUMS.txt)
+  [[ -n "$EXPECTED" && "$EXPECTED" != *$'\n'* ]] || die "dist/SHA256SUMS.txt has no entry for $(basename "$ZIP")."
+  [[ "$(shasum -a 256 "$ZIP" | cut -d ' ' -f1)" == "$EXPECTED" ]] \
+    || die "dist/SHA256SUMS.txt does not match $ZIP."
 fi
 
 # The checks are done: from here on, files change.
