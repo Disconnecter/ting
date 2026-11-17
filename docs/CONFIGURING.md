@@ -53,7 +53,8 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `"key": "a"` inside the group with `"key": "t"`.
 - Each item has `key`, an optional `label` (shown in the menu) and exactly one
   action: `items` (a group), `app` (a bundle identifier), `url` (any URL,
-  including schemes such as `raycast://`) or `micro` (a micro-app id).
+  including schemes such as `raycast://`), `micro` (a micro-app id) or `open`
+  (a Ting window: `"launcha"` or `"clipboarda"`).
 - `key`: a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`. Keys
   are Latin even when the person types with another layout.
 - In one group a key is used once.
@@ -65,7 +66,14 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   default `Tink`; an unknown name plays `Tink`), `soundVolume` (0–1, default 0.5),
   `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true,
   "converter": true}`; `calculator` shows the value of a query such as `2*(3+4)` first in
-  launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`).
+  launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`),
+  `clipboarda` (`{"hotkey": null, "enabled": true, "fetchLinks": false, "maxItems": 200,
+  "excludedApps": [], "ignoredPrefixes": []}`; `enabled: false` turns clipboarda off: Ting never reads the clipboard,
+  the hotkey is free and the window does not open;
+  `fetchLinks` loads the title, icon or image of a copied link, `maxItems` is
+  20–1000, `excludedApps` lists bundle identifiers whose copies are never kept,
+  `ignoredPrefixes` lists case-sensitive starts of text that is never kept). The
+  clipboarda hotkey cannot be the leader or the launcha hotkey.
 
 ### Direct application hotkeys
 

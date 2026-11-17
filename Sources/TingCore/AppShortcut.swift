@@ -25,7 +25,7 @@ public struct AppShortcut: Equatable, Sendable, Codable, Identifiable {
 
 public enum AppShortcutRules {
     public enum Problem: Error, Equatable, Sendable, CustomStringConvertible {
-        case invalidKey, invalidTarget, leader, launcha
+        case invalidKey, invalidTarget, leader, launcha, clipboarda
 
         public var description: String {
             switch self {
@@ -33,6 +33,7 @@ public enum AppShortcutRules {
             case .invalidTarget: "Choose an application with an absolute .app path."
             case .leader: "This key is reserved for the leader. Choose another shortcut."
             case .launcha: "This key is reserved for launcha. Choose another shortcut."
+            case .clipboarda: "This key is reserved for clipboarda. Choose another shortcut."
             }
         }
     }
@@ -41,6 +42,7 @@ public enum AppShortcutRules {
         if !hotkey.isValid { return .invalidKey }
         if hotkey == config.leader { return .leader }
         if hotkey == config.launcha.hotkey { return .launcha }
+        if hotkey == config.clipboarda.activeHotkey { return .clipboarda }
         return nil
     }
 

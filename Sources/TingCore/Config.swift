@@ -1,5 +1,10 @@
 import Foundation
 
+/// A Ting window a binding can open.
+public enum TingPanel: String, Equatable, Sendable, Codable, CaseIterable {
+    case launcha, clipboarda
+}
+
 /// One binding: a key and what it does.
 public struct Item: Equatable, Sendable, Codable {
     public enum Action: Equatable, Sendable {
@@ -10,6 +15,8 @@ public struct Item: Equatable, Sendable, Codable {
         case url(String)
         /// A micro-app id, e.g. "format-json". The micro-app does not have to be loaded.
         case micro(String)
+        /// A Ting window: launcha or clipboarda.
+        case open(TingPanel)
     }
 
     /// A `SequenceKey` name.
@@ -27,6 +34,7 @@ public struct Item: Equatable, Sendable, Codable {
     public static func app(_ key: String, _ label: String, _ bundleID: String) -> Item { Item(key: key, label: label, action: .app(bundleID)) }
     public static func url(_ key: String, _ label: String, _ url: String) -> Item { Item(key: key, label: label, action: .url(url)) }
     public static func micro(_ key: String, _ label: String, _ id: String) -> Item { Item(key: key, label: label, action: .micro(id)) }
+    public static func open(_ key: String, _ label: String, _ panel: TingPanel) -> Item { Item(key: key, label: label, action: .open(panel)) }
 
     public var isGroup: Bool {
         if case .group = action { return true }
@@ -39,8 +47,8 @@ public struct Item: Equatable, Sendable, Codable {
     }
 
     // JSON: {"key": "a", "label": "Apps", "items": [...]} | {..., "app": "com.x"} | {..., "url": "https://..."}
-    // | {..., "micro": "format-json"}.
-    // Decoding: exactly one of "items"/"app"/"url"/"micro" must be present; "key" is normalized with
+    // | {..., "micro": "format-json"} | {..., "open": "clipboarda"}.
+    // Decoding: exactly one of "items"/"app"/"url"/"micro"/"open" must be present; "key" is normalized with
     // SequenceKey.normalize ("A" → "a"); an invalid key or a wrong number of action fields throws
     // DecodingError.dataCorrupted. "label" is optional and defaults to "".
     // Unknown fields are ignored. Encoding writes "key", "label" and exactly one action field.
@@ -55,12 +63,14 @@ public struct Item: Equatable, Sendable, Codable {
         let app = try container.decodeIfPresent(String.self, forKey: .app)
         let url = try container.decodeIfPresent(String.self, forKey: .url)
         let micro = try container.decodeIfPresent(String.self, forKey: .micro)
-        let actions: [Action] = [items.map(Action.group), app.map(Action.app), url.map(Action.url), micro.map(Action.micro)]
+        let open = try container.decodeIfPresent(TingPanel.self, forKey: .open)
+        let actions: [Action] = [items.map(Action.group), app.map(Action.app), url.map(Action.url), micro.map(Action.micro),
+                                 open.map(Action.open)]
             .compactMap { $0 }
         guard actions.count == 1, let action = actions.first else {
             throw DecodingError.dataCorrupted(DecodingError.Context(
                 codingPath: container.codingPath,
-                debugDescription: "Item \"\(rawKey)\" needs exactly one of \"items\", \"app\", \"url\" or \"micro\"."))
+                debugDescription: "Item \"\(rawKey)\" needs exactly one of \"items\", \"app\", \"url\", \"micro\" or \"open\"."))
         }
         self.key = key
         self.label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
@@ -76,11 +86,12 @@ public struct Item: Equatable, Sendable, Codable {
         case .app(let bundleID): try container.encode(bundleID, forKey: .app)
         case .url(let url): try container.encode(url, forKey: .url)
         case .micro(let id): try container.encode(id, forKey: .micro)
+        case .open(let panel): try container.encode(panel, forKey: .open)
         }
     }
 
     private enum ItemCodingKeys: String, CodingKey {
-        case key, label, items, app, url, micro
+        case key, label, items, app, url, micro, open
     }
 }
 
@@ -146,7 +157,8 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" (Hotkey string or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
-/// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "appHotkeys", "items".
+/// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipboarda" (`ClipboardaSettings`),
+/// "appHotkeys", "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
     public static let currentVersion = 1
@@ -170,6 +182,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var soundVolume: Double = 0.5
     /// Launcha settings. Older files without "launcha" get the defaults.
     public var launcha: LaunchaSettings = LaunchaSettings()
+    /// clipboarda settings. Older files without "clipboarda" get the defaults.
+    public var clipboarda: ClipboardaSettings = ClipboardaSettings()
     /// Direct global shortcuts assigned from launcha; older files default to none.
     public var appHotkeys: [AppShortcut] = []
     public var items: [Item] = []
@@ -194,7 +208,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, appHotkeys, items
+        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipboarda, appHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -214,6 +228,7 @@ public struct Config: Equatable, Sendable, Codable {
         let volume = try container.decodeIfPresent(Double.self, forKey: .soundVolume) ?? defaults.soundVolume
         soundVolume = min(max(volume, 0), 1)
         launcha = try container.decodeIfPresent(LaunchaSettings.self, forKey: .launcha) ?? defaults.launcha
+        clipboarda = try container.decodeIfPresent(ClipboardaSettings.self, forKey: .clipboarda) ?? defaults.clipboarda
         appHotkeys = try container.decodeIfPresent([AppShortcut].self, forKey: .appHotkeys) ?? defaults.appHotkeys
         items = try container.decodeIfPresent([Item].self, forKey: .items) ?? defaults.items
     }
@@ -236,6 +251,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(sound, forKey: .sound)
         try container.encode(soundVolume, forKey: .soundVolume)
         try container.encode(launcha, forKey: .launcha)
+        try container.encode(clipboarda, forKey: .clipboarda)
         try container.encode(appHotkeys, forKey: .appHotkeys)
         try container.encode(items, forKey: .items)
     }
@@ -323,6 +339,10 @@ public struct ConfigIssue: Equatable, Sendable {
         case invalidLaunchaHotkey
         /// The launcha hotkey is the same as the leader.
         case launchaHotkeyConflict
+        /// The clipboarda hotkey is not `isValid`.
+        case invalidClipboardaHotkey
+        /// The clipboarda hotkey is the same as the leader or the launcha hotkey.
+        case clipboardaHotkeyConflict
         /// Invalid, reserved or duplicate application hotkey assignment.
         case appHotkey
     }
@@ -340,7 +360,7 @@ public struct ConfigIssue: Equatable, Sendable {
 }
 
 public enum ConfigValidator {
-    /// Leader issues first, then launcha hotkey issues, then all item issues depth-first in item order. For a duplicate key, report one issue per duplicate
+    /// Leader issues first, then launcha and clipboarda hotkey issues, then app hotkey issues, then all item issues depth-first in item order. For a duplicate key, report one issue per duplicate
     /// after the first, with the duplicate's sequence.
     public static func validate(_ config: Config) -> [ConfigIssue] {
         var issues: [ConfigIssue] = []
@@ -359,6 +379,18 @@ public enum ConfigValidator {
             } else if hotkey == config.leader {
                 issues.append(ConfigIssue(kind: .launchaHotkeyConflict, sequence: [],
                                           message: "\(hotkey.display) is already the leader. Choose another key for launcha."))
+            }
+        }
+        if let hotkey = config.clipboarda.activeHotkey {
+            if !hotkey.isValid {
+                issues.append(ConfigIssue(kind: .invalidClipboardaHotkey, sequence: [],
+                                          message: "\(hotkey.display) cannot open clipboarda. Choose a key that is not a modifier."))
+            } else if hotkey == config.leader {
+                issues.append(ConfigIssue(kind: .clipboardaHotkeyConflict, sequence: [],
+                                          message: "\(hotkey.display) is already the leader. Choose another key for clipboarda."))
+            } else if hotkey == config.launcha.hotkey {
+                issues.append(ConfigIssue(kind: .clipboardaHotkeyConflict, sequence: [],
+                                          message: "\(hotkey.display) already opens launcha. Choose another key for clipboarda."))
             }
         }
         var appIDs: Set<String> = []
@@ -404,6 +436,8 @@ public enum ConfigValidator {
                 } else if URL(string: url)?.scheme?.isEmpty ?? true {
                     issues.append(ConfigIssue(kind: .invalidURL, sequence: sequence, message: "\(name) has an invalid URL: \(url)"))
                 }
+            case .open:
+                break
             case .micro(let id):
                 // An id that is not loaded is fine: the binding shows as not working until the file appears.
                 if id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

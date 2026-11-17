@@ -13,8 +13,12 @@ The terms used for Ting in code, documents and the interface.
   `2*(3+4)`, shows its value first; `Return` copies it (the launcha calculator).
   So does a conversion, such as `5 yd to m` or `now + 2 days` (the launcha
   converter).
+- **clipboarda:** the clipboard history panel: search on top, the items of this
+  session on the left, a preview with details on the right. `Return` pastes the
+  item into the app in front, `⌘Return` copies it. The history lives in memory
+  only and is gone when Ting quits.
 - **binding:** an item of `config.json` with a key and exactly one of `items`
-  (a group), `app`, `url` or `micro`.
+  (a group), `app`, `url`, `micro` or `open` (`launcha` or `clipboarda`).
 
 ## Micro-apps
 

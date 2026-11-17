@@ -44,7 +44,7 @@ private func app(to targets: [MicroApp.OutputTarget], style: MicroApp.OutputStyl
     }
 
     @Test func refusalNamesMicro() {
-        #expect(throws: ConfigError.invalidFormat("items[0]: Item \"a\" needs exactly one of \"items\", \"app\", \"url\" or \"micro\".")) {
+        #expect(throws: ConfigError.invalidFormat("items[0]: Item \"a\" needs exactly one of \"items\", \"app\", \"url\", \"micro\" or \"open\".")) {
             try decode(#"{"items":[{"key":"a","micro":"x","app":"com.x"}]}"#)
         }
     }
