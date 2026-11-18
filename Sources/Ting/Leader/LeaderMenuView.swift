@@ -3,6 +3,7 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
 
 struct LeaderMenuView: View {
     let session: LeaderSession
@@ -56,11 +57,8 @@ private struct SoundList: View {
             .padding(.horizontal, -8)
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 10)
             HStack(spacing: 10) {
-                MonoLabel("↑↓ select", size: 9, weight: .regular, tracking: 0.5)
-                MonoLabel("↩ open", size: 9, weight: .regular, tracking: 0.5)
-                MonoLabel("← back", size: 9, weight: .regular, tracking: 0.5)
-                MonoLabel("esc close", size: 9, weight: .regular, tracking: 0.5)
-                Spacer()
+                ShortcutFooter([.init("↑↓", "select"), .init("↩", "open"),
+                                .init("←", "back"), .init("esc", "close")], palette: TingPickerStyle.palette)
                 LauncherMenuButton().frame(width: 18, height: 18)
             }
             .foregroundStyle(Color.tingMuted)
@@ -71,12 +69,7 @@ private struct SoundList: View {
         .padding(.top, session.showPanelHeader ? 20 : 4)
         .padding(.bottom, 20)
         .frame(width: 340)
-        .background(Color.soundPanel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(alignment: .top) {
-            Rectangle().fill(Color.tingAmber).frame(height: 3)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
+        .pickerPanel(palette: TingPickerStyle.palette)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ting menu")
     }
@@ -90,7 +83,8 @@ private struct Row: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            PickerRow(selected: selected, palette: TingPickerStyle.palette) {
+            HStack(spacing: PickerMetrics.columnSpacing) {
                 KeyCap(key: item.key, style: .sound)
                 ItemIcon(item: item, size: 16)
                 Text(title)
@@ -111,12 +105,10 @@ private struct Row: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.tingAmber)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.tingAmber.opacity(0.18) : .clear))
-            .contentShape(Rectangle())
+            }
+
         }
-        .buttonStyle(HoverRowStyle(cornerRadius: 6))
+        .buttonStyle(.plain)
         .accessibilityLabel("\(SequenceKey.spoken(item.key)), \(title)\(item.isGroup ? ", group" : "")\(isBrokenMicro ? ", not working" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

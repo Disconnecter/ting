@@ -10,8 +10,14 @@ protocol LaunchaOpening: AnyObject {
     func openApp(at url: URL, name: String) async -> LaunchOutcome
     /// Opens a file or folder with its usual app.
     func openFile(_ url: URL, name: String) async -> LaunchOutcome
+    /// Sends a saved-site deep link explicitly to Lowkey, not to an arbitrary URL handler.
+    func openLowkeySite(_ url: URL, name: String) async -> LaunchOutcome
     /// Shows the item in Finder. Never counts as a launch.
     func reveal(_ url: URL) -> LaunchOutcome
+}
+
+extension LaunchaOpening {
+    func openLowkeySite(_ url: URL, name: String) async -> LaunchOutcome { .failed }
 }
 
 @MainActor
@@ -19,6 +25,17 @@ final class ActionRunner: LaunchaOpening {
     /// Reports a short, user-facing error. Never throws or crashes.
     var onError: ((String) -> Void)?
     private var appURLs: [String: URL] = [:]
+    private let locateLowkey: () -> URL?
+    private let launchLowkey: (URL, URL) async throws -> Void
+
+    init(locateLowkey: (() -> URL?)? = nil, launchLowkey: ((URL, URL) async throws -> Void)? = nil) {
+        self.locateLowkey = locateLowkey ?? { LowkeyIntegration.applicationURL() }
+        self.launchLowkey = launchLowkey ?? { url, app in
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            _ = try await NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration)
+        }
+    }
 
     func prepare(_ items: [Item]) {
         appURLs.removeAll()
@@ -61,6 +78,9 @@ final class ActionRunner: LaunchaOpening {
             appURLs[bundleID] = url
             return await openApp(at: url, name: name)
         case .url(let text):
+            if let url = URL(string: text), url.scheme?.lowercased() == "lowkey" {
+                return await openLowkeySite(url, name: item.label)
+            }
             return openURL(text, label: item.label)
         }
     }
@@ -88,6 +108,20 @@ final class ActionRunner: LaunchaOpening {
             return .opened
         } catch {
             onError?("\(name): \(error.localizedDescription)")
+            return .failed
+        }
+    }
+
+    func openLowkeySite(_ url: URL, name: String) async -> LaunchOutcome {
+        guard url.scheme?.lowercased() == "lowkey", let app = locateLowkey() else {
+            onError?("lowkey is not installed. Install it to open this site.")
+            return .failed
+        }
+        do {
+            try await launchLowkey(url, app)
+            return .opened
+        } catch {
+            onError?("lowkey: cannot open \(name.isEmpty ? "the site" : name).")
             return .failed
         }
     }

@@ -3,6 +3,7 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
 
 struct LaunchaView: View {
     let model: LaunchaModel
@@ -58,11 +59,8 @@ private struct LaunchaCard: View {
             notices
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 10)
             HStack(spacing: 14) {
-                MonoLabel("↩ open", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("⌘↩ reveal", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("⌘⇧K shortcut", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("esc pull up", size: 9, weight: .regular, tracking: 1)
-                Spacer()
+                ShortcutFooter([.init("↩", "open"), .init("⌘↩", "reveal"),
+                                .init("⌘⇧K", "shortcut"), .init("esc", "pull up")], palette: TingPickerStyle.palette)
                 LauncherMenuButton().frame(width: 18, height: 18)
             }
             .foregroundStyle(Color.tingMuted)
@@ -74,12 +72,7 @@ private struct LaunchaCard: View {
         .padding(.top, chrome.showHeader ? 20 : 18)
         .padding(.bottom, 16)
         .frame(width: 460)
-        .background(Color.soundPanel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(alignment: .top) {
-            Rectangle().fill(Color.tingAmber).frame(height: 3)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
+        .pickerPanel(palette: TingPickerStyle.palette)
         .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("launcha")
@@ -200,7 +193,7 @@ private struct ResultList: View {
     let chrome: LaunchaChrome
     let onActivate: (_ reveal: Bool) -> Void
 
-    static let rowHeight: CGFloat = 40
+    static let rowHeight = PickerMetrics.rowHeight
 
     var body: some View {
         let rows = model.rows
@@ -246,9 +239,12 @@ private struct ResultRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            PickerRow(selected: selected, palette: TingPickerStyle.palette) {
+            HStack(spacing: PickerMetrics.columnSpacing) {
                 if case .clipbawd = row.kind {
                     Image(systemName: "list.clipboard").font(.system(size: 22)).frame(width: 32, height: 32)
+                } else if row.isLowkeySite {
+                    Image(systemName: "globe").font(.system(size: 22)).frame(width: 32, height: 32)
                 } else if row.isMicro {
                     MicroRowIcon(isWorking: row.isWorking)
                 } else if row.isCalculation {
@@ -275,18 +271,16 @@ private struct ResultRow: View {
                         .accessibilityLabel("Global shortcut \(shortcut.display)")
                 }
                 if selected {
-                    Image(systemName: row.isCalculation ? "doc.on.doc" : row.isApp || row.isMicro ? "arrow.right" : "arrow.up.right")
+                    Image(systemName: row.isCalculation ? "doc.on.doc" : row.isApp || row.isMicro || row.isLowkeySite ? "arrow.right" : "arrow.up.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.tingAmber)
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 8)
-            .frame(height: ResultList.rowHeight)
-            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.tingAmber.opacity(0.18) : .clear))
-            .contentShape(Rectangle())
+            }
+
         }
-        .buttonStyle(HoverRowStyle(cornerRadius: 6))
+        .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -309,6 +303,7 @@ private struct ResultRow: View {
     private var help: String {
         if row.isMicro { return row.detail.isEmpty ? row.name : "\(row.name): \(row.detail)" }
         if row.isCalculation { return row.name }
+        if row.isLowkeySite { return "\(row.name): \(row.detail)" }
         if case .clipbawd = row.kind { return "Open Clipbawd clipboard history" }
         return row.isApp ? row.name : row.url.path
     }
@@ -321,6 +316,7 @@ private struct ResultRow: View {
             isWorking ? "\(row.name), micro-app" : "\(row.name), micro-app, not working. \(row.detail)"
         case .calculation: "Result \(row.name)"
         case .clipbawd: "Clipbawd, clipboard history"
+        case .lowkeySite: "\(row.name), lowkey site. \(row.detail)"
         }
     }
 
@@ -331,6 +327,7 @@ private struct ResultRow: View {
         case .micro(_, _, let isWorking): isWorking ? "Starts the micro-app" : "Shows the error of the file"
         case .calculation: "Copies the result"
         case .clipbawd: "Opens clipboard history"
+        case .lowkeySite: "Opens the site in its lowkey profile"
         }
     }
 }

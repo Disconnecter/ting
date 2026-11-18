@@ -43,6 +43,7 @@ final class AppModel {
     @ObservationIgnored private let toast = ToastController()
     @ObservationIgnored private let launchaModel: LaunchaModel
     @ObservationIgnored let launcha: LaunchaController
+    @ObservationIgnored let lowkey: LowkeyIntegration
     /// The clipboard history of this session.
     @ObservationIgnored let clipbawd: ClipbawdHistory
     @ObservationIgnored let clipbawdPanel: ClipbawdController
@@ -71,10 +72,13 @@ final class AppModel {
         leader = LeaderController(presentsWindow: presentsWindows)
         let runner = ActionRunner()
         self.runner = runner
+        let lowkey = presentsWindows ? LowkeyIntegration() : LowkeyIntegration(locate: { nil })
+        self.lowkey = lowkey
         let environment = store.map { ["TING_CONFIG": $0.url.path] } ?? ProcessInfo.processInfo.environment
         launchaModel = LaunchaModel(opener: runner,
             historyStore: LaunchaHistoryStore(url: LaunchaHistoryStore.defaultURL(environment: environment)),
-            consent: LaunchaConsentStore(url: LaunchaConsentStore.defaultURL(environment: environment)))
+            consent: LaunchaConsentStore(url: LaunchaConsentStore.defaultURL(environment: environment)),
+            lowkeySites: { lowkey.refresh(); return lowkey.sites })
         launcha = LaunchaController(model: launchaModel, presentsWindow: presentsWindows)
         launcha.onBeginShortcutRecording = { [weak self] owner in self?.beginHotkeyRecording(owner) }
         launcha.onEndShortcutRecording = { [weak self] owner in self?.endHotkeyRecording(owner) }

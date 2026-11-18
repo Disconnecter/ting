@@ -58,6 +58,21 @@ struct BindingsSettings: View {
                     Button("URL", action: addURL)
                     Button("Clipbawd") { add(.open("", "Clipboard history", .clipbawd)) }
                     Button("launcha") { add(.open("", "Search", .launcha)) }
+                    if model.lowkey.isInstalled {
+                        Menu("lowkey") {
+                            if let problem = model.lowkey.problem {
+                                Text(problem)
+                            } else if model.lowkey.sites.isEmpty {
+                                Text("No saved sites in lowkey")
+                            }
+                            ForEach(model.lowkey.sites) { site in
+                                Menu(site.name == site.alias ? site.name : "\(site.name) (\(site.alias))") {
+                                    Button("Open") { add(.url("", site.name, site.url(.open).absoluteString)) }
+                                    Button("Toggle") { add(.url("", "Toggle \(site.name)", site.url(.toggle).absoluteString)) }
+                                }
+                            }
+                        }
+                    }
                     Menu("Micro-app") {
                         let choices = model.microCatalog.bindingChoices()
                         if choices.isEmpty {
@@ -101,6 +116,13 @@ struct BindingsSettings: View {
             .padding(8)
         }
         .frame(width: 820, height: 520)
+        .task {
+            // Also pick up changes made in Lowkey while Settings stays open.
+            repeat {
+                model.lowkey.refresh()
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            } while !Task.isCancelled
+        }
         .sheet(isPresented: Binding(get: { newBinding != nil },
                                     set: { if !$0 { newBinding = nil } })) {
             if let item = newBinding {

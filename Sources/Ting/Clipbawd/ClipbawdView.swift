@@ -3,6 +3,7 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
 
 struct ClipbawdView: View {
     let state: ClipbawdState
@@ -46,11 +47,8 @@ private struct ClipbawdCard: View {
             content.padding(.top, 12)
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 12)
             HStack(spacing: 14) {
-                MonoLabel("↩ paste", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("⌘↩ copy", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("⇧⌘⌫ remove", size: 9, weight: .regular, tracking: 1)
-                MonoLabel("esc close", size: 9, weight: .regular, tracking: 1)
-                Spacer()
+                ShortcutFooter([.init("↩", "paste"), .init("⌘↩", "copy"),
+                                .init("⇧⌘⌫", "remove"), .init("esc", "close")], palette: TingPickerStyle.palette)
                 MonoLabel("this session only", size: 9, weight: .regular, tracking: 1)
             }
             .foregroundStyle(Color.tingMuted)
@@ -61,10 +59,7 @@ private struct ClipbawdCard: View {
         .padding(.top, state.showHeader ? 20 : 18)
         .padding(.bottom, 16)
         .frame(width: ClipbawdPanel.width - 40)
-        .background(Color.soundPanel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(alignment: .top) { Rectangle().fill(Color.tingAmber).frame(height: 3) }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
+        .pickerPanel(palette: TingPickerStyle.palette)
         .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Clipbawd")
@@ -127,7 +122,7 @@ private struct ClipList: View {
     let onSelect: (Int) -> Void
     let onChoose: (Int) -> Void
 
-    static let rowHeight: CGFloat = 40
+    static let rowHeight = PickerMetrics.rowHeight
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -161,7 +156,8 @@ private struct ClipRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            PickerRow(selected: selected, palette: TingPickerStyle.palette) {
+            HStack(spacing: PickerMetrics.columnSpacing) {
                 ClipIcon(entry: entry, images: images, size: 24)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.title.isEmpty ? " " : entry.title)
@@ -179,12 +175,10 @@ private struct ClipRow: View {
                         .foregroundStyle(Color.tingAmber)
                 }
             }
-            .padding(.horizontal, 8)
-            .frame(height: ClipList.rowHeight)
-            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.tingAmber.opacity(0.18) : .clear))
-            .contentShape(Rectangle())
+            }
+
         }
-        .buttonStyle(HoverRowStyle(cornerRadius: 6))
+        .buttonStyle(.plain)
         .accessibilityLabel("\(ClipFormat.kindName(entry.content)): \(entry.title)")
         .accessibilityValue(ClipFormat.subtitle(entry))
         .accessibilityAddTraits(selected ? .isSelected : [])

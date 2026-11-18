@@ -5,6 +5,7 @@
 import Foundation
 import Observation
 import TingCore
+import BobukUI
 
 /// One line in the launcha list.
 struct LaunchaRow: Identifiable, Equatable {
@@ -13,6 +14,7 @@ struct LaunchaRow: Identifiable, Equatable {
         case app(candidateID: String)
         case file
         case clipbawd
+        case lowkeySite(candidateID: String)
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
         case micro(candidateID: String, start: LaunchaMicroStart, isWorking: Bool)
         /// The value of the query as a calculation or a conversion. Return copies it; the row
@@ -38,6 +40,11 @@ struct LaunchaRow: Identifiable, Equatable {
 
     var isMicro: Bool {
         if case .micro = kind { return true }
+        return false
+    }
+
+    var isLowkeySite: Bool {
+        if case .lowkeySite = kind { return true }
         return false
     }
 
@@ -123,6 +130,8 @@ final class LaunchaModel {
     @ObservationIgnored private var apps: [IndexedLaunchaApp] = []
     @ObservationIgnored private var microApps: [LaunchaMicroCandidate] = []
     @ObservationIgnored private var microFolder: URL?
+    @ObservationIgnored private var lowkeySites: [LowkeySite] = []
+    @ObservationIgnored private let loadLowkeySites: () -> [LowkeySite]
     @ObservationIgnored private var history = LaunchHistory()
     @ObservationIgnored private var spotlightQuery: String?
     @ObservationIgnored private var scanSerial = 0
@@ -134,12 +143,14 @@ final class LaunchaModel {
     init(opener: LaunchaOpening, historyStore: LaunchaHistoryStore, consent: LaunchaConsentStore,
          home: URL = FileManager.default.homeDirectoryForCurrentUser,
          refreshInterval: Duration = .seconds(15),
+         lowkeySites: @escaping () -> [LowkeySite] = { [] },
          makeServices: ServiceFactory? = nil) {
         self.opener = opener
         self.historyStore = historyStore
         self.consent = consent
         self.home = home
         self.refreshInterval = refreshInterval
+        self.loadLowkeySites = lowkeySites
         let factory = makeServices ?? { policy in
             Services(index: LaunchaAppIndex(home: home, protectedFolders: policy),
                      spotlight: LaunchaSpotlight(home: home, protectedFolders: policy))
@@ -209,7 +220,7 @@ final class LaunchaModel {
 
     func moveSelection(by delta: Int) {
         guard !rows.isEmpty else { return }
-        selection = min(max(selection + delta, 0), rows.count - 1)
+        selection = PickerSelection.move(selection, by: delta, count: rows.count) ?? 0
     }
 
     func select(_ id: LaunchaRow.ID) {
@@ -232,6 +243,14 @@ final class LaunchaModel {
             if !reveal { onOpenClipbawd?() }
             return nil
         }
+        // A deep link is not a filesystem path. Command-Return never reveals it in Finder.
+        if case .lowkeySite(let candidateID) = row.kind {
+            guard !reveal else { return nil }
+            onWillOpen?()
+            let outcome = await opener.openLowkeySite(row.url, name: row.name)
+            await record(outcome, id: candidateID)
+            return outcome
+        }
         if reveal { return opener.reveal(row.url) }
         if case .micro(let candidateID, let start, let isWorking) = row.kind {
             // The same flow as a binding: approval, parameters, result. A broken file shows its own errors.
@@ -248,7 +267,7 @@ final class LaunchaModel {
             return outcome
         case .file:
             return await opener.openFile(row.url, name: row.name)
-        case .micro, .calculation, .clipbawd:
+        case .micro, .calculation, .clipbawd, .lowkeySite:
             return nil
         }
     }
@@ -361,9 +380,10 @@ final class LaunchaModel {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let byID = Dictionary(apps.map { ($0.candidate.id, $0) }, uniquingKeysWith: { first, _ in first })
         let microByID = Dictionary(microApps.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let lowkeyByID = Dictionary(lowkeySites.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let folder = microFolder ?? home
         let builtins = clipbawdEnabled ? [LaunchaCandidate(id: "ting:clipbawd", name: "Clipbawd", target: .url("ting:clipbawd"))] : []
-        let candidates = builtins + microApps.map(\.candidate) + apps.map(\.candidate)
+        let candidates = builtins + microApps.map(\.candidate) + lowkeySites.map(\.candidate) + apps.map(\.candidate)
         let matches = LaunchaSearch.results(for: trimmed, in: candidates, history: history, now: Date())
         let appRows = matches.compactMap { match -> LaunchaRow? in
             if match.candidate.id == "ting:clipbawd" {
@@ -375,6 +395,10 @@ final class LaunchaModel {
                                   kind: .micro(candidateID: micro.id, start: micro.start, isWorking: micro.isWorking),
                                   name: match.candidate.name, url: folder.appendingPathComponent(micro.file),
                                   detail: micro.problem.map { "Not working: \($0)" } ?? micro.description)
+            }
+            if let site = lowkeyByID[match.candidate.id] {
+                return LaunchaRow(id: site.id, kind: .lowkeySite(candidateID: site.id), name: site.name,
+                                  url: site.url(), detail: "lowkey · \(site.alias) · \(site.startURL.host ?? "")")
             }
             guard let app = byID[match.candidate.id] else { return nil }
             return LaunchaRow(id: match.candidate.id, kind: .app(candidateID: match.candidate.id),
@@ -423,6 +447,8 @@ final class LaunchaModel {
     }
 
     private func startScan(onOpen: Bool) {
+        lowkeySites = loadLowkeySites()
+        if isOpen { recompute(keepSelection: true) }
         scanSerial += 1
         let serial = scanSerial
         let index = services.index

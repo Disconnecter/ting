@@ -19,11 +19,14 @@ public struct LaunchaCandidate: Hashable, Sendable, Identifiable {
     /// Name shown in the list and used for matching.
     public var name: String
     public var target: Target
+    /// Alternative names used for matching, without changing the displayed name or history id.
+    public var searchNames: [String]
 
-    public init(id: String, name: String, target: Target) {
+    public init(id: String, name: String, target: Target, searchNames: [String] = []) {
         self.id = id
         self.name = name
         self.target = target
+        self.searchNames = searchNames
     }
 
     /// App candidate. Identity is "app:" + the bundle identifier in lower case
@@ -441,7 +444,8 @@ public enum LaunchaSearch {
         var seen: Set<String> = []
         var matches: [LaunchaMatch] = []
         for candidate in candidates where seen.insert(candidate.id).inserted {
-            let quality = listAll ? nil : NameMatcher.match(query, name: candidate.name)
+            let quality = listAll ? nil : ([candidate.name] + candidate.searchNames)
+                .compactMap { NameMatcher.match(query, name: $0) }.min()
             guard listAll || quality != nil else { continue }
             matches.append(LaunchaMatch(candidate: candidate, quality: quality,
                                         recentCount: history.recentCount(id: candidate.id, now: now),

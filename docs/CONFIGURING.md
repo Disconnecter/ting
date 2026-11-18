@@ -76,13 +76,31 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   Clipbawd hotkey cannot be the leader or the launcha hotkey. Clipbawd is also searchable by name in launcha while enabled.
 - Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 
+### lowkey sites
+
+When lowkey is installed, Settings › Bindings › + › lowkey lists the saved sites
+from `~/.config/lowkey/config.json`. Choose **Open** to show the site's existing
+window (or create it), or **Toggle** to hide/show it without losing its profile.
+These are regular URL bindings; there is no new config action:
+
+```json
+{ "key": "w", "label": "Work", "url": "lowkey://work/open" }
+```
+
+Use `lowkey://work/toggle` for toggle, replacing `work` with the actual saved-site
+alias. Never invent aliases or change lowkey's settings just to create a Ting
+binding. Launcha also lists saved sites, independently of bindings, by title,
+alias and host; Return opens the site in its lowkey profile. Removed sites are
+removed from search on refresh. Old bindings retain their alias and can be edited
+or deleted normally. Ting never reads lowkey's cookies or website-data stores.
+
 ### Direct application hotkeys
 
 `appHotkeys` is an optional list, empty by default. In launcha, select an app
 and press Command-Shift-K, or open its context menu and choose **Set Global
 Shortcut…**. Press the shortcut, then Return or Save. Record Again captures
 another key, Remove Global Shortcut clears the assignment, and Esc cancels.
-Files, calculations and micro-apps have no direct application shortcut editor.
+Files, calculations, lowkey sites and micro-apps have no direct application shortcut editor.
 
 ```json
 "appHotkeys": [

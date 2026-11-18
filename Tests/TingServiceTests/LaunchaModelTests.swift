@@ -95,7 +95,7 @@ final class LaunchaModelTests: XCTestCase {
         let historyURL = root.appendingPathComponent("history.json")
         let consentURL = root.appendingPathComponent("consent.json")
         let model = LaunchaModel(opener: opener, historyStore: LaunchaHistoryStore(url: historyURL),
-                                 consent: LaunchaConsentStore(url: consentURL), home: home) { [weak self] policy in
+                                 consent: LaunchaConsentStore(url: consentURL), home: home, makeServices: { [weak self] policy in
             self?.policies.append(policy)
             let desktop = home.appendingPathComponent("Desktop")
             return LaunchaModel.Services(
@@ -105,7 +105,7 @@ final class LaunchaModelTests: XCTestCase {
                     if spotlightDelay > .zero { try? await Task.sleep(for: spotlightDelay) }
                     return files
                 })
-        }
+        })
         return Fixture(model: model, opener: opener, calls: calls, history: historyURL, consent: consentURL)
     }
 

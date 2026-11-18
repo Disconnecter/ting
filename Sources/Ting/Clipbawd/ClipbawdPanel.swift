@@ -3,6 +3,7 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
 
 final class ClipbawdPanel: NSPanel {
     static let width: CGFloat = 800
@@ -118,7 +119,9 @@ final class ClipbawdState {
         let results = results
         guard !results.isEmpty else { return }
         let current = results.firstIndex { $0.id == selected?.id } ?? 0
-        selectedID = results[min(max(current + delta, 0), results.count - 1)].id
+        if let next = PickerSelection.move(current, by: delta, count: results.count) {
+            selectedID = results[next].id
+        }
     }
 
     /// Removes the selected item and selects the one after it.

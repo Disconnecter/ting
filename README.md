@@ -52,6 +52,8 @@ On first launch, choose a non-modifier key to use as your leader. Ting has no de
 - **Fast sequences:** type a complete sequence quickly and selecta opens the destination without showing intermediate menus. Change the delay in Settings.
 - **Keyboard layouts:** bindings use physical keys and keep working across layouts. Launcha also understands text typed with the wrong layout.
 - **Calculator and converter:** launcha can calculate expressions and convert units, number bases, dates and Unix time.
+- **Shared picker UI:** selecta, launcha and Clipbawd use BobukKit's consistent rows, rounded panel frame and wrapping shortcut hints. Each app keeps its own colors and commands. The self-contained copy in `Vendor/BobukKit` comes from `~/GitHub/bobuk.io/BobukKit`; edit the canonical kit and run its `Scripts/sync.sh` / `Scripts/sync.sh --check` for all consumers.
+- **lowkey sites:** when lowkey is installed, Settings › Bindings › + › lowkey lists its saved sites with **Open** and **Toggle** commands for selecta. Launcha finds the same sites by title, alias or host and opens them in their lowkey profiles. Ting reads only `~/.config/lowkey/config.json`, not cookies or website data. Changes appear on the next open and refresh while the list is open.
 
 ![Launcha searches apps as you type](docs/images/launcha.webp)
 

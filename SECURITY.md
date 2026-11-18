@@ -29,8 +29,14 @@ latest published version.
   write that file can make Ting open any app or URL when you press a binding, or
   bind a key to a micro-app id. `config.json` holds no code.
 - Ting opens apps by bundle identifier and URLs with the default handler chosen
-  by macOS. App and URL bindings work as before: they run no shell commands and
-  pass no arguments to apps. A URL scheme handler (for example `raycast://`) may perform its own actions.
+  by macOS, except `lowkey://` links, which are sent explicitly to the installed
+  app with bundle identifier `io.bobuk.lowkey`. App and URL bindings run no shell
+  commands and pass no command-line arguments to apps. A URL scheme handler
+  (for example `raycast://`) may perform its own actions.
+- When lowkey is installed, Ting reads its saved-site metadata from
+  `~/.config/lowkey/config.json` to populate Bindings and launcha. It never reads
+  lowkey cookies, website data or credentials, changes its settings, or fetches
+  favicons. Sites open only when you choose one or invoke its selecta binding.
 - **Ting runs shell commands, Python code, HTTP requests and AI calls**, but only
   from micro-app files (described in `docs/micro-apps/FORMAT.md`) in the
   micro-apps folder `~/.config/ting/micro/`, and only after you approved the

@@ -2,6 +2,17 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
+
+/// App-owned colors; BobukKit owns shared picker geometry and rendering.
+enum TingPickerStyle {
+    static var palette: PickerPalette {
+        PickerPalette(surface: NSColor(Color.soundPanel), text: NSColor(Color.tingInk),
+                      secondary: NSColor(Color.tingMuted), accent: NSColor(Color.tingAmber),
+                      border: NSColor(Color.tingStroke).withAlphaComponent(0.6),
+                      badgeInk: NSColor(Color.soundKeyInk))
+    }
+}
 
 extension Appearance {
     var title: String { self == .light ? "Light" : "Dark" }

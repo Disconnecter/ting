@@ -7,6 +7,7 @@ let package = Package(
         .macOS(.v14),
     ],
     dependencies: [
+        .package(path: "Vendor/BobukKit"),
         // Automatic updates from the public GitHub release feed.
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
     ],
@@ -24,12 +25,13 @@ let package = Package(
         // The menu-bar app (AppKit + SwiftUI + Carbon).
         .executableTarget(
             name: "Ting",
-            dependencies: ["TingCore", "TingRuntime", .product(name: "Sparkle", package: "Sparkle")],
+            dependencies: ["TingCore", "TingRuntime", .product(name: "Sparkle", package: "Sparkle"),
+                           .product(name: "BobukUI", package: "BobukKit")],
             path: "Sources/Ting",
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(
             name: "TingServiceTests",
-            dependencies: ["Ting", "TingCore", "TingRuntime"],
+            dependencies: ["Ting", "TingCore", "TingRuntime", .product(name: "BobukUI", package: "BobukKit")],
             path: "Tests/TingServiceTests",
             swiftSettings: [.swiftLanguageMode(.v5)],
             // Swift Build leaves Sparkle.framework next to the test bundle, outside its default rpath.
