@@ -19,6 +19,7 @@ struct BindingsSettings: View {
     @State private var selection: Set<String> = []
     @State private var query = ""
     @State private var recordingFor: String?
+    @State private var newBinding: Item?
     @State private var addError: String?
 
     private var allRows: [BindingRow] {
@@ -100,6 +101,13 @@ struct BindingsSettings: View {
             .padding(8)
         }
         .frame(width: 820, height: 520)
+        .sheet(isPresented: Binding(get: { newBinding != nil },
+                                    set: { if !$0 { newBinding = nil } })) {
+            if let item = newBinding {
+                SequenceRecorder(recording: .new(item)) { newBinding = nil }
+                    .environment(model)
+            }
+        }
     }
 
     // MARK: Cells
@@ -123,7 +131,7 @@ struct BindingsSettings: View {
                     .popover(isPresented: Binding(get: { recordingFor == row.id },
                                                   set: { if !$0, recordingFor == row.id { recordingFor = nil } }),
                              arrowEdge: .bottom) {
-                        SequenceRecorder(sequence: row.sequence, label: row.item.label) { recordingFor = nil }
+                        SequenceRecorder(recording: .existing(sequence: row.sequence, label: row.item.label)) { recordingFor = nil }
                             .environment(model)
                     }
             }
@@ -214,21 +222,10 @@ struct BindingsSettings: View {
 
     // MARK: Add / delete
 
-    /// New items take a free top-level key, then the key recorder opens at once.
+    /// Keep the item as a draft: cancel never leaves an automatically assigned binding behind.
     private func add(_ item: Item) {
-        let candidates = "abcdefghijklmnopqrstuvwxyz0123456789".map(String.init) + (1...20).map { "f\($0)" }
-        guard let free = candidates.first(where: { key in !model.config.items.contains { $0.key == key } }) else {
-            addError = "Every top-level key is taken. Free one first."
-            return
-        }
-        do {
-            try model.insertBinding(item, at: [free])
-            addError = nil
-            selection = [free]
-            DispatchQueue.main.async { recordingFor = free }
-        } catch {
-            addError = "Cannot add the binding."
-        }
+        addError = nil
+        newBinding = item
     }
 
     private func addApplication() {

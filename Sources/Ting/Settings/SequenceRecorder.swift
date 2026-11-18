@@ -3,11 +3,29 @@ import AppKit
 import SwiftUI
 import TingCore
 
+/// A new binding has no assigned keys until the user saves it.
+enum BindingRecording {
+    case new(Item)
+    case existing(sequence: [String], label: String)
+
+    var sequence: [String]? {
+        if case .existing(let sequence, _) = self { return sequence }
+        return nil
+    }
+
+    var initialKeys: [String] { sequence ?? [] }
+
+    var label: String {
+        switch self {
+        case .new(let item): return item.label
+        case .existing(_, let label): return label
+        }
+    }
+}
+
 struct SequenceRecorder: View {
     @Environment(AppModel.self) private var model
-    /// Current sequence of the binding being recorded.
-    let sequence: [String]
-    let label: String
+    let recording: BindingRecording
     let close: () -> Void
     @State private var keys: [String] = []
     @State private var monitor = KeyMonitor()
@@ -15,9 +33,9 @@ struct SequenceRecorder: View {
     @State private var saveError: String?
 
     var body: some View {
-        let problem = BindingTree.problem(placing: keys, moving: sequence, in: model.config.items)
+        let problem = BindingTree.problem(placing: keys, moving: recording.sequence, in: model.config.items)
         VStack(alignment: .leading, spacing: 12) {
-            MonoLabel("Keys for \(label.isEmpty ? "binding" : label)", size: 9, tracking: 1.5).foregroundStyle(Color.tingAmber)
+            MonoLabel("Keys for \(recording.label.isEmpty ? "binding" : recording.label)", size: 9, tracking: 1.5).foregroundStyle(Color.tingAmber)
             HStack(spacing: 6) {
                 Text(model.leaderDisplay).font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(Color.tingMuted)
                 ForEach(Array(keys.enumerated()), id: \.offset) { KeyCap(key: $0.element, large: true) }
@@ -46,7 +64,12 @@ struct SequenceRecorder: View {
                 Button("Cancel", action: finish).buttonStyle(QuietButtonStyle())
                 Button("Done") {
                     do {
-                        try model.moveBinding(from: sequence, to: keys)
+                        switch recording {
+                        case .new(let item):
+                            try model.insertBinding(item, at: keys)
+                        case .existing(let sequence, _):
+                            try model.moveBinding(from: sequence, to: keys)
+                        }
                         finish()
                     } catch {
                         saveError = "Cannot save these keys."
@@ -61,7 +84,7 @@ struct SequenceRecorder: View {
         .frame(width: 380)
         .background(Color.tingPanel)
         .onAppear {
-            keys = sequence
+            keys = recording.initialKeys
             monitor.start(handle)
         }
         .onDisappear { monitor.stop() }
