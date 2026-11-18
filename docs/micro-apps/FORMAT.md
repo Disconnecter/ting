@@ -148,6 +148,10 @@ actions pass it through on success. For inspection or page actions, the site
 window must already be open; `status` also works when it is closed.
 
 ```yaml
+format: ting.microapp/2
+description: Attach the selected Finder file to a saved site.
+input: none
+context: [finder]
 steps:
   - lowkey: HA
     action: upload
@@ -155,7 +159,7 @@ steps:
     field: Document
 ```
 
-Declare `context: [finder]` for this example and select exactly one regular file
+Replace `HA` with the saved alias and select exactly one regular file
 (up to 8 MiB). `field` matches an exact HTML/ARIA label; omit it only when the
 page has a single file input. Attaching does not submit the form, but the site
 may upload immediately. `click` takes an exact button/link `label`; `rewind`
