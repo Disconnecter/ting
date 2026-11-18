@@ -94,6 +94,18 @@ alias and host; Return opens the site in its lowkey profile. Removed sites are
 removed from search on refresh. Old bindings retain their alias and can be edited
 or deleted normally. Ting never reads lowkey's cookies or website-data stores.
 
+**Binding or micro-app?** For a single shortcut that shows or hides a site, keep
+its URL binding. For a sequence such as “open the site, wait for a button, then
+click it”, bind a micro-app and use native `lowkey` steps. Do not put shell code,
+page scripts or a file path in a lowkey URL. The helper's argument order is
+`lowkeyctl ALIAS COMMAND`, for example `lowkeyctl work inspect --json`.
+
+Read the **lowkey steps** section of `FORMAT.md` in this app's `Contents/Resources`
+(in the repository: [FORMAT.md](micro-apps/FORMAT.md#lowkey-steps)). Start with
+`status` or `inspect`, not a click. Use a saved alias supplied by the person;
+confirm the intended site and file before trying an upload. Validate the YAML
+with `ting-micro check`; it does not run the steps.
+
 ### Direct application hotkeys
 
 `appHotkeys` is an optional list, empty by default. In launcha, select an app

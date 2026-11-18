@@ -17,11 +17,13 @@ public enum MicroAppInteraction: Equatable, Sendable {
         }
     }
 
+    case preview(text: String, style: MicroApp.OutputStyle)
     case choose(prompt: String, choices: [Choice])
     case ask(prompt: String, defaultValue: String, placeholder: String, multiline: Bool, required: Bool)
 
     public var prompt: String {
         switch self {
+        case .preview: "Preview"
         case .choose(let prompt, _), .ask(let prompt, _, _, _, _): prompt
         }
     }
@@ -68,6 +70,7 @@ public enum MicroAppInteraction: Equatable, Sendable {
     /// Front ends cannot return an arbitrary answer to a choose request.
     public func validate(_ answer: String) throws -> String {
         switch self {
+        case .preview: return ""
         case .choose(_, let choices):
             guard choices.contains(where: { $0.value == answer }) else { throw InvalidInput("Choose an available option") }
         case .ask(_, _, _, _, let required):

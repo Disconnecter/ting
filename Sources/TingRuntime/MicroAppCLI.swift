@@ -24,8 +24,8 @@ package enum MicroAppCLI {
     Context: run never reads the active app, Finder, the browser or the selection. --context gives
     a value, such as --context app.name=Safari; every other value of the file's context is empty.
     keys and paste steps never send anything: each prints a note on stderr and passes its input on.
-    ask and choose require Ting's interactive panel; run rejects them before running any steps.
-    --allow-effects permits open and notify steps (disabled by default).
+    ask, choose and preview require Ting's interactive panel; run rejects them before running any steps.
+    --allow-effects permits open, notify and lowkey steps (disabled by default).
     Shell/Python and HTTP/AI steps run with your full rights and may change files or cost money.
     Environment variables come from this terminal, not a second login shell.
     No config, approvals or remembered values are read or written.
@@ -131,10 +131,10 @@ package enum MicroAppCLI {
         for field in options.context.values.keys.sorted(by: { $0.description < $1.description }) where !sources.contains(field.source) {
             throw UsageError("the file does not read `\(field.source.rawValue)`: add it to `context:` or leave out --context \(field)")
         }
-        if app.allSteps.contains(where: { $0.kind == .ask || $0.kind == .choose }) {
-            throw UsageError("ask and choose steps require Ting's interactive panel; no steps were run")
+        if app.allSteps.contains(where: { [.ask, .choose, .preview].contains($0.kind) }) {
+            throw UsageError("ask, choose and preview steps require Ting's interactive panel; no steps were run")
         }
-        if !options.allowEffects, let step = app.allSteps.first(where: { $0.kind == .open || $0.kind == .notify }) {
+        if !options.allowEffects, let step = app.allSteps.first(where: { [.open, .notify, .lowkey].contains($0.kind) }) {
             throw UsageError("`\(step.kind.rawValue)` requires --allow-effects; no steps were run")
         }
     }

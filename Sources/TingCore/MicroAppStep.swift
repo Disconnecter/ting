@@ -3,7 +3,7 @@ import Foundation
 /// One step of a micro-app script. The output of a step is the input (stdin) of the next one.
 public struct MicroAppStep: Equatable, Sendable {
     public enum Kind: String, Equatable, Sendable, CaseIterable {
-        case command, python, url, ai, text, json, open, notify, call, keys, paste, choose, ask
+        case command, python, url, ai, text, json, open, notify, lowkey, preview, call, keys, paste, choose, ask
     }
 
     /// A `key: template` line of `env`, `query`, `headers` or `form`, in file order.
@@ -116,6 +116,8 @@ public struct MicroAppStep: Equatable, Sendable {
         case json(MicroAppJSONPath)
         case open(target: MicroAppTemplate, app: MicroAppTemplate?)
         case notify(message: MicroAppTemplate, title: MicroAppTemplate?)
+        case lowkey(alias: MicroAppTemplate, action: String, arguments: [MicroAppTemplate], json: Bool)
+        case preview(MicroApp.OutputStyle)
         /// Runs the steps of a library; the step's `params` are the library's params.
         case call(MicroAppLibrary)
         /// Presses keys in the app where the micro-app started, one after another.
@@ -165,6 +167,8 @@ public struct MicroAppStep: Equatable, Sendable {
         case .json: .json
         case .open: .open
         case .notify: .notify
+        case .lowkey: .lowkey
+        case .preview: .preview
         case .call: .call
         case .keys: .keys
         case .paste: .paste
@@ -177,7 +181,7 @@ public struct MicroAppStep: Equatable, Sendable {
     /// Interaction is a barrier even when a later program requests streaming input.
     public var waitsForUser: Bool {
         switch action {
-        case .ask, .choose: true
+        case .ask, .choose, .preview: true
         case .call(let library): library.steps.contains(where: \.waitsForUser)
         default: false
         }
@@ -214,6 +218,8 @@ public struct MicroAppStep: Equatable, Sendable {
             result += [ask.prompt] + [ask.defaultValue, ask.placeholder].compactMap { $0 }
         case .open(let target, let app):
             result += [target] + [app].compactMap { $0 }
+        case .lowkey(let alias, _, let arguments, _): result += [alias] + arguments
+        case .preview: break
         case .notify(let message, let title):
             result += [message] + [title].compactMap { $0 }
         case .paste(let text):

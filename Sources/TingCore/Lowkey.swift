@@ -14,6 +14,15 @@ public struct LowkeySite: Equatable, Sendable, Identifiable {
         URL(string: "lowkey://\(alias)/\(command.rawValue)")!
     }
 
+    /// Keep existing URL bindings on disk. Only single-site commands known to lowkeyctl become argv.
+    public static func controlArguments(for url: URL) -> [String]? {
+        guard url.scheme?.lowercased() == "lowkey", let alias = url.host(percentEncoded: false), validAlias(alias) else { return nil }
+        let parts = url.path(percentEncoded: false).lowercased().split(separator: "/")
+        let command = parts.first.map(String.init) ?? "open"
+        guard parts.count <= 1, ["open", "toggle", "hide", "rewind"].contains(command) else { return nil }
+        return [alias, command]
+    }
+
     public var candidate: LaunchaCandidate {
         LaunchaCandidate(id: id, name: name, target: .url(url().absoluteString),
                          searchNames: [alias, startURL.host ?? ""])

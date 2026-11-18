@@ -38,6 +38,7 @@ final class MicroAppInteractionRunnerTests: XCTestCase {
                 XCTAssertFalse(multiline)
                 XCTAssertTrue(required)
                 return "hello"
+            case .preview: XCTFail("unexpected preview"); return ""
             case .choose(let prompt, let choices):
                 XCTAssertEqual(prompt, "Pick hello")
                 return choices[0].value
@@ -46,6 +47,18 @@ final class MicroAppInteractionRunnerTests: XCTestCase {
         let result = await runner.run(app)
         guard case .success(let output) = result else { return XCTFail("\(result)") }
         XCTAssertEqual(output.stdout, "hello|/tmp/a b|/tmp/a b")
+    }
+
+    func testPreviewPreservesInputAndAllowsCancellation() async throws {
+        let flow = try app("  - text: hello\n  - preview: markdown\n  - command: cat\n    stream: true")
+        var runner = runner()
+        runner.interact = { request in
+            XCTAssertEqual(request, .preview(text: "hello", style: .markdown)); return "ignore this answer"
+        }
+        guard case .success(let result) = await runner.run(flow) else { return XCTFail("preview failed") }
+        XCTAssertEqual(result.stdout, "hello")
+        runner.interact = { _ in throw CancellationError() }
+        guard case .cancelled = await runner.run(flow) else { return XCTFail("not cancelled") }
     }
 
     func testWaitingDoesNotConsumeBudgetAndStreamingStartsAfterAnswer() async throws {

@@ -43,17 +43,30 @@ import TingCore
         XCTAssertFalse(service.problem?.contains("secret") ?? true)
     }
 
-    func testSelectaOpenAndToggleAreSentToTheLowkeyAppExplicitly() async throws {
-        var sent: [(URL, URL)] = []
-        let runner = ActionRunner(locateLowkey: { self.appURL }, launchLowkey: { sent.append(($0, $1)) })
-        for command in ["open", "toggle"] {
-            let url = "lowkey://work/\(command)"
-            let result = await runner.run(.url("w", "Work", url))
-            XCTAssertEqual(result, .opened)
-            XCTAssertEqual(sent.last?.0.absoluteString, url)
-            XCTAssertEqual(sent.last?.1, appURL)
+    func testOnlySupportedCommandsBecomeArguments() throws {
+        XCTAssertEqual(LowkeySite.controlArguments(for: URL(string: "lowkey://HA")!), ["HA", "open"])
+        XCTAssertEqual(LowkeySite.controlArguments(for: URL(string: "lowkey://Ha/TOGGLE/")!), ["Ha", "toggle"])
+        for link in ["lowkey://*/toggle", "lowkey://HA/reload", "lowkey://HA/toggle/extra", "https://HA/toggle"] {
+            XCTAssertNil(LowkeySite.controlArguments(for: try XCTUnwrap(URL(string: link))), link)
         }
-        XCTAssertEqual(sent.count, 2)
+    }
+
+    func testControlRunsBundledExecutableWithTwoArgumentsAndNoURLFallback() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let helpers = root.appendingPathComponent("Contents/Helpers")
+        try FileManager.default.createDirectory(at: helpers, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = ActionRunner(locateLowkey: { root }, launchLowkey: { _, _ in XCTFail("unexpected URL launch") })
+        let binding = Item.url("w", "Work", "lowkey://HA/toggle")
+        let missing = await runner.run(binding)
+        XCTAssertEqual(missing, .failed)
+        let helper = helpers.appendingPathComponent("lowkeyctl")
+        try "#!/bin/sh\n[ \"$#\" = 2 ] && [ \"$1\" = HA ] && [ \"$2\" = toggle ]\n".write(to: helper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
+        let result = await runner.run(binding)
+        XCTAssertEqual(result, .opened)
+        let failed = await runner.openLowkeySite(URL(string: "lowkey://HA/open")!, name: "Work")
+        XCTAssertEqual(failed, .failed)
     }
 
     func testRemovedLowkeyAndLaunchFailuresAreReportedWithoutOpeningOtherApps() async {
@@ -65,7 +78,7 @@ import TingCore
             throw CocoaError(.fileReadNoSuchFile)
         })
         runner.onError = { errors.append($0) }
-        let failed = await runner.run(.url("w", "Work", "lowkey://work/open"))
+        let failed = await runner.run(.url("w", "Work", "lowkey://work/reload"))
         XCTAssertEqual(failed, .failed)
         installed = false
         let removed = await runner.run(.url("w", "Work", "lowkey://work/toggle"))

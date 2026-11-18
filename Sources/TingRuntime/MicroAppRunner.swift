@@ -588,6 +588,30 @@ struct MicroAppPipeline: Sendable {
             let name = try appName.map { try render($0, input: stepInput) }
             try await withDeadline(budget) { try await openTarget(resolved, app: name) }
             output.write(stepInput)
+        case .preview(let style):
+            _ = try await interact(.preview(text: String(decoding: stepInput, as: UTF8.self), style: style))
+            output.write(stepInput)
+        case .lowkey(let alias, let action, let arguments, let json):
+            var args = [try render(alias, input: stepInput), action]
+            for (index, argument) in arguments.enumerated() {
+                let value = try render(argument, input: stepInput)
+                if action == "upload", index == 0 {
+                    guard !value.isEmpty, !value.contains(where: \.isNewline) else { throw MicroAppStepError.failed("error", "upload needs exactly one file path") }
+                    args.append((value as NSString).expandingTildeInPath)
+                } else {
+                    if action == "upload" { args.append("--field") }
+                    args.append(value)
+                }
+            }
+            if json { args.append("--json") }
+            if action == "wait" { args += ["--timeout", String(max(1, min(300, Int(budget.seconds.rounded(.up)))))] }
+            guard !args.contains(where: { $0.utf8.contains(0) }) else { throw MicroAppStepError.failed("error", "invalid lowkey argument") }
+            let helper = "/Applications/lowkey.app/Contents/Helpers/lowkeyctl"
+            guard FileManager.default.isExecutableFile(atPath: helper) else { throw MicroAppStepError.failed("not started", "Install lowkey with lowkeyctl in /Applications") }
+            let reads = action == "inspect" || action == "status"
+            try await runProgram(step, executable: helper, arguments: args, code: "", input: Data(), source: nil,
+                                 output: reads ? output : MicroAppByteChannel(limit: runner.outputLimit), budget: budget)
+            if !reads { output.write(stepInput) }
         case .notify(let message, let title):
             let text = try render(message, input: stepInput)
             let heading = try title.map { try render($0, input: stepInput) } ?? app.shownName

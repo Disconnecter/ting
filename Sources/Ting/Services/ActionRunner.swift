@@ -32,8 +32,22 @@ final class ActionRunner: LaunchaOpening {
         self.locateLowkey = locateLowkey ?? { LowkeyIntegration.applicationURL() }
         self.launchLowkey = launchLowkey ?? { url, app in
             let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
             _ = try await NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration)
+        }
+    }
+
+    private func runControl(at helper: URL, arguments: [String]) async throws -> Bool {
+        let process = Process()
+        process.executableURL = helper
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        return try await withCheckedThrowingContinuation { done in
+            process.terminationHandler = { child in
+                done.resume(returning: child.terminationReason == .exit && child.terminationStatus == 0)
+            }
+            do { try process.run() } catch { done.resume(throwing: error) }
         }
     }
 
@@ -118,7 +132,21 @@ final class ActionRunner: LaunchaOpening {
             return .failed
         }
         do {
-            try await launchLowkey(url, app)
+            if let arguments = LowkeySite.controlArguments(for: url) {
+                let helper = app.appendingPathComponent("Contents/Helpers/lowkeyctl")
+                guard FileManager.default.isExecutableFile(atPath: helper.path) else {
+                    onError?("Update lowkey: its lowkeyctl helper is missing.")
+                    return .failed
+                }
+                // Never replay a failed toggle via URL: it may already have taken effect.
+                guard try await runControl(at: helper, arguments: arguments) else {
+                    onError?("lowkeyctl could not \(arguments[0]) \(arguments[1]).")
+                    return .failed
+                }
+            } else {
+                // The prompt, wildcard, reload, etc. are URL-only lowkey commands.
+                try await launchLowkey(url, app)
+            }
             return .opened
         } catch {
             onError?("lowkey: cannot open \(name.isEmpty ? "the site" : name).")

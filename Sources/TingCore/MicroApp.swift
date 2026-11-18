@@ -226,7 +226,7 @@ public enum MicroAppChecker {
         .command: ["env"], .python: ["env"],
         .url: ["method", "query", "headers", "body", "form"],
         .ai: ["provider", "model", "key", "system", "base_url", "temperature", "max_tokens"],
-        .text: [], .json: [], .open: ["app"], .notify: ["title"], .call: [], .keys: [], .paste: [],
+        .preview: [], .lowkey: ["action", "label", "file", "field", "value", "as"], .text: [], .json: [], .open: ["app"], .notify: ["title"], .call: [], .keys: [], .paste: [],
         .choose: [], .ask: ["default", "placeholder", "multiline", "required"],
     ]
     /// The most key presses of one `keys` step.
@@ -975,6 +975,32 @@ public enum MicroAppChecker {
                 let target = template(value, k, ctx: &ctx, usage: &usage)
                 let app = keys["app"].flatMap { template($0.value, "\(what).app", ctx: &ctx, usage: &usage) }
                 if let target { action = .open(target: target, app: app) }
+            case .preview:
+                guard let raw = string(value, k), let style = MicroApp.OutputStyle(rawValue: raw) else {
+                    fail(line, "preview needs markdown, text, code or console"); return nil
+                }
+                action = .preview(style)
+            case .lowkey:
+                guard let entry = keys["action"], let verb = string(entry.value, "\(what).action"),
+                      ["open", "toggle", "hide", "rewind", "click", "upload", "inspect", "status", "fill", "select", "wait"].contains(verb) else {
+                    fail(line, "\(what): missing or unknown lowkey action")
+                    return nil
+                }
+                let required = ["click": ["label"], "upload": ["file"], "fill": ["field", "value"], "select": ["field", "value"]][verb] ?? []
+                let optional = ["upload": ["field"], "wait": ["label"], "inspect": ["as"], "status": ["as"]][verb] ?? []
+                let names = required + optional
+                for key in ["label", "file", "field", "value", "as"] where keys[key] != nil && !names.contains(key) {
+                    fail(line, "\(what): `\(key)` does not apply to `\(verb)`")
+                }
+                for key in required where keys[key] == nil { fail(line, "\(what): `\(verb)` needs `\(key)`") }
+                if let entry = keys["as"], string(entry.value, k) != "json" { fail(line, "\(what): use as: json") }
+                var arguments: [MicroAppTemplate] = []
+                for key in names where key != "as" {
+                    if let e = keys[key], let t = template(e.value, k, oneLine: key != "value", nonEmpty: key != "value", ctx: &ctx, usage: &usage) { arguments.append(t) }
+                }
+                if let alias = template(value, k, ctx: &ctx, usage: &usage) {
+                    action = .lowkey(alias: alias, action: verb, arguments: arguments, json: keys["as"] != nil)
+                }
             case .notify:
                 let message = template(value, k, oneLine: false, ctx: &ctx, usage: &usage)
                 let title = keys["title"].flatMap { template($0.value, "\(what).title", ctx: &ctx, usage: &usage) }

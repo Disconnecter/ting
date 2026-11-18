@@ -128,6 +128,53 @@ output:                          # optional; without it nothing is shown or copi
   `Esc` stops the run. While it runs, the panel names the running step and shows
   the output of the last step while it comes.
 
+## lowkey steps
+
+Use a native step instead of wrapping `lowkeyctl` in `command:`. The `lowkey:`
+value is the saved alias. Each row below is one possible literal `action:`:
+
+| Action | Action-specific YAML fields | What it does |
+|---|---|---|
+| `open`, `hide`, `toggle` | none | Show, hide or toggle the saved-site window. |
+| `rewind` | none | Show the window and load its configured start URL. |
+| `status`, `inspect` | optional `as: json` | Read window state or list labelled controls without activating the window. |
+| `wait` | optional `label`, standard step `timeout` | Wait for the DOM, or for one visible enabled control; never clicks. |
+| `click` | `label` | Click one matching button or link. |
+| `fill`, `select` | `field`, `value` | Set text or select one option by display text. |
+| `upload` | `file`, optional `field` | Attach one file to a file input. |
+
+Only `status` and `inspect` replace the pipeline input with their output. All other
+actions pass it through on success. For inspection or page actions, the site
+window must already be open; `status` also works when it is closed.
+
+```yaml
+steps:
+  - lowkey: HA
+    action: upload
+    file: "${context.finder.selection}"
+    field: Document
+```
+
+Declare `context: [finder]` for this example and select exactly one regular file
+(up to 8 MiB). `field` matches an exact HTML/ARIA label; omit it only when the
+page has a single file input. Attaching does not submit the form, but the site
+may upload immediately. `click` takes an exact button/link `label`; `rewind`
+shows the saved site's start page. Alias, label, file and field are templates;
+`action` is literal. Requires `/Applications/lowkey.app/Contents/Helpers/lowkeyctl`.
+The console `run` requires `--allow-effects`; failures stop the run without retry.
+
+`inspect` (control types and labels, no input values) and `status` (window state)
+produce text instead of passing input on; set `as: json` for machine-readable output.
+`wait` waits for DOM readiness, or for one visible enabled control if given a `label`.
+Set the step's `timeout` in seconds. `fill` and `select` take `field` and `value`:
+select uses option display text. Neither submits the form. These page actions use
+the saved origin and exact, whitespace-normalized labels. No shell quoting is needed.
+
+`preview: markdown` pauses in the Ting panel to display the previous step's output.
+`text`, `code` and `console` are also supported. Continue passes the original input
+on unchanged; Esc cancels the whole run. Console `run` rejects interactive previews
+before executing any steps.
+
 ## Context
 
 `context` lists what Ting reads at the moment the micro-app starts, before its
@@ -325,6 +372,8 @@ The answer streams into the panel word by word.
 | `text: Hi ${input}` | Outputs the text with its variables. |
 | `json: items.0.name` | Reads the input as JSON and outputs the value at the path (keys and indexes joined by `.`; `.` is the whole document). A string gives its text; a map or list pretty JSON. |
 | `open: https://x.org/?q=${input\|url}` | Opens a URL or a file (`/…` or `~/…`); `app: Safari` picks the app. Passes its input on. |
+| `lowkey: HA` | See [lowkey steps](#lowkey-steps). `inspect` and `status` produce output; actions pass input on. |
+| `preview: markdown` | Display the input in Ting and pause until Continue or Esc. |
 | `notify: Done` | Shows a notification; `title:` optional. Passes its input on. |
 
 ### `keys` and `paste`

@@ -310,7 +310,7 @@ private struct LiveOutput: View {
 
 /// Read-only, selectable, scrolling text: ⌘C copies the selection as plain text (the whole plain
 /// text when nothing is selected), ⌘A selects all.
-private struct SelectableText: NSViewRepresentable {
+struct SelectableText: NSViewRepresentable {
     let text: NSAttributedString
     let plainText: String
     /// The text view becomes the first responder, so ⌘C and the arrow keys reach it at once.

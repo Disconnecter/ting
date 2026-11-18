@@ -30,8 +30,9 @@ latest published version.
   bind a key to a micro-app id. `config.json` holds no code.
 - Ting opens apps by bundle identifier and URLs with the default handler chosen
   by macOS, except `lowkey://` links, which are sent explicitly to the installed
-  app with bundle identifier `io.bobuk.lowkey`. App and URL bindings run no shell
-  commands and pass no command-line arguments to apps. A URL scheme handler
+  app with bundle identifier `io.bobuk.lowkey`. For single-site open, toggle and
+  hide, Ting executes `Contents/Helpers/lowkeyctl` in that bundle with two arguments:
+  a validated site alias and the command. App and URL bindings do not use a shell. A URL scheme handler
   (for example `raycast://`) may perform its own actions.
 - When lowkey is installed, Ting reads its saved-site metadata from
   `~/.config/lowkey/config.json` to populate Bindings and launcha. It never reads

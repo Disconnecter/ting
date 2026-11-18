@@ -58,7 +58,11 @@ struct MicroAppInteractionBody: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(model.request.prompt).font(.headline).fixedSize(horizontal: false, vertical: true)
-            if model.isChoice {
+            if case .preview(let text, let style) = model.request {
+                SelectableText(text: MicroAppOutputRenderer.render(text, style: style), plainText: text, takesFocus: false)
+                    .frame(height: 300).accessibilityLabel("Preview")
+                Text("Esc cancels the run.").font(.caption)
+            } else if model.isChoice {
                 TextField("Filter options", text: $model.query)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused)

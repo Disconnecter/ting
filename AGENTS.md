@@ -56,5 +56,9 @@
   its error log or the approvals and values in `~/Library/Application Support/Ting/`.
 - Do not send synthetic key presses while the user is working: the leader menu
   takes keyboard focus and can swallow their typing.
+- For lowkey automation, use the native `lowkey` step, not shell commands or
+  synthetic input. See `docs/CONFIGURING.md#lowkey-sites` for bindings and
+  `docs/micro-apps/FORMAT.md#lowkey-steps` for action syntax. Validate examples
+  with `ting-micro check`; use demo pages, never personal sites, for action tests.
 - After every release, update the Ting pages on the landing site
   (`~/GitHub/bobuk.io/landing`) when the release needs it. See `../AGENTS.md`.
