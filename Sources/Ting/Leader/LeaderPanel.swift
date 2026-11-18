@@ -72,7 +72,7 @@ final class LeaderController: NSObject, NSWindowDelegate {
     private var machine = LeaderMachine(items: [])
     private var doubleTap = LeaderDoubleTap()
     private var leaderKeyCode: UInt16?
-    private var showDelay: TimeInterval = 0.25
+    private var showDelay = Config().showDelay
     private var panel: LeaderPanel?
     private var reveal: DispatchWorkItem?
     private let presentsWindow: Bool

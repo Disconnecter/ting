@@ -10,7 +10,7 @@ import Testing
         #expect(c == Config())
         #expect(c.version == 1)
         #expect(c.leader == nil)
-        #expect(c.showDelay == 0.25)
+        #expect(c.showDelay == 0)
         #expect(c.unknownKey == .shake)
         #expect(c.appearance == .dark)
         #expect(!c.launchAtLogin)

@@ -332,8 +332,6 @@ final class LaunchaModelTests: XCTestCase {
         model.setMicroApps(catalog.launchaCandidates(bindings: []), folder: folder)
         var started: [LaunchaMicroStart] = []
         model.onStartMicro = { started.append($0) }
-        var willOpen = 0
-        model.onWillOpen = { willOpen += 1 }
 
         model.open()
         try await wait("index") { model.hasIndex && model.rows.count == 3 }
@@ -355,7 +353,7 @@ final class LaunchaModelTests: XCTestCase {
         XCTAssertEqual(outcome, .opened)
         XCTAssertEqual(started, [.id("format-json")])
         XCTAssertFalse(model.isOpen)
-        XCTAssertEqual(willOpen, 0, "the micro-app flow is not an app open")
+        XCTAssertTrue(fixture.opener.files.isEmpty)
         XCTAssertTrue(fixture.opener.opened.isEmpty)
         let saved = try LaunchHistory.decode(Data(contentsOf: fixture.history))
         XCTAssertEqual(saved.entries["micro:format-json"]?.events.count, 1)

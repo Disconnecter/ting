@@ -20,12 +20,42 @@ final class LaunchPreparationTests: XCTestCase {
     }
 
     func testRunning1PasswordFallsThroughToWorkspaceOpen() {
-        XCTAssertFalse(ActionRunner.tryActivation(bundleID: "com.1password.1password") {
+        let runner = ActionRunner()
+        var events: [String] = []
+        runner.onPlaySound = { events.append("sound") }
+        XCTAssertFalse(runner.tryActivation(bundleID: "com.1password.1password") {
             XCTFail("Activation would bypass the reopen request")
             return true
         })
-        XCTAssertTrue(ActionRunner.tryActivation(bundleID: "io.example.editor") { true })
-        XCTAssertFalse(ActionRunner.tryActivation(bundleID: "io.example.editor") { false })
+        XCTAssertFalse(runner.tryActivation(bundleID: "io.example.editor") { false })
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(runner.tryActivation(bundleID: "io.example.editor") {
+            events.append("activate")
+            return true
+        })
+        XCTAssertEqual(events, ["activate", "sound"])
+    }
+
+    func testLaunchSoundFollowsSubmissionWhileApplicationIsOpening() async {
+        let submitted = expectation(description: "App open request submitted")
+        var finish: (@Sendable (Error?) -> Void)?
+        var events: [String] = []
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".app")
+        let runner = ActionRunner(submitApplication: { requested, completion in
+            XCTAssertEqual(requested, url)
+            events.append("submit")
+            finish = completion
+            submitted.fulfill()
+        })
+        runner.onPlaySound = { events.append("sound") }
+        let launch = Task { await runner.openApp(at: url, name: "Editor") }
+        await fulfillment(of: [submitted], timeout: 2)
+        XCTAssertEqual(events, ["submit", "sound"])
+        guard let finish else { return }
+        finish(nil)
+        let outcome = await launch.value
+        XCTAssertEqual(outcome, .opened)
+        XCTAssertEqual(events, ["submit", "sound"])
     }
 
     func testIconsAreReused() {

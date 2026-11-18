@@ -101,8 +101,6 @@ final class LaunchaModel {
 
     /// Asks the owner to hide the panel. The owner then calls `close()`.
     @ObservationIgnored var onRequestClose: (() -> Void)?
-    /// Called just before an app or file opens (not for a reveal in Finder).
-    @ObservationIgnored var onWillOpen: (() -> Void)?
     /// Starts the micro-app flow for a micro-app or a broken file, after the panel closed.
     @ObservationIgnored var onStartMicro: ((LaunchaMicroStart) -> Void)?
     /// Copies the value of a calculation, after the panel closed.
@@ -246,7 +244,6 @@ final class LaunchaModel {
         // A deep link is not a filesystem path. Command-Return never reveals it in Finder.
         if case .lowkeySite(let candidateID) = row.kind {
             guard !reveal else { return nil }
-            onWillOpen?()
             let outcome = await opener.openLowkeySite(row.url, name: row.name)
             await record(outcome, id: candidateID)
             return outcome
@@ -259,7 +256,6 @@ final class LaunchaModel {
             await record(.opened, id: candidateID)
             return .opened
         }
-        onWillOpen?()
         switch row.kind {
         case .app(let candidateID):
             let outcome = await opener.openApp(at: row.url, name: row.name)

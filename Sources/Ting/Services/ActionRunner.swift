@@ -22,13 +22,25 @@ extension LaunchaOpening {
 
 @MainActor
 final class ActionRunner: LaunchaOpening {
+    typealias SubmitApplication = (URL, @escaping @Sendable (Error?) -> Void) -> Void
+
     /// Reports a short, user-facing error. Never throws or crashes.
     var onError: ((String) -> Void)?
+    var onPlaySound: (() -> Void)?
     private var appURLs: [String: URL] = [:]
+    private let submitApplication: SubmitApplication
     private let locateLowkey: () -> URL?
     private let launchLowkey: (URL, URL) async throws -> Void
 
-    init(locateLowkey: (() -> URL?)? = nil, launchLowkey: ((URL, URL) async throws -> Void)? = nil) {
+    init(locateLowkey: (() -> URL?)? = nil, launchLowkey: ((URL, URL) async throws -> Void)? = nil,
+         submitApplication: SubmitApplication? = nil) {
+        self.submitApplication = submitApplication ?? { url, completion in
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
+                completion(error)
+            }
+        }
         self.locateLowkey = locateLowkey ?? { LowkeyIntegration.applicationURL() }
         self.launchLowkey = launchLowkey ?? { url, app in
             let configuration = NSWorkspace.OpenConfiguration()
@@ -68,15 +80,17 @@ final class ActionRunner: LaunchaOpening {
 
     // 1Password can keep running with its main window closed. Activation alone
     // does not reopen it; let Launch Services deliver a normal open request instead.
-    static func tryActivation(bundleID: String?, activate: () -> Bool) -> Bool {
-        bundleID != "com.1password.1password" && activate()
+    func tryActivation(bundleID: String?, activate: () -> Bool) -> Bool {
+        guard bundleID != "com.1password.1password", activate() else { return false }
+        onPlaySound?()
+        return true
     }
 
     /// Starts activation synchronously, before the leader panel returns focus to another app.
     func activateRunning(_ item: Item) -> LaunchOutcome? {
         guard case .app(let id) = item.action,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first,
-              Self.tryActivation(bundleID: id, activate: { app.activate(options: []) }) else { return nil }
+              tryActivation(bundleID: id, activate: { app.activate(options: []) }) else { return nil }
         return .activated
     }
 
@@ -106,22 +120,23 @@ final class ActionRunner: LaunchaOpening {
 
     func openApp(at url: URL, name: String) async -> LaunchOutcome {
         let running = NSWorkspace.shared.runningApplications.first { $0.bundleURL == url }
-        if let running, Self.tryActivation(bundleID: running.bundleIdentifier, activate: { running.activate(options: []) }) {
+        if let running, tryActivation(bundleID: running.bundleIdentifier, activate: { running.activate(options: []) }) {
             return .activated
         }
-        let wasRunning = running != nil
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        do {
-            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
-            return wasRunning ? .activated : .opened
-        } catch {
+        let error: Error? = await withCheckedContinuation { done in
+            submitApplication(url) { error in done.resume(returning: error) }
+            // Launch Services has the request. Sound can start while the app is opening.
+            onPlaySound?()
+        }
+        if let error {
             onError?("\(name): \(error.localizedDescription)")
             return .failed
         }
+        return running == nil ? .opened : .activated
     }
 
     func openFile(_ url: URL, name: String) async -> LaunchOutcome {
+        onPlaySound?()
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         do {
@@ -134,6 +149,7 @@ final class ActionRunner: LaunchaOpening {
     }
 
     func openLowkeySite(_ url: URL, name: String) async -> LaunchOutcome {
+        onPlaySound?()
         guard url.scheme?.lowercased() == "lowkey", let app = locateLowkey() else {
             onError?("lowkey is not installed. Install it to open this site.")
             return .failed
@@ -167,6 +183,7 @@ final class ActionRunner: LaunchaOpening {
     }
 
     private func openURL(_ text: String, label: String) -> LaunchOutcome {
+        onPlaySound?()
         let name = label.isEmpty ? text : label
         guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme?.isEmpty == false else {
             onError?("\(name): invalid URL")

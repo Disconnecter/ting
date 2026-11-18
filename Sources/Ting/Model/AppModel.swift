@@ -145,7 +145,9 @@ final class AppModel {
         hotkeys.onRelease = { [weak self] slot in self?.hotkeyReleased(slot) }
         leader.onRun = { [weak self] item in self?.run(item) }
         leader.onDoubleTap = { [weak self] in self?.launcha.open() }
-        launchaModel.onWillOpen = { [weak self] in self?.playSound() }
+        runner.onPlaySound = { [weak self] in
+            DispatchQueue.main.async { [weak self] in self?.playSound() }
+        }
         launchaModel.onCopyValue = { [weak self] value in self?.copyValue(value) }
         launchaModel.onStartMicro = { [weak self] start in
             switch start {
@@ -469,7 +471,6 @@ final class AppModel {
             leader.close()
             launcha.close()
             clipbawdPanel.close()
-            playSound()
             Task { [runner, launchaModel] in
                 let outcome = await runner.openApp(at: URL(fileURLWithPath: shortcut.path), name: shortcut.name)
                 await launchaModel.record(outcome, id: shortcut.id)
@@ -541,7 +542,6 @@ final class AppModel {
             }
             return
         }
-        playSound()
         let id: String? = switch item.action {
         case .app(let bundleID): LaunchaCandidate.app(bundleID: bundleID, name: "").id
         case .url(let url): LaunchaCandidate.url(url, name: "").id

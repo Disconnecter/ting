@@ -167,7 +167,7 @@ public struct Config: Equatable, Sendable, Codable {
     /// There is no default leader: nil until the user records one.
     public var leader: Hotkey? = nil
     /// Seconds before the menu becomes visible. Clamped to 0...2 when decoding.
-    public var showDelay: Double = 0.25
+    public var showDelay: Double = 0
     public var unknownKey: UnknownKeyBehavior = .shake
     /// Dark by default.
     public var appearance: Appearance = .dark

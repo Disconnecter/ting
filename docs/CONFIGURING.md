@@ -60,7 +60,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
 - In one group a key is used once.
 - Settings: `leader` (a key name with optional modifiers, such as `home`,
   `f13`, `option+shift+cmd+f`; never a modifier alone), `showDelay` (seconds,
-  0–2), `unknownKey` (`shake` or `close`), `appearance` (`dark` or `light`),
+  0–2, default 0 for immediate display), `unknownKey` (`shake` or `close`), `appearance` (`dark` or `light`),
   `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound` (booleans),
   `sound` (a system sound name from `/System/Library/Sounds` without extension,
   default `Purr`; an unknown name plays `Purr`), `soundVolume` (0–1, default 0.5),
