@@ -17,9 +17,9 @@ import Testing
         #expect(c.showMenuBarIcon)
         #expect(c.showPanelHeader)
         #expect(c.playSound)
-        #expect(c.sound == "Tink")
+        #expect(c.sound == "Purr")
         #expect(c.soundVolume == 0.5)
-        #expect(Config().sound == "Tink")
+        #expect(Config().sound == "Purr")
         #expect(Config().soundVolume == 0.5)
         #expect(c.items.isEmpty)
         #expect(c.launcha == LaunchaSettings())
@@ -68,16 +68,16 @@ import Testing
         #expect(try ConfigCodec.decode(ConfigCodec.encode(hidden)) == hidden)
     }
     @Test func soundCompatibility() throws {
-        // A file without "sound" and "soundVolume" plays "Tink" at half volume, as before.
+        // A file without "sound" and "soundVolume" plays the default sound at half volume.
         let old = try decode(#"{"version":1,"playSound":false,"showPanelHeader":false}"#)
-        #expect(old.sound == "Tink")
+        #expect(old.sound == "Purr")
         #expect(old.soundVolume == 0.5)
         #expect(!old.playSound)
         let custom = try decode(#"{"sound":"Glass","soundVolume":0.8}"#)
         #expect(custom.sound == "Glass")
         #expect(custom.soundVolume == 0.8)
         #expect(try ConfigCodec.decode(ConfigCodec.encode(custom)) == custom)
-        // An unknown name is kept as written; the app falls back to "Tink" when playing.
+        // An unknown name is kept as written; the app falls back to the default sound when playing.
         #expect(try decode(#"{"sound":"Nope"}"#).sound == "Nope")
     }
     @Test(arguments: [-1.0, 0.0, 0.25, 1.0, 7.0]) func soundVolumeClamping(_ volume: Double) throws {

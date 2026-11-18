@@ -5,7 +5,7 @@ public enum SystemSounds {
     /// The folder of the built-in macOS alert sounds.
     public static let defaultFolder = URL(fileURLWithPath: "/System/Library/Sounds", isDirectory: true)
     /// The sound Ting plays by default, and when the configured one cannot be loaded.
-    public static let defaultName = "Tink"
+    public static let defaultName = "Purr"
     /// File extensions treated as sound files (lowercased).
     public static let soundExtensions: Set<String> = ["aiff", "aif", "aifc", "caf", "wav", "mp3", "m4a"]
 

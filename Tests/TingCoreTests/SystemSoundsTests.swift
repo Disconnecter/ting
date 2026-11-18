@@ -23,6 +23,6 @@ import Testing
 
     @Test func defaults() {
         #expect(SystemSounds.defaultFolder.path == "/System/Library/Sounds")
-        #expect(SystemSounds.defaultName == "Tink")
+        #expect(SystemSounds.defaultName == "Purr")
     }
 }

@@ -63,7 +63,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   0–2), `unknownKey` (`shake` or `close`), `appearance` (`dark` or `light`),
   `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound` (booleans),
   `sound` (a system sound name from `/System/Library/Sounds` without extension,
-  default `Tink`; an unknown name plays `Tink`), `soundVolume` (0–1, default 0.5),
+  default `Purr`; an unknown name plays `Purr`), `soundVolume` (0–1, default 0.5),
   `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true,
   "converter": true}`; `calculator` shows the value of a query such as `2*(3+4)` first in
   launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`),
