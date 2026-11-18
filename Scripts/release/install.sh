@@ -27,7 +27,7 @@ fi
 codesign --verify --deep --strict "$SOURCE"
 xcrun stapler validate "$SOURCE"
 spctl --assess --type execute "$SOURCE"
-if [[ -n "$BUNDLE_CHECK" ]]; then swift "$ROOT/$BUNDLE_CHECK" "$SOURCE"; fi
+run_bundle_check "$SOURCE"
 swift "$KIT/check_privacy.swift" "$SOURCE"
 
 # Stage on the destination volume before the running app quits.

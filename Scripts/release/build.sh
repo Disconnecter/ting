@@ -37,13 +37,18 @@ TEST_LOG="$DIST/tests.log"
 TEST_COMMAND=(swift test --scratch-path "$ROOT/.build/release-tests")
 # shellcheck disable=SC2206
 if [[ -n "$TEST_ARGS" ]]; then TEST_COMMAND+=($TEST_ARGS); fi
+# swift test, then the app's other suites (EXTRA_TESTS, run with bash -c).
+run_tests() {
+  "${TEST_COMMAND[@]}" || return 1
+  if [[ -n "$EXTRA_TESTS" ]]; then bash -c "$EXTRA_TESTS" || return 1; fi
+}
 if [[ "${RELEASE_SERIAL_TESTS:-0}" == 1 ]]; then
   stage "Tests"
-  "${TEST_COMMAND[@]}" >"$TEST_LOG" 2>&1 || { tail -40 "$TEST_LOG" >&2; die "Tests failed; see $TEST_LOG."; }
+  run_tests </dev/null >"$TEST_LOG" 2>&1 || { tail -40 "$TEST_LOG" >&2; die "Tests failed; see $TEST_LOG."; }
 else
   stage "Tests started in the background (log: dist/tests.log)"
   # No terminal for the tests: a test that starts an interactive shell must not stop on SIGTTOU.
-  "${TEST_COMMAND[@]}" </dev/null >"$TEST_LOG" 2>&1 &
+  run_tests </dev/null >"$TEST_LOG" 2>&1 &
   TESTS_PID=$!
 fi
 
@@ -62,7 +67,7 @@ BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_BUNDLE/Content
 [[ "$ID" == "$BUNDLE_ID" ]] || die "The bundle identifier is $ID, not $BUNDLE_ID."
 [[ "$SHORT" == "$MARKETING_VERSION" && "$BUILD" == "$BUILD_NUMBER" ]] \
   || die "The bundle is $SHORT ($BUILD), version.env says $MARKETING_VERSION ($BUILD_NUMBER)."
-if [[ -n "$BUNDLE_CHECK" ]]; then swift "$ROOT/$BUNDLE_CHECK" "$APP_BUNDLE"; fi
+run_bundle_check "$APP_BUNDLE"
 swift "$KIT/check_privacy.swift" "$APP_BUNDLE"
 
 stage "Notarize (Apple)"

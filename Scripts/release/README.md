@@ -70,8 +70,9 @@ two keys are required.
 | `GITHUB_APPCAST` | `1` uploads `appcast.xml` to the GitHub release for old copies | `0` |
 | `HOMEBREW_CASK` | Cask name in `bobuk-io/homebrew-tap`; needs `Scripts/homebrew_cask.rb` | none |
 | `TEST_ARGS` | Extra `swift test` arguments | none |
+| `EXTRA_TESTS` | Other suites after `swift test`, run with `bash -c` | none |
 | `VERSION_SWIFT_FILE`, `VERSION_SWIFT_PREFIX` | A source file that repeats the version after the prefix | none |
-| `BUNDLE_CHECK` | App-specific Swift check run on the built bundle | none |
+| `BUNDLE_CHECK` | App-specific check of the built bundle (`.swift`, `.py` or an executable), given the app path | none |
 
 ## What every app provides
 

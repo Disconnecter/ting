@@ -30,6 +30,7 @@ GITHUB_APPCAST=${GITHUB_APPCAST:-0}
 HOMEBREW_CASK=${HOMEBREW_CASK:-}
 HOMEBREW_TAP_REPO=${HOMEBREW_TAP_REPO:-bobuk-io/homebrew-tap}
 TEST_ARGS=${TEST_ARGS:-}
+EXTRA_TESTS=${EXTRA_TESTS:-}
 VERSION_SWIFT_FILE=${VERSION_SWIFT_FILE:-}
 VERSION_SWIFT_PREFIX=${VERSION_SWIFT_PREFIX:-}
 BUNDLE_CHECK=${BUNDLE_CHECK:-}
@@ -56,6 +57,16 @@ read_version() {
   NOTES="docs/releases/$TAG.md"
   ARCHIVE="$ARCHIVE_PREFIX-$MARKETING_VERSION-universal.zip"
   ZIP="$DIST/$ARCHIVE"
+}
+
+# The app-specific check of a built bundle: a Swift or Python script, or an executable.
+run_bundle_check() {
+  [[ -n "$BUNDLE_CHECK" ]] || return 0
+  case "$BUNDLE_CHECK" in
+    *.swift) swift "$ROOT/$BUNDLE_CHECK" "$1" ;;
+    *.py) python3 -I "$ROOT/$BUNDLE_CHECK" "$1" ;;
+    *) "$ROOT/$BUNDLE_CHECK" "$1" ;;
+  esac
 }
 
 # The bundle identifiers that an installed copy may have: this one and older ones.
