@@ -245,11 +245,12 @@ enum ChildProcess {
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
-        // Own process group, so the program and its children can be stopped together;
-        // no other open files; default signal handling and an empty signal mask.
-        let flags = POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK
+        // Own session and process group, so the program and its children can be stopped together
+        // and never share a controlling terminal with Ting: an interactive login shell started from
+        // a terminal (ting-micro, swift test) would otherwise stop on SIGTTOU/SIGTTIN until the time limit.
+        // No other open files; default signal handling and an empty signal mask.
+        let flags = POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK
         posix_spawnattr_setflags(&attributes, Int16(flags))
-        posix_spawnattr_setpgroup(&attributes, 0)
         var all = sigset_t(), none = sigset_t()
         sigfillset(&all)
         sigemptyset(&none)
