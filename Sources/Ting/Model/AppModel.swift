@@ -47,6 +47,8 @@ final class AppModel {
     /// The clipboard history of this session.
     @ObservationIgnored let clipbawd: ClipbawdHistory
     @ObservationIgnored let clipbawdPanel: ClipbawdController
+    /// Shows the Settings window; tests replace it so they never activate the app.
+    @ObservationIgnored var settingsOpener: () -> Void = { SettingsOpener.open() }
     /// True while the gear menu tracks: the launchers stay open but take no keys or hotkeys.
     @ObservationIgnored private(set) var isMenuTracking = false
     /// The one open micro-app flow: approval, working state and result.
@@ -148,6 +150,9 @@ final class AppModel {
         runner.onPlaySound = { [weak self] in
             DispatchQueue.main.async { [weak self] in self?.playSound() }
         }
+        leader.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
+        launcha.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
+        clipbawdPanel.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
         launchaModel.onCopyValue = { [weak self] value in self?.copyValue(value) }
         launchaModel.onStartMicro = { [weak self] start in
             switch start {
@@ -338,6 +343,14 @@ final class AppModel {
         leader.close()
         launcha.close()
         clipbawdPanel.open()
+    }
+
+    /// ⌘, in selecta, launcha or clipbawd: close the launchers, then show Settings.
+    func openSettingsFromLauncher() {
+        leader.close()
+        launcha.close()
+        clipbawdPanel.close()
+        settingsOpener()
     }
 
     /// Call only after the user read what this allows and which macOS prompts may follow.
