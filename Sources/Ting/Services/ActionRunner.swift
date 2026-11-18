@@ -66,11 +66,17 @@ final class ActionRunner: LaunchaOpening {
         visit(items)
     }
 
+    // 1Password can keep running with its main window closed. Activation alone
+    // does not reopen it; let Launch Services deliver a normal open request instead.
+    static func tryActivation(bundleID: String?, activate: () -> Bool) -> Bool {
+        bundleID != "com.1password.1password" && activate()
+    }
+
     /// Starts activation synchronously, before the leader panel returns focus to another app.
     func activateRunning(_ item: Item) -> LaunchOutcome? {
         guard case .app(let id) = item.action,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first,
-              app.activate(options: []) else { return nil }
+              Self.tryActivation(bundleID: id, activate: { app.activate(options: []) }) else { return nil }
         return .activated
     }
 
@@ -83,8 +89,7 @@ final class ActionRunner: LaunchaOpening {
             return .failed
         case .app(let bundleID):
             let name = item.label.isEmpty ? bundleID : item.label
-            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
-               app.activate(options: []) { return .activated }
+            if let outcome = activateRunning(item) { return outcome }
             guard !bundleID.isEmpty, let url = appURLs[bundleID] ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
                 onError?("\(name): app not found (\(bundleID.isEmpty ? "no bundle ID" : bundleID))")
                 return .failed
@@ -101,7 +106,9 @@ final class ActionRunner: LaunchaOpening {
 
     func openApp(at url: URL, name: String) async -> LaunchOutcome {
         let running = NSWorkspace.shared.runningApplications.first { $0.bundleURL == url }
-        if let running, running.activate(options: []) { return .activated }
+        if let running, Self.tryActivation(bundleID: running.bundleIdentifier, activate: { running.activate(options: []) }) {
+            return .activated
+        }
         let wasRunning = running != nil
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
