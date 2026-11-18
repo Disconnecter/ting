@@ -5,7 +5,7 @@ import Foundation
 // slice. This is intentionally separate from runtime code and never reads user
 // data. Only file names and issue categories are reported, never contents.
 guard CommandLine.arguments.count == 2 else {
-    fputs("Usage: swift Scripts/check_release_privacy.swift /path/to/Ting.app\n", stderr)
+    fputs("Usage: swift Scripts/release/check_privacy.swift /path/to/App.app\n", stderr)
     exit(1)
 }
 let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)

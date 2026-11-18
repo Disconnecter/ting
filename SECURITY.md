@@ -164,7 +164,7 @@ outside git and outside CI jobs for untrusted code. The Sparkle private key live
 in the maintainer's login Keychain; losing or leaking it affects every installed
 copy.
 
-`Scripts/release.sh` signs, notarizes and signs the appcast, then installs and
+`Scripts/release.sh` (the shared kit in `Scripts/release/`) signs, notarizes and signs the appcast, then installs and
 restarts `/Applications/Ting.app`. It is intended for a trusted maintainer
 workstation, not for running against unreviewed pull requests. Release
 artifacts must pass the local-path scan and the signature, bundle and

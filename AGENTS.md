@@ -21,31 +21,34 @@
   release scripts run the full `swift test`; tests must pass without warnings.
 - Do not add GitHub Actions or other hosted CI: they are slow. Run tests and
   release checks locally.
+- Releases use the shared bobuk.io release kit in `Scripts/release/` (see its
+  `README.md`). Ting holds the canonical copy: change the kit here, run
+  `Scripts/release/test_kit.sh`, then copy it to the other apps with
+  `Scripts/release/sync_kit.sh ../splash-fihish ../HAScS ../lowkey`. App facts live in
+  `release.env`; never edit a kit copy in another repository.
 - Every release must be signed with Developer ID, notarized and stapled, signed
-  for Sparkle, published to GitHub Releases with `Scripts/publish.sh`,
-  **installed at `/Applications/Ting.app` and restarted**. The update feed of
-  installed copies is `https://bobuk.io/apps/ting/appcast.xml`: `publish.sh`
-  copies `appcast.xml` into `../landing/public/apps/ting/`, and the release is
-  not done until the landing site with that file is deployed. Keep publishing
-  `appcast.xml` to GitHub Releases too, for Ting 0.6.1 and older. `Scripts/release.sh`
-  prepares, checks and installs the release. `Scripts/install.sh` installs an
-  already notarized app without rebuilding. Verify that the running process is
-  from `/Applications`, not `build/` or `dist/`.
+  for Sparkle, published to GitHub Releases, **installed at `/Applications/Ting.app`
+  and restarted**. The update feed of installed copies is
+  `https://bobuk.io/apps/ting/appcast.xml`; the release is not done until the landing
+  site with that file is deployed. Keep publishing `appcast.xml` to GitHub Releases
+  too (`GITHUB_APPCAST=1`), for Ting 0.6.1 and older. Verify that the running process
+  is from `/Applications`, not `build/` or `dist/`.
 - `Scripts/release_next.sh` (no arguments) does the whole next patch release:
-  raise the last version number and `BUILD_NUMBER`, `release.sh`, commit
-  `Release Ting <version>`, push main, `publish.sh`, then the landing site build,
-  commit, push, deploy and a check of the live feed. Prepare the notes file of the
-  next version, commit the landing page changes (clean `../landing` on main) and
-  set `APP_IDENTITY` and `NOTARY_PROFILE`. After a failure, run the same command
-  again: it goes on with the same version. Test it only with the offline
-  `Scripts/test_release_next.sh`; never run it, `release.sh` or `publish.sh`
-  for a check, since they publish a real release.
+  version raise, tests in the background while the app builds and is notarized,
+  install, commit `Release Ting <version>`, push, GitHub release, Homebrew cask,
+  landing deploy and a check of the live page and feed, then the time of each stage.
+  Prepare the notes file of the next version, commit the landing page changes (clean
+  `../landing` on main) and set `APP_IDENTITY` and `NOTARY_PROFILE` (`ting`). Check
+  readiness with `Scripts/release/doctor.sh`. After a failure, run the same command
+  again: it goes on with the same version. Test the kit only with the offline
+  `Scripts/release/test_kit.sh`; never run `release_next.sh`, `release.sh` or
+  `publish.sh` for a check, since they publish or install a real release.
 - Each release needs a higher `BUILD_NUMBER` in `version.env` and release notes in
-  `docs/releases/v<version>.md`. Never modify a ZIP after `make_appcast.sh` signed it.
+  `docs/releases/v<version>.md`. Never modify a ZIP after the appcast signed it.
 - The Sparkle EdDSA private key stays in the login Keychain under account
   `io.bobuk.ting`. Never export, print, commit or upload it.
 - Release artifacts must pass `Scripts/check_bundle.swift` and
-  `Scripts/check_release_privacy.swift`; do not ship local home or build paths.
+  `Scripts/release/check_privacy.swift`; do not ship local home or build paths.
 - Never overwrite the user's `~/.config/ting/config.json` during development or
   testing. Use `TING_CONFIG=/tmp/...` for manual checks.
 - Tests and manual checks of micro-apps use a temporary micro-apps folder through
