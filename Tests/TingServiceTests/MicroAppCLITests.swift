@@ -37,9 +37,13 @@ final class MicroAppCLITests: XCTestCase {
         XCTAssertNoThrow(try MicroAppCLI.validate(.init(file: url.path, params: ["mode": "a"], allowEffects: true), app: app))
     }
 
+    /// The ting-micro built next to this test bundle, so any `--scratch-path` works.
+    private static var tingMicro: URL {
+        Bundle(for: MicroAppCLITests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("ting-micro")
+    }
+
     private func run(_ arguments: [String], input: String = "") async throws -> ChildProcessOutcome {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let executable = root.appendingPathComponent(".build/debug/ting-micro").path
+        let executable = Self.tingMicro.path
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: executable))
         return await ChildProcess.run(.init(executable: executable, arguments: arguments,
                                             environment: ["PATH": "/usr/bin:/bin", "CLI_TEST_VALUE": "secret"],
@@ -62,9 +66,8 @@ final class MicroAppCLITests: XCTestCase {
 
     func testSIGINTCancelsTheChildProcess() async throws {
         let url = try file(header + "command: sleep 20\n")
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let process = Process()
-        process.executableURL = root.appendingPathComponent(".build/debug/ting-micro")
+        process.executableURL = Self.tingMicro
         process.arguments = ["run", url.path, "--verbose"]
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
