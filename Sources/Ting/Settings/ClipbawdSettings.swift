@@ -4,48 +4,117 @@ import SwiftUI
 import TingCore
 
 struct ClipbawdSettingsView: View {
+    var searchTarget: String? = nil
     @Environment(AppModel.self) private var model
     @State private var prefix = ""
     @State private var message: String?
     @State private var automation: [String: Bool] = [:]
+    @State private var storageExpanded = false
+    @State private var privacyExpanded = false
+    @State private var pendingAction: String?
 
     var body: some View {
         let settings = model.config.clipbawd
         Form {
             Section {
-                Toggle("Use Clipbawd", isOn: model.binding(\.clipbawd.enabled))
+                Toggle("Use Clipbawd", isOn: Binding(get: { settings.enabled }, set: { enabled in
+                    if enabled { model.update { $0.clipbawd.enabled = true } }
+                    else { pendingAction = "disable" }
+                }))
                 Text(settings.enabled
-                     ? "Ting keeps what you copy in memory, for this session only. Turning Clipbawd off forgets it."
+                     ? "Keep what you copy. History stays in memory unless you enable storage below. Turning Clipbawd off forgets it."
                      : "Off: Ting never reads the clipboard, the hotkey is free and the window does not open.")
                     .font(.caption).foregroundStyle(.secondary)
+                if settings.enabled { LabeledContent("Hotkey") { ClipbawdHotkeyField() } }
             } header: { MonoLabel("Clipbawd", size: 9).foregroundStyle(Color.tingAmber) }
+            .id("clipbawd")
             if settings.enabled { sections(settings) }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 700)
+        .onAppear { expandSearchTarget() }
+        .onChange(of: searchTarget) { expandSearchTarget() }
+        .alert("Delete clipboard history?", isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } })) {
+            Button("Delete", role: .destructive) {
+                switch pendingAction {
+                case "disable": model.update { $0.clipbawd.enabled = false }
+                case "persistent": model.update { $0.clipbawd.persistent = false }
+                default: model.clipbawd.clear()
+                }
+                pendingAction = nil
+            }
+            Button("Cancel", role: .cancel) { pendingAction = nil }
+        } message: {
+            Text(pendingAction == "persistent"
+                 ? "Stored history will be deleted. The current session stays in memory."
+                 : "All clipboard history will be deleted from memory and disk. This cannot be undone.")
+        }
     }
 
     @ViewBuilder private func sections(_ settings: ClipbawdSettings) -> some View {
             Section {
-                LabeledContent("Hotkey") { ClipbawdHotkeyField() }
-                Text("A selecta binding can open Clipbawd too: add one in Bindings.")
+                Toggle("Keep history between launches", isOn: Binding(get: { settings.persistent }, set: { enabled in
+                    if enabled { model.update { $0.clipbawd.persistent = true } }
+                    else { pendingAction = "persistent" }
+                }))
+                Text(settings.persistent
+                     ? "Stored locally, without additional encryption; excluded from backups. Turning this off deletes stored history."
+                     : "Off by default. History is forgotten when Ting quits.")
                     .font(.caption).foregroundStyle(.secondary)
-                LabeledContent("Keep at most") {
-                    Stepper(value: model.binding(\.clipbawd.maxItems), in: ClipbawdSettings.maxItemsRange, step: 10) {
-                        Text("\(settings.maxItems) items").font(.system(size: 12, design: .monospaced))
+                DisclosureGroup("Retention limits", isExpanded: $storageExpanded) {
+                    LabeledContent("Keep at most") {
+                        Stepper(value: model.binding(\.clipbawd.maxItems), in: ClipbawdSettings.maxItemsRange, step: 10) {
+                            Text("\(settings.maxItems) items").monospacedDigit()
+                        }
                     }
+                    LabeledContent("Total size") {
+                        TextField("", value: Binding(get: { settings.maxMegabytes }, set: { value in
+                            model.update { $0.clipbawd.maxMegabytes = min(max(value, 1), 4096) }
+                        }), format: .number.grouping(.never))
+                            .labelsHidden()
+                            .frame(width: 80)
+                            .accessibilityLabel("Clipboard history size limit in MiB")
+                        Text("MiB")
+                    }
+                    LabeledContent("Delete copies older than") {
+                        Stepper(value: model.binding(\.clipbawd.maxDays), in: ClipbawdSettings.maxDaysRange) {
+                            Text(settings.maxDays == 0 ? "No age limit" : "\(settings.maxDays) days").monospacedDigit()
+                        }
+                    }
+                    Text("Defaults: 100 items, 50 MiB, 30 days. Set days to 0 for no age limit. Limits also apply to session-only history. Expired copies are removed hourly; using a copy again does not extend its lifetime. Videos: up to 30 seconds and 32 MiB each.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 HStack {
                     let history = model.clipbawd.history
-                    Text("\(history.entries.count) items, \(ByteCountFormatter.string(fromByteCount: Int64(history.totalBytes), countStyle: .memory)) in memory")
+                    Text("\(history.entries.count) items · \(ByteCountFormatter.string(fromByteCount: Int64(history.totalBytes), countStyle: .memory)) of \(settings.maxMegabytes) MiB" + (settings.persistent ? " · \(ByteCountFormatter.string(fromByteCount: Int64(model.clipbawd.storedBytes), countStyle: .file)) on disk" : " in memory"))
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Clear History") { model.clipbawd.clear() }
-                        .disabled(history.entries.isEmpty)
+                    Button("Clear History") { pendingAction = "clear" }
+                        .disabled(history.entries.isEmpty && model.clipbawd.storageError == nil && !model.clipbawd.isLoading && model.clipbawd.storedBytes == 0)
+                }
+                if model.clipbawd.isLoading { ProgressView("Restoring history…").controlSize(.small) }
+                if let error = model.clipbawd.storageError {
+                    Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Color.tingAmber)
                 }
             } header: { MonoLabel("History", size: 9).foregroundStyle(Color.tingAmber) }
+            .id("storage")
 
             Section {
+            DisclosureGroup("Privacy and exclusions", isExpanded: $privacyExpanded) {
+            privacySections(settings)
+            }
+            }.id("privacy")
+
+            Section {
+                Toggle("Fetch link titles, icons and images", isOn: model.binding(\.clipbawd.fetchLinks))
+                Text("Off by default. Ting loads copied links without cookies or scripts; the site learns that a link was copied. Local network addresses are checked, but DNS rebinding remains possible. Leave this off on sensitive networks.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } header: { MonoLabel("Links", size: 9).foregroundStyle(Color.tingAmber) }
+            .id("links")
+    }
+
+    @ViewBuilder private func privacySections(_ settings: ClipbawdSettings) -> some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Never keep copies from").font(.headline)
                 if settings.excludedApps.isEmpty {
                     Text("No apps. “Never Keep from…” in Clipbawd adds the app of an item.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -66,9 +135,11 @@ struct ClipbawdSettingsView: View {
                     Spacer()
                     Button("Add App…", action: addApp)
                 }
-            } header: { MonoLabel("Never keep copies from", size: 9).foregroundStyle(Color.tingAmber) }
+            }
+            .padding(.vertical, 8)
 
-            Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Never keep text that starts with").font(.headline)
                 ForEach(settings.ignoredPrefixes, id: \.self) { value in
                     HStack {
                         Text(value).font(.system(size: 12, design: .monospaced))
@@ -86,9 +157,11 @@ struct ClipbawdSettingsView: View {
                 }
                 Text("Text that starts with one of these, after leading spaces, is never kept. Upper and lower case differ.")
                     .font(.caption).foregroundStyle(.secondary)
-            } header: { MonoLabel("Never keep text that starts with", size: 9).foregroundStyle(Color.tingAmber) }
+            }
+            .padding(.vertical, 8)
 
-            Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Private windows").font(.headline)
                 Text("Never kept: copies while Secure Keyboard Entry is on (password fields, Terminal’s secure entry), copies password managers mark as secret, and recognised private windows of Firefox and its forks (requires Accessibility and a matching window title). Detection is best-effort. Safari does not tell other apps about its private windows.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -113,15 +186,16 @@ struct ClipbawdSettingsView: View {
                 if let message {
                     Text(message).font(.caption).foregroundStyle(Color.tingAmber)
                 }
-            } header: { MonoLabel("Private windows", size: 9).foregroundStyle(Color.tingAmber) }
+            }
+            .padding(.vertical, 8)
             .task { await refreshAutomation() }
 
-            Section {
-                Toggle("Fetch link titles, icons and images", isOn: model.binding(\.clipbawd.fetchLinks))
-                Text("Off by default. When on, Ting loads a copied http or https link once, without cookies and without running scripts, to show its title, icon or image. The site then learns that the link was copied. Ting checks for local network addresses, but DNS rebinding remains possible. Leave this off on sensitive networks.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } header: { MonoLabel("Links", size: 9).foregroundStyle(Color.tingAmber) }
+
+    }
+
+    private func expandSearchTarget() {
+        if searchTarget == "storage" { storageExpanded = true }
+        if searchTarget == "privacy" { privacyExpanded = true }
     }
 
     private func addPrefix() {

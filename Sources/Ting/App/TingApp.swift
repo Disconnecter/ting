@@ -33,6 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        model.clipbawd.finishStorage { sender.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
+    }
+
     /// Opening Ting again (Finder, Spotlight) shows Settings, or Welcome when there is no leader yet.
     /// This is the way back when the menu-bar icon is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

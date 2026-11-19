@@ -115,7 +115,8 @@ struct BindingsSettings: View {
             }
             .padding(8)
         }
-        .frame(width: 820, height: 520)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .id("bindings")
         .task {
             // Also pick up changes made in Lowkey while Settings stays open.
             repeat {

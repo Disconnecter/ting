@@ -136,11 +136,25 @@ final class ClipboardMonitor {
             Task { [weak self, privacy] in
                 capture.privateContext = await privacy.isPrivate(check, pid: pid, bundleID: id)
                 guard let self, self.generation == token else { return }
-                self.onCapture?(capture)
+                self.deliver(capture)
             }
             return
         }
-        onCapture?(capture)
+        deliver(capture)
+    }
+
+    private func deliver(_ capture: ClipCapture) {
+        guard !capture.privateContext, !capture.types.contains(where: ClipboardTypes.skipMarkers.contains),
+              ClipVideoCapture.needsInspection(capture) else {
+            onCapture?(capture)
+            return
+        }
+        let token = generation
+        Task { [weak self] in
+            let prepared = await Task.detached(priority: .utility) { await ClipVideoCapture.prepare(capture) }.value
+            guard let self, self.generation == token else { return }
+            self.onCapture?(prepared)
+        }
     }
 
     /// The types list, and the data of the known types unless a marker says not to keep it.
@@ -156,8 +170,7 @@ final class ClipboardMonitor {
         }
         guard capture.files.isEmpty, let first = items.first else { return capture }
 
-        let known = [ClipboardTypes.plainText, ClipboardTypes.rtf, ClipboardTypes.html,
-                     ClipboardTypes.png, ClipboardTypes.tiff, ClipboardTypes.jpeg]
+        let known = ClipboardTypes.read.filter { $0 != ClipboardTypes.fileURL }
         let present = Set(first.types.map(\.rawValue))
         for type in known where present.contains(type) {
             if let data = first.data(forType: NSPasteboard.PasteboardType(type)) {
@@ -165,6 +178,7 @@ final class ClipboardMonitor {
             }
         }
         capture.text = first.string(forType: .string)
+            ?? first.string(forType: NSPasteboard.PasteboardType(ClipboardTypes.markdown))
         let images = [ClipboardTypes.png, ClipboardTypes.tiff, ClipboardTypes.jpeg]
         if let image = capture.representations.first(where: { images.contains($0.type) }) {
             capture.image = imageInfo(image.data, type: image.type)
@@ -220,6 +234,11 @@ enum ClipboardWriter {
             }
         } else {
             let item = NSPasteboardItem()
+            if case .video = entry.content,
+               let movie = entry.representations.first(where: { ClipboardTypes.videoTypes.contains($0.type) }) {
+                guard let url = try? videoExport(movie, to: pasteboard) else { return pasteboard.changeCount }
+                item.setString(url.absoluteString, forType: .fileURL)
+            }
             for representation in entry.representations {
                 item.setData(representation.data, forType: NSPasteboard.PasteboardType(representation.type))
             }
@@ -228,5 +247,26 @@ enum ClipboardWriter {
         pasteboard.clearContents()
         pasteboard.writeObjects(objects)
         return pasteboard.changeCount
+    }
+
+    private static func exportDirectory(for pasteboard: NSPasteboard) -> URL {
+        let key = ClipDigest(Data(pasteboard.name.rawValue.utf8)).bytes.prefix(8).map { String(format: "%02x", $0) }.joined()
+        return FileManager.default.temporaryDirectory.appendingPathComponent("io.bobuk.ting.clipbawd-export-" + key)
+    }
+
+    static func clearVideoExport(from pasteboard: NSPasteboard) {
+        try? FileManager.default.removeItem(at: exportDirectory(for: pasteboard))
+    }
+
+    /// Only the current clipboard movie needs a file URL; no growing shadow history.
+    private static func videoExport(_ representation: ClipRepresentation, to pasteboard: NSPasteboard) throws -> URL {
+        let exportDirectory = exportDirectory(for: pasteboard)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: exportDirectory.path) { try fm.removeItem(at: exportDirectory) }
+        try fm.createDirectory(at: exportDirectory, withIntermediateDirectories: false,
+                               attributes: [.posixPermissions: 0o700])
+        let url = exportDirectory.appendingPathComponent(representation.type == ClipboardTypes.quickTime ? "Video.mov" : "Video.mp4")
+        try representation.data.write(to: url)
+        return url
     }
 }

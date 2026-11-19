@@ -7,8 +7,30 @@ import UniformTypeIdentifiers
 
 struct SettingsRoot: View {
     @Environment(AppModel.self) private var model
+    @State private var page: SettingsPage? = .general
+    @State private var query = ""
+    @State private var target: String?
+
+    init(page: SettingsPage = .general, query: String = "", target: String? = nil) {
+        _page = State(initialValue: page)
+        _query = State(initialValue: query)
+        _target = State(initialValue: target)
+    }
 
     var body: some View {
+        NavigationSplitView {
+            VStack(spacing: 8) {
+                TextField("Search settings", text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Search all Ting settings")
+                    .padding(.horizontal, 12).padding(.top, 12)
+                List(SettingsPage.allCases, selection: $page) { item in
+                    Label(item.title, systemImage: item.symbol).tag(item)
+                }
+                .onChange(of: page) { query = "" }
+            }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+        } detail: {
         VStack(spacing: 0) {
             if let error = model.configError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -20,7 +42,10 @@ struct SettingsRoot: View {
                     .background(Color.tingAmber.opacity(0.1))
             }
             if !model.microAppIssues.isEmpty {
-                Label("Some micro-app files have errors. See Advanced.", systemImage: "exclamationmark.triangle.fill")
+                Button { page = .microApps; query = "" } label: {
+                Label("Some micro-app files have errors. Open Micro-apps.", systemImage: "exclamationmark.triangle.fill")
+                }
+                .buttonStyle(.plain)
                     .font(.caption)
                     .foregroundStyle(Color.tingAmber)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -28,19 +53,57 @@ struct SettingsRoot: View {
                     .padding(.vertical, 8)
                     .background(Color.tingAmber.opacity(0.1))
             }
-            TabView {
-                GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
-                BindingsSettings().tabItem { Label("Bindings", systemImage: "keyboard") }
-                ClipbawdSettingsView().tabItem { Label("Clipbawd", systemImage: "list.clipboard") }
-                AdvancedSettings().tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
+            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let results = SettingsCatalog.search(query)
+                if results.isEmpty {
+                    ContentUnavailableView.search(text: query)
+                } else {
+                    List(results) { result in
+                        Button {
+                            page = result.page
+                            query = ""
+                            target = result.id
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(result.title).font(.headline)
+                                Text(result.page.title).font(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .accessibilityLabel("Matching settings")
+                }
+            } else {
+                ScrollViewReader { proxy in
+                    Group {
+                        switch page ?? .general {
+                        case .general: GeneralSettings(activation: false)
+                        case .activation: GeneralSettings(activation: true)
+                        case .bindings: BindingsSettings()
+                        case .clipbawd: ClipbawdSettingsView(searchTarget: target)
+                        case .microApps:
+                            Form { MicroAppsSection().id("micro-apps") }.formStyle(.grouped)
+                        case .advanced: AdvancedSettings()
+                        }
+                    }
+                    .id(page)
+                    .onAppear { if let target { proxy.scrollTo(target, anchor: .top) } }
+                    .onChange(of: target) { if let target { proxy.scrollTo(target, anchor: .top) } }
+                }
             }
         }
+        .navigationTitle(query.isEmpty ? (page ?? .general).title : "Search Settings")
+        }
+        .frame(minWidth: 900, idealWidth: 1040, minHeight: 600, idealHeight: 720)
     }
 }
 
 // MARK: - General
 
 private struct GeneralSettings: View {
+    let activation: Bool
     @Environment(AppModel.self) private var model
     @Bindable private var updates = UpdateService.shared
 
@@ -53,6 +116,7 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
+            if !activation {
             Picker("Appearance", selection: model.binding(\.appearance)) {
                 Text(Appearance.light.title).tag(Appearance.light)
                 Text(Appearance.dark.title).tag(Appearance.dark)
@@ -63,6 +127,9 @@ private struct GeneralSettings: View {
                 Text("Show the Ting · selecta / launcha / Clipbawd title row. The leader symbol and input stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: { MonoLabel("Panel", size: 9).foregroundStyle(Color.tingAmber) }
+            .id("appearance")
+            }
+            if activation {
             Section {
                 LabeledContent("Leader") { LeaderField() }
                 LabeledContent("Second leader") {
@@ -89,7 +156,10 @@ private struct GeneralSettings: View {
                     Text("Close the menu").tag(UnknownKeyBehavior.close)
                 }
             } header: { MonoLabel("Activation", size: 9).foregroundStyle(Color.tingAmber) }
-            LaunchaSettingsSection()
+            .id("activation")
+            LaunchaSettingsSection().id("launcha")
+            }
+            if !activation {
             Section {
                 Toggle("Launch at login", isOn: model.binding(\.launchAtLogin))
                 if let error = model.loginItemError {
@@ -100,9 +170,13 @@ private struct GeneralSettings: View {
                     Text("Open Ting again from Finder or Spotlight to get back to Settings.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+            } header: { MonoLabel("System", size: 9).foregroundStyle(Color.tingAmber) }
+            .id("system")
+            Section {
                 Toggle("Play a “ting” when opening an app, link or file", isOn: model.binding(\.playSound))
                 SoundSettings()
-            } header: { MonoLabel("System", size: 9).foregroundStyle(Color.tingAmber) }
+            } header: { MonoLabel("Sound", size: 9).foregroundStyle(Color.tingAmber) }
+            .id("sound")
             if updates.isAvailable {
                 Section {
                     Toggle("Check for updates automatically", isOn: $updates.automaticallyChecks)
@@ -112,6 +186,7 @@ private struct GeneralSettings: View {
                         Button("Check Now") { updates.checkForUpdates() }
                     }
                 } header: { MonoLabel("Updates", size: 9).foregroundStyle(Color.tingAmber) }
+                .id("updates")
             } else if let homebrew = updates.homebrew {
                 Section {
                     Text("Homebrew installed this copy (\(homebrew.prefix.path)), so Homebrew updates it.")
@@ -122,10 +197,11 @@ private struct GeneralSettings: View {
                         Button("Update Ting via Homebrew…") { updates.checkForUpdates() }
                     }
                 } header: { MonoLabel("Updates", size: 9).foregroundStyle(Color.tingAmber) }
+                .id("updates")
+            }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: updates.menuTitle != nil ? 800 : 700)
     }
 }
 
@@ -236,7 +312,7 @@ private struct AdvancedSettings: View {
                 Text("Ting reloads the file when it changes on disk. Micro-apps live in \(model.microStore.displayPath), next to it. Set TING_CONFIG to use another file.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: { MonoLabel("Configuration file", size: 9).foregroundStyle(Color.tingAmber) }
-            MicroAppsSection()
+            .id("config")
             Section {
                 HStack {
                     Button("Export…", action: export)
@@ -246,9 +322,9 @@ private struct AdvancedSettings: View {
                     Text(message).font(.caption).foregroundStyle(Color.tingAmber)
                 }
             } header: { MonoLabel("Backup", size: 9).foregroundStyle(Color.tingAmber) }
+            .id("backup")
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 640)
     }
 
     private func export() {

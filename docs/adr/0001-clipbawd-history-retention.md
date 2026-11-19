@@ -1,0 +1,9 @@
+# Clipbawd history retention
+
+Persistent clipboard history is opt-in and disabled by default. Turning persistence off deletes its archive rather than leaving dormant sensitive data; the current session may stay in memory. Disabling Clipbawd or Clear History deletes both. Local archives are private to the user and excluded from backups, without application-level encryption; filesystem snapshots and existing backups are outside this deletion guarantee.
+
+History obeys simultaneous count, total size and age limits: defaults are 100 entries, 50 MiB and 30 days, with an optional unlimited age. The disk limit includes serialization overhead, not only clipboard payloads. Age cleanup runs hourly and on restore/config changes. Reusing an entry changes its display order but does not renew the age of its latest external copy. Eviction follows copy age, not display order, so repeated reuse cannot silently preserve sensitive data forever.
+
+One copy is one entry with its supported representations. Short local MP4/MOV/M4V movies are snapshots of owned bytes, not references to possibly deleted source files; other generic files remain references. Movie previews are thumbnail/duration only, with a 30-second and 32-MiB per-entry ceiling. Markdown is source text with basic syntax coloring; previews never load embedded images.
+
+Settings navigation is organized across Ting, not only Clipbawd: a searchable sidebar separates General, Keys & Launch, Bindings, Clipbawd, Micro-apps and Advanced. Retention and privacy details use disclosures. The menu keeps frequent launch/pause/settings actions at the top level and groups tools and app information in submenus, rather than mirroring configuration controls.

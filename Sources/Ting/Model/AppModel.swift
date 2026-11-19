@@ -66,9 +66,11 @@ final class AppModel {
     init(presentsWindows: Bool = true, store: ConfigStore? = nil, hotkeys: HotkeyService? = nil,
          clipbawd: ClipbawdHistory? = nil) {
         self.store = store ?? ConfigStore()
+        let environment = store.map { ["TING_CONFIG": $0.url.path] } ?? ProcessInfo.processInfo.environment
         // Tests (no windows) never watch the person's clipboard.
         self.clipbawd = clipbawd ?? ClipbawdHistory(pasteboard: presentsWindows ? .general
-            : NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString)))
+            : NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString)),
+            directory: presentsWindows ? ClipHistoryDisk.defaultDirectory(environment: environment) : nil)
         clipbawdPanel = ClipbawdController(history: self.clipbawd, presentsWindow: presentsWindows)
         self.hotkeys = hotkeys ?? HotkeyService()
         leader = LeaderController(presentsWindow: presentsWindows)
@@ -76,7 +78,6 @@ final class AppModel {
         self.runner = runner
         let lowkey = presentsWindows ? LowkeyIntegration() : LowkeyIntegration(locate: { nil })
         self.lowkey = lowkey
-        let environment = store.map { ["TING_CONFIG": $0.url.path] } ?? ProcessInfo.processInfo.environment
         launchaModel = LaunchaModel(opener: runner,
             historyStore: LaunchaHistoryStore(url: LaunchaHistoryStore.defaultURL(environment: environment)),
             consent: LaunchaConsentStore(url: LaunchaConsentStore.defaultURL(environment: environment)),

@@ -467,7 +467,7 @@ struct MicroAppPipeline: Sendable {
                 throw MicroAppStepError.failed("error", "Clipboard history has no item at index \(index).")
             }
             guard let text = history[-(index + 1)] else {
-                throw MicroAppStepError.failed("error", "Clipboard item \(index) is an image, not text.")
+                throw MicroAppStepError.failed("error", "Clipboard item \(index) contains non-text media (image or video).")
             }
             return text
         case .keychain(let service):

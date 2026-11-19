@@ -13,10 +13,13 @@ The terms used for Ting in code, documents and the interface.
   `2*(3+4)`, shows its value first; `Return` copies it (the launcha calculator).
   So does a conversion, such as `5 yd to m` or `now + 2 days` (the launcha
   converter).
-- **clipbawd:** the clipboard history panel: search on top, the items of this
-  session on the left, a preview with details on the right. `Return` pastes the
-  item into the app in front, `⌘Return` copies it. The history lives in memory
-  only and is gone when Ting quits.
+- **clipbawd:** the clipboard history panel: search on top, retained entries on
+  the left, a preview with details on the right. `Return` pastes the
+  item into the app in front, `⌘Return` copies it. By default, the history lives
+  in memory only and is gone when Ting quits; persistent history can be enabled.
+- **persistent history:** a Clipbawd option that keeps clipboard history across Ting launches; turning it off forgets the stored history.
+- **clipboard entry:** one retained clipboard copy with its supported representations. Copying the same content again updates its entry instead of adding a duplicate.
+- **retention limits:** the maximum number, total size and age of clipboard entries. The oldest copies are forgotten until all enabled limits are satisfied; reusing an entry is not a new copy.
 - **binding:** an item of `config.json` with a key and exactly one of `items`
   (a group), `app`, `url`, `micro` or `open` (`launcha` or `clipbawd`).
 

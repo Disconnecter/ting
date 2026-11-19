@@ -235,7 +235,7 @@ context: [app, finder]
   browser; without that, the micro-app does not start and the panel says what to
   allow. Without the Accessibility permission, the micro-app does not start and
   Ting opens a window that shows how to turn it on: drag Ting into System
-  Settings › Privacy & Security › Accessibility. Settings › Advanced shows
+  Settings › Privacy & Security › Accessibility. Settings › Micro-apps shows
   whether Ting has it.
 - The approval panel shows what the micro-app reads. A library lists its own
   `context`; a micro-app that calls it needs no `context` for it.
@@ -434,7 +434,7 @@ Every value of a step except shell and Python code can hold variables:
 | `${steps.ID}` | The output of an earlier step, without final line breaks. |
 | `${context.SOURCE.FIELD}` | A value of the [context](#context), such as `${context.app.name}`. |
 | `${NAME}` | A login-shell variable; unset fails the step. |
-| `${clipboard[-1]}` | Newest Clipbawd history item; `-2` is the preceding item. A fixed snapshot is taken after approval at run start. Text, links and colors give text, files give newline-separated paths. Images, missing indices, disabled history and headless runs fail explicitly. Use in templates or `env:`, not directly in shell code. |
+| `${clipboard[-1]}` | Newest Clipbawd history item; `-2` is the preceding item. A fixed snapshot is taken after approval at run start. Text, links and colors give text, files give newline-separated paths. Images, videos, missing indices, disabled history and headless runs fail explicitly. Use in templates or `env:`, not directly in shell code. |
 | `${keychain.SERVICE}` | A generic password of the login keychain. Add one with `security add-generic-password -s SERVICE -a "$USER" -w`. |
 
 Filters after `|`, applied left to right: `url` (percent-encode), `json` (escape

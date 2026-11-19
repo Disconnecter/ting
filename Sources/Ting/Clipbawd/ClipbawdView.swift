@@ -270,7 +270,7 @@ private struct ClipContentPreview: View {
             switch entry.content {
             case .text(let text, _):
                 ScrollView(.vertical) {
-                    Text(String(text.prefix(20_000)) + (text.count > 20_000 ? "\n…" : ""))
+                    Text(ClipMarkdown.highlight(String(text.prefix(20_000)) + (text.count > 20_000 ? "\n…" : "")))
                         .font(.system(size: 12, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,7 +289,7 @@ private struct ClipContentPreview: View {
                         ProgressView().controlSize(.small)
                     }
                 }
-            case .image:
+            case .image, .video:
                 if let image { picture(image) } else { Color.clear }
             case .files(let files):
                 VStack(alignment: .leading, spacing: 6) {
@@ -370,6 +370,7 @@ enum ClipFormat {
         case .text(_, let rich): rich ? "Rich text" : "Text"
         case .link: "Link"
         case .image: "Image"
+        case .video: "Video"
         case .files(let files): files.count == 1 ? "File" : "Files"
         case .color: "Color"
         }
@@ -380,6 +381,7 @@ enum ClipFormat {
         case .text(_, let rich): rich ? "doc.richtext" : "text.alignleft"
         case .link: "link"
         case .image: "photo"
+        case .video: "video"
         case .files: "doc"
         case .color: "paintpalette"
         }
@@ -389,6 +391,7 @@ enum ClipFormat {
     static func iconData(_ entry: ClipEntry) -> (Data, String)? {
         switch entry.content {
         case .image: imageData(entry).map { ($0, "image-\(entry.id)") }
+        case .video(let info): info.thumbnail.map { ($0, "video-\(entry.id)") }
         case .link: entry.link?.icon.map { ($0, "favicon-\(entry.id)") }
         default: nil
         }
@@ -398,6 +401,7 @@ enum ClipFormat {
     static func pictureData(_ entry: ClipEntry) -> (Data, String)? {
         switch entry.content {
         case .image: imageData(entry).map { ($0, "image-\(entry.id)") }
+        case .video(let info): info.thumbnail.map { ($0, "video-\(entry.id)") }
         case .link: entry.link?.imageData.map { ($0, "link-\(entry.id)") }
         default: nil
         }

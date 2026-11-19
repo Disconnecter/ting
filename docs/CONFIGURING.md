@@ -59,7 +59,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
 - `key`: a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`. Keys
   are Latin even when the person types with another layout.
 - In one group a key is used once.
-- `alternateLeader` is an optional second leader, recorded in Settings › General. Either key opens the same bindings. Two successive taps of either key open launcha when double tap is enabled. Omit the field or set it to `null` to clear it.
+- `alternateLeader` is an optional second leader, recorded in Settings › Keys & Launch. Either key opens the same bindings. Two successive taps of either key open launcha when double tap is enabled. Omit the field or set it to `null` to clear it.
 - Settings: `leader` (a key name with optional modifiers, such as `home`,
   `f13`, `option+shift+cmd+f`; `pause` is the Pause key of a PC keyboard, the same key as `f15`
   and saved as `f15`; never a modifier alone), `showDelay` (seconds,
@@ -70,14 +70,34 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true,
   "converter": true}`; `calculator` shows the value of a query such as `2*(3+4)` first in
   launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`),
-  `clipbawd` (`{"hotkey": null, "enabled": true, "fetchLinks": false, "maxItems": 200,
+  `clipbawd` (`{"hotkey": null, "enabled": true, "fetchLinks": false, "maxItems": 100,
+  "persistent": false, "maxMegabytes": 50, "maxDays": 30,
   "excludedApps": [], "ignoredPrefixes": []}`; `enabled: false` turns clipbawd off: Ting never reads the clipboard,
   the hotkey is free and the window does not open;
   `fetchLinks` loads the title, icon or image of a copied link, `maxItems` is
-  20–1000, `excludedApps` lists bundle identifiers whose copies are never kept,
+  20–1000, `persistent` saves history between launches (off by default; turning it off deletes the archive),
+  `maxMegabytes` is 1–4096 MiB (including all representations and disk archive metadata),
+  `maxDays` is 0–3650 (0 means no age limit). The oldest external copies are dropped until all limits hold;
+  age cleanup is hourly and on restore/config changes. Limits apply in memory too; reuse does not reset age.
+  `excludedApps` lists bundle identifiers whose copies are never kept,
   `ignoredPrefixes` lists case-sensitive starts of text that is never kept). The
   Clipbawd hotkey cannot match either leader or the launcha hotkey. Clipbawd is also searchable by name in launcha while enabled.
-- Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
+- Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images, videos and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
+
+### Settings and clipboard storage
+
+Settings has a sidebar and search across all categories. Leader and launcha controls are in **Keys & Launch**,
+permissions and micro-app diagnostics in **Micro-apps**, file/import/export actions in **Advanced**.
+The menu's **Tools** submenu holds config, reload and Copy Agent Prompt; **Ting** holds About and updates.
+
+Persistent clipboard history is a local binary archive in `~/Library/Application Support/Ting/Clipbawd/history.plist`,
+without additional encryption and excluded from backups. With `TING_CONFIG=/tmp/demo.json`, its isolated directory
+is `/tmp/demo.json.clipbawd/`; development/tests must always use an override. Do not edit archives manually.
+Turning Clipbawd off or Clear History deletes memory and disk data. Turning persistence off deletes disk data only.
+New exclusions also remove matching retained entries. Generic files remain references; images and video bytes are retained.
+Markdown source gets basic syntax coloring, never embedded-image loading. One MP4/MOV/M4V clip up to 30 seconds
+and 32 MiB per copy is supported, with thumbnail/duration but no playback. Longer, unsupported or unreadable videos are skipped.
+The size limit may reject a new capture; shrinking limits evicts oldest copies, even a single oversized remaining entry.
 
 ### lowkey sites
 

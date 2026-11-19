@@ -1,0 +1,62 @@
+import Foundation
+
+public enum SettingsPage: String, CaseIterable, Identifiable, Sendable {
+    case general, activation, bindings, clipbawd, microApps, advanced
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .general: "General"
+        case .activation: "Keys & Launch"
+        case .bindings: "Bindings"
+        case .clipbawd: "Clipbawd"
+        case .microApps: "Micro-apps"
+        case .advanced: "Advanced"
+        }
+    }
+    public var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .activation: "command"
+        case .bindings: "keyboard"
+        case .clipbawd: "list.clipboard"
+        case .microApps: "square.stack.3d.up"
+        case .advanced: "wrench.and.screwdriver"
+        }
+    }
+}
+
+/// Search points to real sections, rather than matching only category names.
+public struct SettingsSearchItem: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let page: SettingsPage
+    public let title: String
+    public let keywords: String
+}
+
+public enum SettingsCatalog {
+    public static let items: [SettingsSearchItem] = [
+        .init(id: "appearance", page: .general, title: "Appearance and panel title", keywords: "light dark theme header selecta"),
+        .init(id: "system", page: .general, title: "Login and menu bar", keywords: "launch startup icon system"),
+        .init(id: "sound", page: .general, title: "Sound and volume", keywords: "ting audio mute play"),
+        .init(id: "updates", page: .general, title: "Updates and version", keywords: "automatic check homebrew sparkle"),
+        .init(id: "activation", page: .activation, title: "Leader keys and menu delay", keywords: "activation second alternate unknown shake close shortcut hotkey"),
+        .init(id: "launcha", page: .activation, title: "launcha", keywords: "hotkey double tap interval calculator converter units dates protected folders desktop documents downloads search access"),
+        .init(id: "bindings", page: .bindings, title: "Bindings and app shortcuts", keywords: "sequence group application key url open direct hotkey conflict"),
+        .init(id: "clipbawd", page: .clipbawd, title: "Clipboard and hotkey", keywords: "clipbawd enable recording copy paste image video markdown"),
+        .init(id: "storage", page: .clipbawd, title: "Clipboard history storage", keywords: "persistent persistence disk memory count size megabytes mib mb days age retention clear limit"),
+        .init(id: "privacy", page: .clipbawd, title: "Clipboard privacy and exclusions", keywords: "never keep apps prefixes passwords private windows incognito browser automation permission"),
+        .init(id: "links", page: .clipbawd, title: "Link previews", keywords: "clipboard clipbawd fetch titles icons images network"),
+        .init(id: "micro-apps", page: .microApps, title: "Micro-apps and permissions", keywords: "folder yaml errors broken reload agent prompt accessibility automation"),
+        .init(id: "config", page: .advanced, title: "Configuration file", keywords: "json path location finder editor reload ting_config"),
+        .init(id: "backup", page: .advanced, title: "Import and export", keywords: "backup configuration json restore"),
+    ]
+
+    public static func search(_ query: String) -> [SettingsSearchItem] {
+        let words = NameMatcher.words(in: NameMatcher.fold(query))
+        guard !words.isEmpty else { return items }
+        return items.filter { item in
+            let haystack = NameMatcher.fold("\(item.title) \(item.page.title) \(item.keywords)")
+            return words.allSatisfy { haystack.contains($0) }
+        }
+    }
+}

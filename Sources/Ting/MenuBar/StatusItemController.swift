@@ -68,6 +68,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        let problems = NSMenu(title: "Needs Attention")
 
         let leaderItem = NSMenuItem(title: "Leader: \(model.leaderDisplay)", action: nil, keyEquivalent: "")
         if model.config.leaders.isEmpty {
@@ -77,18 +78,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menu.addItem(leaderItem)
         if let problem = model.hotkeyProblem {
-            menu.addItem(note(problem, symbol: "exclamationmark.triangle"))
+            problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
         }
         let launchaIssues: Set<ConfigIssue.Kind> = [.missingLeader, .invalidLeader, .invalidAlternateLeader, .invalidLaunchaHotkey, .launchaHotkeyConflict,
                                                     .invalidClipbawdHotkey, .clipbawdHotkeyConflict]
         if let error = model.configError ?? model.issues.first(where: { !launchaIssues.contains($0.kind) })?.message {
-            menu.addItem(note(error, symbol: "exclamationmark.triangle"))
+            problems.addItem(note(error, symbol: "exclamationmark.triangle"))
         }
         if let issue = model.microAppIssues.first {
             let files = Set(model.microAppIssues.map(\.file)).count
             let text = files == 1 ? "Micro-app \(issue.file), line \(issue.line): \(issue.message)"
-                : "\(files) micro-app files have errors. See Settings › Advanced."
-            menu.addItem(note(text, symbol: "exclamationmark.triangle"))
+                : "\(files) micro-app files have errors. See Settings › Micro-apps."
+            problems.addItem(note(text, symbol: "exclamationmark.triangle"))
         }
 
         menu.addItem(.separator())
@@ -100,7 +101,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if model.isPaused { launcha.action = nil }
         menu.addItem(launcha)
         if let problem = model.launchaHotkeyProblem {
-            menu.addItem(note(problem, symbol: "exclamationmark.triangle"))
+            problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
         }
         // Off in Settings: no menu item at all.
         if model.config.clipbawd.enabled {
@@ -111,7 +112,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if model.isPaused { clipbawd.action = nil }
             menu.addItem(clipbawd)
             if let problem = model.clipbawdHotkeyProblem {
-                menu.addItem(note(problem, symbol: "exclamationmark.triangle"))
+                problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
             }
         }
 
@@ -122,16 +123,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(showSettings), key: ","))
-        menu.addItem(item("Open Config File", #selector(openConfig)))
-        menu.addItem(item("Copy Agent Prompt", #selector(copyAgentPrompt)))
-        menu.addItem(item("Reload Config and Micro-apps", #selector(reloadConfig)))
+        if let error = model.clipbawd.storageError {
+            problems.addItem(note(error, symbol: "exclamationmark.triangle"))
+        }
+        if !problems.items.isEmpty {
+            problems.addItem(.separator())
+            problems.addItem(item("Open Settings…", #selector(showSettings)))
+            let attention = NSMenuItem(title: "Needs Attention", action: nil, keyEquivalent: "")
+            attention.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
+            attention.submenu = problems
+            menu.addItem(attention)
+        }
+        let tools = NSMenu(title: "Tools")
+        tools.addItem(item("Open Config File", #selector(openConfig)))
+        tools.addItem(item("Copy Agent Prompt", #selector(copyAgentPrompt)))
+        tools.addItem(item("Reload Config and Micro-apps", #selector(reloadConfig)))
+        let toolsItem = NSMenuItem(title: "Tools", action: nil, keyEquivalent: "")
+        toolsItem.submenu = tools
+        menu.addItem(toolsItem)
 
         menu.addItem(.separator())
-        menu.addItem(item("About Ting", #selector(showAbout)))
-        // "Update Ting via Homebrew…" for a copy that Homebrew manages, otherwise Sparkle's check.
+        let info = NSMenu(title: "Ting")
+        info.addItem(item("About Ting", #selector(showAbout)))
         if let title = UpdateService.shared.menuTitle {
-            menu.addItem(item(title, #selector(checkForUpdates)))
+            info.addItem(item(title, #selector(checkForUpdates)))
         }
+        let infoItem = NSMenuItem(title: "Ting", action: nil, keyEquivalent: "")
+        infoItem.submenu = info
+        menu.addItem(infoItem)
         menu.addItem(item("Quit Ting", #selector(quit), key: "q"))
     }
 
