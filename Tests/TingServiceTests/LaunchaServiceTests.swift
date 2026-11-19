@@ -63,6 +63,42 @@ final class LaunchaServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.apps.count, 2)
     }
 
+    func testDefaultIndexFindsFinderAndInstalledSafari() async throws {
+        let index = LaunchaAppIndex(home: try temporary())
+        _ = await index.refreshOnOpen()
+        let finder = await index.search("Finder", history: LaunchHistory())
+        XCTAssertEqual(finder.filter { $0.candidate.id == "app:com.apple.finder" }.count, 1)
+
+        // Safari can be uninstalled on some systems.
+        if ["/Applications/Safari.app", "/System/Applications/Safari.app"].contains(where: FileManager.default.fileExists(atPath:)) {
+            let safari = await index.search("Safari", history: LaunchHistory())
+            XCTAssertEqual(safari.filter { $0.candidate.id == "app:com.apple.safari" }.count, 1)
+        }
+    }
+
+    func testIndexFollowsHiddenAppSymlinks() async throws {
+        let home = try temporary()
+        let apps = home.appendingPathComponent("Applications")
+        let target = home.appendingPathComponent("Elsewhere/Browser.app")
+        try app(target, id: "io.bobuk.browser")
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        for name in ["Browser.app", "Another Link.app"] {
+            let link = apps.appendingPathComponent(name)
+            try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "../Elsewhere/Browser.app")
+            XCTAssertEqual(lchflags(link.path, UInt32(UF_HIDDEN)), 0)
+        }
+        let helpers = home.appendingPathComponent("Helpers")
+        try app(helpers.appendingPathComponent("Helper.app"), id: "io.bobuk.helper")
+        let hiddenFolderLink = apps.appendingPathComponent("Folder.app")
+        try FileManager.default.createSymbolicLink(at: hiddenFolderLink, withDestinationURL: helpers)
+        XCTAssertEqual(lchflags(hiddenFolderLink.path, UInt32(UF_HIDDEN)), 0)
+
+        let index = LaunchaAppIndex(home: home, roots: [apps])
+        let result = await index.refreshOnOpen()
+        XCTAssertEqual(result.apps.map(\.url.path), [target.path])
+        XCTAssertTrue(result.issues.isEmpty)
+    }
+
     func testDesktopConsent() async throws {
         let home = try temporary()
         let desktop = home.appendingPathComponent("Desktop")

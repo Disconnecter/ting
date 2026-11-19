@@ -21,8 +21,14 @@ actor LaunchaAppIndex {
 
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser,
          protectedFolders: ProtectedFolderPolicy = .needsConsent, roots: [URL]? = nil) {
-        self.roots = roots ?? [URL(fileURLWithPath: "/Applications"), URL(fileURLWithPath: "/System/Applications"),
-                              home.appendingPathComponent("Applications"), home.appendingPathComponent("Desktop")]
+        self.roots = roots ?? [
+            URL(fileURLWithPath: "/Applications"),
+            URL(fileURLWithPath: "/System/Applications"),
+            // Include Finder without indexing the other CoreServices bundles.
+            URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app"),
+            home.appendingPathComponent("Applications"),
+            home.appendingPathComponent("Desktop")
+        ]
         policy = LaunchaPathPolicy(home: home, protectedFolders: protectedFolders)
     }
 
@@ -52,6 +58,7 @@ actor LaunchaAppIndex {
             case .children(let children):
                 guard let child = children.nextObject() as? URL else { continue }
                 work.append(.children(children))
+                if child.lastPathComponent.hasPrefix(".") { continue }
                 work.append(.visit(child, isRoot: false))
                 continue
             }
@@ -64,8 +71,14 @@ actor LaunchaAppIndex {
                 result.issues.append(.init(kind: .needsConsent, url: url, message: "Folder access needs a user action."))
                 continue
             }
-            guard visited.insert(url.path).inserted else { continue }
             do {
+                // Safari's public .app symlink has the hidden flag. Only admit hidden
+                // entries when they link directly to an application bundle.
+                if !isRoot, try lexical.resourceValues(forKeys: [.isHiddenKey]).isHidden == true {
+                    guard lexical.pathExtension.lowercased() == "app", url.pathExtension.lowercased() == "app",
+                          try lexical.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true else { continue }
+                }
+                guard visited.insert(url.path).inserted else { continue }
                 let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .localizedNameKey, .isHiddenKey])
                 guard values.isDirectory == true, values.isHidden != true else { continue }
                 if url.pathExtension.lowercased() == "app" {
@@ -73,15 +86,17 @@ actor LaunchaAppIndex {
                     let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
                         ?? values.localizedName.map { ($0 as NSString).deletingPathExtension }
                         ?? url.deletingPathExtension().lastPathComponent
-                    let candidate: LaunchaCandidate
+                    var candidate: LaunchaCandidate
                     if let id = bundle?.bundleIdentifier, !id.isEmpty { candidate = .app(bundleID: id, name: name) }
                     else { candidate = LaunchaCandidate(id: "app-path:" + url.path, name: name, target: .url(url.absoluteString)) }
+                    let bundleName = url.deletingPathExtension().lastPathComponent
+                    if bundleName != name { candidate.searchNames.append(bundleName) }
                     if ids.insert(candidate.id).inserted { result.apps.append(.init(candidate: candidate, url: url)) }
                     continue
                 }
                 guard values.isPackage != true, !Task.isCancelled else { continue }
-                if let children = fm.enumerator(at: url, includingPropertiesForKeys: nil,
-                                                options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants],
+                if let children = fm.enumerator(at: url, includingPropertiesForKeys: [.isHiddenKey, .isSymbolicLinkKey],
+                                                options: [.skipsSubdirectoryDescendants],
                                                 errorHandler: { failedURL, error in
                                                     result.issues.append(.access(error, at: failedURL))
                                                     return !Task.isCancelled
