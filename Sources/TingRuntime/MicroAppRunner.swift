@@ -595,8 +595,8 @@ struct MicroAppPipeline: Sendable {
             var args = [try render(alias, input: stepInput), action]
             for (index, argument) in arguments.enumerated() {
                 let value = try render(argument, input: stepInput)
-                if action == "upload", index == 0 {
-                    guard !value.isEmpty, !value.contains(where: \.isNewline) else { throw MicroAppStepError.failed("error", "upload needs exactly one file path") }
+                if (action == "upload" || action == "save-pdf"), index == 0 {
+                    guard !value.isEmpty, !value.contains(where: \.isNewline) else { throw MicroAppStepError.failed("error", "\(action) needs exactly one file path") }
                     args.append((value as NSString).expandingTildeInPath)
                 } else {
                     if action == "upload" { args.append("--field") }

@@ -142,6 +142,7 @@ value is the saved alias. Each row below is one possible literal `action:`:
 | `click` | `label` | Click one matching button or link. |
 | `fill`, `select` | `field`, `value` | Set text or select one option by display text. |
 | `upload` | `file`, optional `field` | Attach one file to a file input. |
+| `save-pdf` | `file` | Print the entire current document to a PDF file without a print dialog. Development builds only; requires lowkey with `save-pdf` support. |
 
 Only `status` and `inspect` replace the pipeline input with their output. All other
 actions pass it through on success. For inspection or page actions, the site
@@ -173,6 +174,27 @@ produce text instead of passing input on; set `as: json` for machine-readable ou
 Set the step's `timeout` in seconds. `fill` and `select` take `field` and `value`:
 select uses option display text. Neither submits the form. These page actions use
 the saved origin and exact, whitespace-normalized labels. No shell quoting is needed.
+
+To export a page as PDF (development builds of Ting and lowkey; not yet in their published binaries):
+
+```yaml
+format: ting.microapp/2
+description: Save a demo page as PDF.
+input: none
+timeout: 60
+steps:
+  - lowkey: demo
+    action: save-pdf
+    file: ~/Desktop/demo-page.pdf
+    timeout: 60
+```
+
+The site window must already be open on its saved origin. `file` is a template;
+`~` expands to the current user's home directory. Paths with spaces need no shell quoting.
+Use a `.pdf` extension and a new destination: existing files are never overwritten.
+The step uses lowkey's A4 print layout, including content below the viewport and print CSS.
+It does not load lazy content or expand virtualized lists. Input passes through unchanged.
+Run with `ting-micro run FILE.yaml --allow-effects`; failures stop the pipeline without retry.
 
 `preview: markdown` pauses in the Ting panel to display the previous step's output.
 `text`, `code` and `console` are also supported. Continue passes the original input

@@ -982,11 +982,11 @@ public enum MicroAppChecker {
                 action = .preview(style)
             case .lowkey:
                 guard let entry = keys["action"], let verb = string(entry.value, "\(what).action"),
-                      ["open", "toggle", "hide", "rewind", "click", "upload", "inspect", "status", "fill", "select", "wait"].contains(verb) else {
+                      ["open", "toggle", "hide", "rewind", "click", "upload", "save-pdf", "inspect", "status", "fill", "select", "wait"].contains(verb) else {
                     fail(line, "\(what): missing or unknown lowkey action")
                     return nil
                 }
-                let required = ["click": ["label"], "upload": ["file"], "fill": ["field", "value"], "select": ["field", "value"]][verb] ?? []
+                let required = ["click": ["label"], "upload": ["file"], "save-pdf": ["file"], "fill": ["field", "value"], "select": ["field", "value"]][verb] ?? []
                 let optional = ["upload": ["field"], "wait": ["label"], "inspect": ["as"], "status": ["as"]][verb] ?? []
                 let names = required + optional
                 for key in ["label", "file", "field", "value", "as"] where keys[key] != nil && !names.contains(key) {
