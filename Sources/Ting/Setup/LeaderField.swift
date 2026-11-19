@@ -117,7 +117,7 @@ struct LeaderField: View {
                 }
                 .font(.system(size: large ? 20 : 13, weight: .semibold, design: .monospaced))
                 .padding(.horizontal, large ? 16 : 10)
-                .frame(minWidth: large ? 0 : 200, maxWidth: large ? .infinity : nil)
+                .frame(minWidth: large ? 0 : 200, maxWidth: large ? .infinity : 200)
                 .frame(height: large ? 56 : 28)
                 .contentShape(Rectangle())
                 .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: large ? 10 : 6, style: .continuous))
@@ -194,7 +194,7 @@ private struct WindowHotkeyField: View {
                     }
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .padding(.horizontal, 10)
-                    .frame(minWidth: 160)
+                    .frame(width: 160)
                     .frame(height: 28)
                     .contentShape(Rectangle())
                     .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 6, style: .continuous))

@@ -1,5 +1,5 @@
-// Settings: native Form/Table (HIG) with Ting's mono labels, amber keycaps and Ting buttons.
-// System toggles keep the system accent.
+// Native Mac preferences: stable sidebar, clear page hierarchy and readable grouped controls.
+// Amber identifies Ting; ordinary controls retain the system accent.
 import AppKit
 import SwiftUI
 import TingCore
@@ -19,19 +19,56 @@ struct SettingsRoot: View {
 
     var body: some View {
         NavigationSplitView {
-            VStack(spacing: 8) {
-                TextField("Search settings", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Search all Ting settings")
-                    .padding(.horizontal, 12).padding(.top, 12)
-                List(SettingsPage.allCases, selection: $page) { item in
-                    Label(item.title, systemImage: item.symbol).tag(item)
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(nsImage: StatusIcon.image).renderingMode(.template)
+                        .foregroundStyle(Color.tingAmber)
+                        .accessibilityHidden(true)
+                    Text("Ting").font(.system(size: 18, weight: .semibold))
                 }
+                .padding(.horizontal, 16).padding(.top, 20)
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+                    TextField("Search settings", text: $query)
+                        .textFieldStyle(.plain)
+                        .accessibilityLabel("Search all Ting settings")
+                    if !query.isEmpty {
+                        Button { query = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Clear settings search")
+                    }
+                }
+                .font(.system(size: 12))
+                .padding(8)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 12)
+                List(SettingsPage.allCases, selection: $page) { item in
+                    Label {
+                        Text(item.title)
+                    } icon: {
+                        Image(systemName: item.symbol).frame(width: 18)
+                    }
+                    .padding(.vertical, 3)
+                    .tag(item)
+                }
+                .listStyle(.sidebar)
                 .onChange(of: page) { query = "" }
+                Text("Settings save automatically")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 16).padding(.bottom, 16)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 216, max: 260)
         } detail: {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(query.isEmpty ? (page ?? .general).title : "Search Settings")
+                    .font(.system(size: 26, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(query.isEmpty ? (page ?? .general).settingsDescription : "Find a setting by its name or what it does.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 16)
             if let error = model.configError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
@@ -84,19 +121,35 @@ struct SettingsRoot: View {
                         case .bindings: BindingsSettings()
                         case .clipbawd: ClipbawdSettingsView(searchTarget: target)
                         case .microApps:
-                            Form { MicroAppsSection().id("micro-apps") }.formStyle(.grouped)
+                            Form { MicroAppsSection().id("micro-apps") }.tingSettingsForm()
                         case .advanced: AdvancedSettings()
                         }
                     }
+                    .frame(maxWidth: page == .bindings ? .infinity : 780, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .id(page)
                     .onAppear { if let target { proxy.scrollTo(target, anchor: .top) } }
                     .onChange(of: target) { if let target { proxy.scrollTo(target, anchor: .top) } }
                 }
             }
         }
-        .navigationTitle(query.isEmpty ? (page ?? .general).title : "Search Settings")
+        .navigationTitle("Ting Settings")
         }
+        .toolbar(removing: .sidebarToggle)
         .frame(minWidth: 900, idealWidth: 1040, minHeight: 600, idealHeight: 720)
+    }
+}
+
+private extension SettingsPage {
+    var settingsDescription: String {
+        switch self {
+        case .general: "Appearance, sound and startup."
+        case .activation: "Leader keys, menu timing and launcha."
+        case .bindings: "Choose what each key sequence opens."
+        case .clipbawd: "Choose what to keep and when to forget it."
+        case .microApps: "Your tools, diagnostics and permissions."
+        case .advanced: "Configuration files and backups."
+        }
     }
 }
 
@@ -117,16 +170,15 @@ private struct GeneralSettings: View {
     var body: some View {
         Form {
             if !activation {
+            Section {
             Picker("Appearance", selection: model.binding(\.appearance)) {
                 Text(Appearance.light.title).tag(Appearance.light)
                 Text(Appearance.dark.title).tag(Appearance.dark)
             }
             .pickerStyle(.segmented)
-            Section {
-                Toggle("Show panel title", isOn: model.binding(\.showPanelHeader))
-                Text("Show the Ting · selecta / launcha / Clipbawd title row. The leader symbol and input stay visible.")
-                    .font(.caption).foregroundStyle(.secondary)
-            } header: { MonoLabel("Panel", size: 9).foregroundStyle(Color.tingAmber) }
+                SettingsToggle("Show panel title", detail: "Keep the title row above selecta, launcha and Clipbawd. The leader symbol and input always stay visible.",
+                               isOn: model.binding(\.showPanelHeader))
+            } header: { SettingsSectionTitle("Appearance") }
             .id("appearance")
             }
             if activation {
@@ -149,13 +201,13 @@ private struct GeneralSettings: View {
                             .frame(width: 64, alignment: .leading)
                     }
                 }
-                Text("Type the whole sequence faster than this and the menu never appears.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("Finish a sequence before this delay to launch without showing the menu.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                 Picker("Unknown key", selection: model.binding(\.unknownKey)) {
                     Text("Shake and stay open").tag(UnknownKeyBehavior.shake)
                     Text("Close the menu").tag(UnknownKeyBehavior.close)
                 }
-            } header: { MonoLabel("Activation", size: 9).foregroundStyle(Color.tingAmber) }
+            } header: { SettingsSectionTitle("Leader and selecta") }
             .id("activation")
             LaunchaSettingsSection().id("launcha")
             }
@@ -170,12 +222,13 @@ private struct GeneralSettings: View {
                     Text("Open Ting again from Finder or Spotlight to get back to Settings.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            } header: { MonoLabel("System", size: 9).foregroundStyle(Color.tingAmber) }
+            } header: { SettingsSectionTitle("Startup") }
             .id("system")
             Section {
-                Toggle("Play a “ting” when opening an app, link or file", isOn: model.binding(\.playSound))
+                SettingsToggle("Play a “ting” when opening an app, link or file", detail: "Preview the sound by choosing one or changing its volume.",
+                               isOn: model.binding(\.playSound))
                 SoundSettings()
-            } header: { MonoLabel("Sound", size: 9).foregroundStyle(Color.tingAmber) }
+            } header: { SettingsSectionTitle("Sound") }
             .id("sound")
             if updates.isAvailable {
                 Section {
@@ -185,7 +238,7 @@ private struct GeneralSettings: View {
                         Spacer()
                         Button("Check Now") { updates.checkForUpdates() }
                     }
-                } header: { MonoLabel("Updates", size: 9).foregroundStyle(Color.tingAmber) }
+                } header: { SettingsSectionTitle("Updates") }
                 .id("updates")
             } else if let homebrew = updates.homebrew {
                 Section {
@@ -196,12 +249,12 @@ private struct GeneralSettings: View {
                         Spacer()
                         Button("Update Ting via Homebrew…") { updates.checkForUpdates() }
                     }
-                } header: { MonoLabel("Updates", size: 9).foregroundStyle(Color.tingAmber) }
+                } header: { SettingsSectionTitle("Updates") }
                 .id("updates")
             }
             }
         }
-        .formStyle(.grouped)
+        .tingSettingsForm()
     }
 }
 
@@ -250,7 +303,8 @@ private struct LaunchaSettingsSection: View {
         let launcha = model.config.launcha
         Section {
             LabeledContent("Hotkey") { LaunchaHotkeyField() }
-            Toggle("Double-tap the leader", isOn: model.binding(\.launcha.doubleTap))
+            SettingsToggle("Double-tap the leader", detail: "Open launcha with two taps. The first tap still opens selecta immediately.",
+                           isOn: model.binding(\.launcha.doubleTap))
             LabeledContent("Double-tap interval") {
                 HStack {
                     Slider(value: model.binding(\.launcha.doubleTapWindow),
@@ -263,25 +317,20 @@ private struct LaunchaSettingsSection: View {
                 }
             }
             .disabled(!launcha.doubleTap)
-            Text("Press the leader twice to open launcha. The first press opens selecta at once, so sequences are never delayed. A separate hotkey is optional.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("Calculate in launcha", isOn: model.binding(\.launcha.calculator))
-            Text("Type digits and an operator, such as 2*(3+4) or 1,5 × 4: the result comes first, and Return copies it.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("Convert in launcha", isOn: model.binding(\.launcha.converter))
-            Text("Units, number bases and dates, such as 5 yd to m, 255 to hex, 1700000000 to date or now + 2 days: the result comes first, and Return copies it.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("Search Desktop, Documents and Downloads", isOn: Binding(
+            SettingsToggle("Calculate in launcha", detail: "Try 2*(3+4). Return copies the result.",
+                           isOn: model.binding(\.launcha.calculator))
+            SettingsToggle("Convert in launcha", detail: "Units, number bases and dates. Try 5 yd to m or now + 2 days.",
+                           isOn: model.binding(\.launcha.converter))
+            SettingsToggle("Search Desktop, Documents and Downloads", detail: "Off by default. macOS may ask for folder access.", isOn: Binding(
                 get: { model.protectedFoldersAllowed },
                 set: { allowed in
                     if allowed { confirmingFolders = true } else { model.setProtectedFoldersAllowed(false) }
                 }))
-            Text("Off by default. Ting saves this choice outside the config file.")
-                .font(.caption).foregroundStyle(.secondary)
+            .help("Ting saves this consent separately from config.json.")
             if let error = model.launchaConsentError {
                 Text(error).font(.caption).foregroundStyle(Color.tingAmber)
             }
-        } header: { MonoLabel("launcha", size: 9).foregroundStyle(Color.tingAmber) }
+        } header: { SettingsSectionTitle("launcha") }
         .alert("Search Desktop, Documents and Downloads?", isPresented: $confirmingFolders) {
             Button("Allow Access") { model.setProtectedFoldersAllowed(true) }
             Button("Cancel", role: .cancel) {}
@@ -311,7 +360,7 @@ private struct AdvancedSettings: View {
                 }
                 Text("Ting reloads the file when it changes on disk. Micro-apps live in \(model.microStore.displayPath), next to it. Set TING_CONFIG to use another file.")
                     .font(.caption).foregroundStyle(.secondary)
-            } header: { MonoLabel("Configuration file", size: 9).foregroundStyle(Color.tingAmber) }
+            } header: { SettingsSectionTitle("Configuration file") }
             .id("config")
             Section {
                 HStack {
@@ -321,10 +370,10 @@ private struct AdvancedSettings: View {
                 if let message {
                     Text(message).font(.caption).foregroundStyle(Color.tingAmber)
                 }
-            } header: { MonoLabel("Backup", size: 9).foregroundStyle(Color.tingAmber) }
+            } header: { SettingsSectionTitle("Backup") }
             .id("backup")
         }
-        .formStyle(.grouped)
+        .tingSettingsForm()
     }
 
     private func export() {
@@ -423,7 +472,7 @@ private struct MicroAppsSection: View {
                 .font(.caption).foregroundStyle(.secondary)
             Text("One micro-app per .yaml file. Ting creates the folder when you open it, loads it again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
                 .font(.caption).foregroundStyle(.secondary)
-        } header: { MonoLabel("Micro-apps", size: 9).foregroundStyle(Color.tingAmber) }
+        } header: { SettingsSectionTitle("Micro-apps") }
     }
 }
 
