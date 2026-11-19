@@ -29,6 +29,12 @@ import Testing
         #expect(c.launcha.calculator)
         #expect(c.launcha.converter)
     }
+    @Test func pauseLeaderAlias() throws {
+        let c = try decode(#"{"leader":"pause"}"#)
+        #expect(c.leader == .combo(keyCode: 113, modifiers: []))
+        #expect(!ConfigValidator.validate(c).map(\.kind).contains(.missingLeader))
+        #expect(!ConfigValidator.validate(c).map(\.kind).contains(.invalidLeader))
+    }
     @Test func launchaCompatibility() throws {
         // A 0.2.x file without "launcha" gets the defaults and keeps everything else.
         let old = try decode(#"{"version":1,"leader":"f13","showDelay":0.5,"showPanelHeader":false,"items":[{"key":"s","label":"Safari","app":"com.apple.Safari"}]}"#)
