@@ -142,7 +142,7 @@ value is the saved alias. Each row below is one possible literal `action:`:
 | `click` | `label` | Click one matching button or link. |
 | `fill`, `select` | `field`, `value` | Set text or select one option by display text. |
 | `upload` | `file`, optional `field` | Attach one file to a file input. |
-| `save-pdf` | `file` | Print the entire current document to a PDF file without a print dialog. Development builds only; requires lowkey with `save-pdf` support. |
+| `save-pdf` | `file` | Print the entire current document to a PDF file without a print dialog. Requires Ting 0.7.16 and lowkey 0.1.2 or later. |
 
 Only `status` and `inspect` replace the pipeline input with their output. All other
 actions pass it through on success. For inspection or page actions, the site
@@ -175,7 +175,7 @@ Set the step's `timeout` in seconds. `fill` and `select` take `field` and `value
 select uses option display text. Neither submits the form. These page actions use
 the saved origin and exact, whitespace-normalized labels. No shell quoting is needed.
 
-To export a page as PDF (development builds of Ting and lowkey; not yet in their published binaries):
+To export a page as PDF (Ting 0.7.16 and lowkey 0.1.2 or later):
 
 ```yaml
 format: ting.microapp/2
