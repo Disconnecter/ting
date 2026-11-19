@@ -18,7 +18,7 @@ final class SettingsVisualDesignTests: XCTestCase {
                 let hosting = NSHostingView(rootView: SettingsRoot(page: page, target: target)
                     .environment(model).environment(\.colorScheme, dark ? .dark : .light))
                 let size = NSSize(width: 900, height: 600)
-                let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+                let window = SettingsWindow(size: size)
                 window.isReleasedWhenClosed = false
                 window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 window.contentView = hosting
@@ -27,10 +27,8 @@ final class SettingsVisualDesignTests: XCTestCase {
                 hosting.layoutSubtreeIfNeeded()
                 try await Task.sleep(for: .milliseconds(80))
                 XCTAssertEqual(hosting.bounds.width, size.width, accuracy: 0.5)
-                // NavigationSplitView installs native toolbar chrome inside NSHostingView.
-                let chrome = window.frame.height - window.contentLayoutRect.height
-                XCTAssertGreaterThanOrEqual(hosting.bounds.height, size.height)
-                XCTAssertLessThanOrEqual(hosting.bounds.height, size.height + chrome)
+                XCTAssertEqual(hosting.bounds.height, size.height, accuracy: 0.5)
+                XCTAssertFalse(window.styleMask.contains(.titled))
                 XCTAssertFalse(window.isKeyWindow)
                 if let path = ProcessInfo.processInfo.environment["TING_SETTINGS_PREVIEW_DIR"] {
                     let output = URL(fileURLWithPath: path)
@@ -52,10 +50,12 @@ final class SettingsVisualDesignTests: XCTestCase {
                 try? FileManager.default.removeItem(atPath: marker)
             }
             var info = ["pid": ProcessInfo.processInfo.processIdentifier]
-            for dark in [false, true] {
-                let hosting = NSHostingView(rootView: SettingsRoot(page: .clipbawd).environment(model)
+            // Only one visible review window: no stacked light/dark duplicates to close.
+            for dark in [ProcessInfo.processInfo.environment["TING_SETTINGS_REVIEW_THEME"] == "dark"] {
+                let hosting = NSHostingView(rootView: SettingsRoot(page: .bindings).environment(model)
                     .environment(\.colorScheme, dark ? .dark : .light))
-                let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 1040, height: 740), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+                let window = SettingsWindow(size: NSSize(width: 1040, height: 740))
+                window.setFrameOrigin(NSPoint(x: 100, y: 100))
                 window.isReleasedWhenClosed = false
                 window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 window.title = "Ting Settings Review"
@@ -66,7 +66,7 @@ final class SettingsVisualDesignTests: XCTestCase {
             }
             try JSONSerialization.data(withJSONObject: info).write(to: URL(fileURLWithPath: marker))
             let deadline = Date().addingTimeInterval(120)
-            while FileManager.default.fileExists(atPath: marker), Date() < deadline {
+            while windows.contains(where: \.isVisible), FileManager.default.fileExists(atPath: marker), Date() < deadline {
                 try await Task.sleep(for: .milliseconds(200))
             }
             for window in windows { XCTAssertFalse(window.isKeyWindow) }

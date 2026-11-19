@@ -7,10 +7,14 @@ struct TingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        Settings {
-            SettingsRoot()
-                .environment(AppModel.shared)
-        }
+        // Keep standard application/edit commands, but never open SwiftUI's titled Settings host.
+        Settings { EmptyView() }
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") { SettingsOpener.open() }
+                        .keyboardShortcut(",", modifiers: .command)
+                }
+            }
     }
 }
 
@@ -46,29 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Opens the SwiftUI Settings scene from AppKit code.
+/// Every Settings entry point uses the same single BobukKit window.
 @MainActor
 enum SettingsOpener {
-    static func open() {
-        // LSUIElement apps are not active by default; without this Settings opens behind other windows.
-        NSApp.activate()
-        // macOS 14+ ignores `showSettingsWindow:`; the app menu's Settings item still works.
-        if let item = settingsItem(in: NSApp.mainMenu), let menu = item.menu {
-            menu.performActionForItem(at: menu.index(of: item))
-        } else {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
-        DispatchQueue.main.async {
-            NSApp.windows.first { $0.identifier?.rawValue.contains("Settings") == true }?.makeKeyAndOrderFront(nil)
-        }
-    }
-
-    private static func settingsItem(in menu: NSMenu?) -> NSMenuItem? {
-        guard let menu else { return nil }
-        for item in menu.items {
-            if item.keyEquivalent == ",", item.keyEquivalentModifierMask == .command { return item }
-            if let found = settingsItem(in: item.submenu) { return found }
-        }
-        return nil
-    }
+    private static let controller = SettingsWindowController(model: AppModel.shared)
+    static func open() { controller.show() }
 }

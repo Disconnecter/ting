@@ -1,14 +1,31 @@
 import AppKit
 import SwiftUI
 
-/// The app owns titled-window behavior; BobukKit only renders its content surface.
-/// Explicitly keep native closing available, including in standalone review hosts.
+@MainActor
+final class SettingsWindowReference {
+    weak var window: NSWindow?
+    func close() { window?.performClose(nil) }
+}
+
+/// Connect in-surface controls to their own host, never NSApp.keyWindow or another app.
 @MainActor
 struct SettingsWindowBehavior: NSViewRepresentable {
-    func makeNSView(context: Context) -> Host { Host() }
-    func updateNSView(_ view: Host, context: Context) { view.configureWindow() }
+    let reference: SettingsWindowReference
+
+    func makeNSView(context: Context) -> Host {
+        let view = Host()
+        view.reference = reference
+        return view
+    }
+
+    func updateNSView(_ view: Host, context: Context) {
+        view.reference = reference
+        view.configureWindow()
+    }
 
     final class Host: NSView {
+        var reference: SettingsWindowReference?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             configureWindow()
@@ -26,9 +43,9 @@ struct SettingsWindowBehavior: NSViewRepresentable {
         }
 
         func configureWindow() {
-            guard let window, window.styleMask.contains(.titled) else { return }
+            reference?.window = window
+            guard let window else { return }
             if !window.styleMask.contains(.closable) { window.styleMask.insert(.closable) }
-            window.standardWindowButton(.closeButton)?.isEnabled = true
         }
     }
 }

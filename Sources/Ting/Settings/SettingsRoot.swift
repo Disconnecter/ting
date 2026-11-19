@@ -11,6 +11,7 @@ struct SettingsRoot: View {
     @State private var page: SettingsPage? = .general
     @State private var query = ""
     @State private var target: String?
+    @State private var windowReference = SettingsWindowReference()
 
     init(page: SettingsPage = .general, query: String = "", target: String? = nil) {
         _page = State(initialValue: page)
@@ -35,21 +36,32 @@ struct SettingsRoot: View {
         .padding(.top, PickerMetrics.accentHeight)
         .padding([.leading, .trailing, .bottom], PickerMetrics.borderWidth)
         .pickerPanel(palette: TingPickerStyle.palette)
-        .padding(12)
-        .background(Color.tingPanel)
-        .navigationTitle("Ting Settings")
         .frame(minWidth: 900, idealWidth: 1040, minHeight: 600, idealHeight: 720)
-        .background(SettingsWindowBehavior())
+        .background(SettingsWindowBehavior(reference: windowReference))
     }
 
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(query.isEmpty ? (page ?? .general).title : "Search Settings")
-                    .font(.system(size: 26, weight: .semibold))
-                    .accessibilityAddTraits(.isHeader)
-                Text(query.isEmpty ? (page ?? .general).settingsDescription : "Find a setting by its name or what it does.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(query.isEmpty ? (page ?? .general).title : "Search Settings")
+                        .font(.system(size: 26, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text(query.isEmpty ? (page ?? .general).settingsDescription : "Find a setting by its name or what it does.")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button { windowReference.close() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.tingMuted)
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("w", modifiers: .command)
+                .accessibilityLabel("Close Settings")
+                .help("Close Settings (⌘W)")
             }
             .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 16)
             if let error = model.configError {

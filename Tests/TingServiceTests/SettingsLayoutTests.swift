@@ -16,7 +16,7 @@ final class SettingsLayoutTests: XCTestCase {
         for (name, root) in cases {
             let hosting = NSHostingView(rootView: root.environment(model))
             let size = NSSize(width: 1040, height: 720)
-            let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+            let window = SettingsWindow(size: size)
             window.isReleasedWhenClosed = false
             window.contentView = hosting
             hosting.setFrameSize(size)
@@ -43,14 +43,14 @@ final class SettingsLayoutTests: XCTestCase {
         for target in ["storage", "privacy"] {
             let hosting = NSHostingView(rootView: SettingsRoot(page: .clipbawd, target: target).environment(model))
             let size = NSSize(width: 900, height: 600)
-            let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+            let window = SettingsWindow(size: size)
             window.isReleasedWhenClosed = false
             defer { window.close() }
             window.contentView = hosting
             window.setContentSize(size)
             hosting.setFrameSize(size)
             window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-            window.orderBack(nil) // Render native split-view siblings offscreen without taking focus.
+            window.orderBack(nil) // Render the actual borderless host without taking focus.
             try await Task.sleep(for: .milliseconds(200))
             hosting.layoutSubtreeIfNeeded()
             XCTAssertFalse(window.isKeyWindow)

@@ -15,8 +15,7 @@ final class SettingsBobukKitTests: XCTestCase {
         for width in [900.0, 1040.0, 1280.0] {
             for query in ["", "history", "no-matching-parameter"] {
                 let hosting = NSHostingView(rootView: SettingsRoot(page: .clipbawd, query: query).environment(model))
-                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 720),
-                                      styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+                let window = SettingsWindow(size: NSSize(width: width, height: 720))
                 window.isReleasedWhenClosed = false
                 window.contentView = hosting
                 window.setContentSize(NSSize(width: width, height: 720))
@@ -48,8 +47,7 @@ final class SettingsBobukKitTests: XCTestCase {
         var query = ""
         let sidebar = SettingsSidebar(page: .clipbawd, query: Binding(get: { query }, set: { query = $0 }), onChoose: { _ in })
         let hosting = NSHostingView(rootView: sidebar.frame(width: SettingsSidebar.width, height: 560))
-        let window = NSWindow(contentRect: NSRect(x: 50, y: 50, width: 1040, height: 720),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let window = SettingsWindow()
         window.isReleasedWhenClosed = false
         defer { window.close() }
         window.contentView = hosting
