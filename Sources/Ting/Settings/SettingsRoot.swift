@@ -1,6 +1,7 @@
 // Native Mac preferences: stable sidebar, clear page hierarchy and readable grouped controls.
 // Amber identifies Ting; ordinary controls retain the system accent.
 import AppKit
+import BobukUI
 import SwiftUI
 import TingCore
 import UniformTypeIdentifiers
@@ -18,48 +19,30 @@ struct SettingsRoot: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 8) {
-                    Image(nsImage: StatusIcon.image).renderingMode(.template)
-                        .foregroundStyle(Color.tingAmber)
-                        .accessibilityHidden(true)
-                    Text("Ting").font(.system(size: 18, weight: .semibold))
-                }
-                .padding(.horizontal, 16).padding(.top, 20)
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
-                    TextField("Search settings", text: $query)
-                        .textFieldStyle(.plain)
-                        .accessibilityLabel("Search all Ting settings")
-                    if !query.isEmpty {
-                        Button { query = "" } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain).accessibilityLabel("Clear settings search")
-                    }
-                }
-                .font(.system(size: 12))
-                .padding(8)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 12)
-                List(SettingsPage.allCases, selection: $page) { item in
-                    Label {
-                        Text(item.title)
-                    } icon: {
-                        Image(systemName: item.symbol).frame(width: 18)
-                    }
-                    .padding(.vertical, 3)
-                    .tag(item)
-                }
-                .listStyle(.sidebar)
-                .onChange(of: page) { query = "" }
-                Text("Settings save automatically")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 16).padding(.bottom, 16)
+        HStack(spacing: 0) {
+            SettingsSidebar(page: page ?? .general, query: $query) { selected in
+                page = selected
+                query = ""
+                target = nil
             }
-            .navigationSplitViewColumnWidth(min: 200, ideal: 216, max: 260)
-        } detail: {
+            .frame(width: SettingsSidebar.width)
+            Rectangle().fill(Color.tingStroke.opacity(0.35)).frame(width: 1)
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color.tingPanel)
+        }
+        .foregroundStyle(Color.tingInk)
+        .padding(.top, PickerMetrics.accentHeight)
+        .padding([.leading, .trailing, .bottom], PickerMetrics.borderWidth)
+        .pickerPanel(palette: TingPickerStyle.palette)
+        .padding(12)
+        .background(Color.tingPanel)
+        .navigationTitle("Ting Settings")
+        .frame(minWidth: 900, idealWidth: 1040, minHeight: 600, idealHeight: 720)
+        .background(SettingsWindowBehavior())
+    }
+
+    private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(query.isEmpty ? (page ?? .general).title : "Search Settings")
@@ -110,6 +93,7 @@ struct SettingsRoot: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    .scrollContentBackground(.hidden)
                     .accessibilityLabel("Matching settings")
                 }
             } else {
@@ -133,10 +117,69 @@ struct SettingsRoot: View {
                 }
             }
         }
-        .navigationTitle("Ting Settings")
+    }
+}
+
+/// A permanent column, not a split-view/sidebar controller that can collapse or add toolbar items.
+struct SettingsSidebar: View {
+    static let width: CGFloat = 216
+    let page: SettingsPage
+    @Binding var query: String
+    let onChoose: (SettingsPage) -> Void
+    @FocusState private var focusedPage: SettingsPage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Image(nsImage: StatusIcon.image).renderingMode(.template)
+                    .foregroundStyle(Color.tingAmber).accessibilityHidden(true)
+                Text("Ting").font(.system(size: 18, weight: .semibold))
+            }
+            .padding(.horizontal, 16).padding(.top, 20)
+            PickerSearchField(text: $query, placeholder: "Search settings",
+                              accessibilityLabel: "Search all Ting settings", palette: TingPickerStyle.palette)
+                .padding(.horizontal, 12)
+            ScrollView {
+                VStack(spacing: 4) {
+                    ForEach(SettingsPage.allCases) { item in
+                        Button { onChoose(item) } label: {
+                            PickerRow(selected: page == item, palette: TingPickerStyle.palette) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: item.symbol).frame(width: 18)
+                                        .foregroundStyle(page == item ? Color.tingAmber : Color.tingMuted)
+                                        .accessibilityHidden(true)
+                                    Text(item.title).font(.system(size: 13, weight: page == item ? .semibold : .regular))
+                                        .foregroundStyle(Color.tingInk).lineLimit(1)
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .focused($focusedPage, equals: item)
+                        .accessibilityLabel(item.title)
+                        .accessibilityAddTraits(page == item ? .isSelected : [])
+                        .onKeyPress(.upArrow) { move(from: item, by: -1) }
+                        .onKeyPress(.downArrow) { move(from: item, by: 1) }
+                    }
+                }
+                .padding(.horizontal, 10)
+            }
+            .scrollIndicators(.hidden)
+            Text("Settings save automatically")
+                .font(.system(size: 11)).foregroundStyle(Color.tingMuted)
+                .padding(.horizontal, 16).padding(.bottom, 16)
         }
-        .toolbar(removing: .sidebarToggle)
-        .frame(minWidth: 900, idealWidth: 1040, minHeight: 600, idealHeight: 720)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings sections")
+        .accessibilityIdentifier("settings.sidebar")
+    }
+
+    private func move(from page: SettingsPage, by delta: Int) -> KeyPress.Result {
+        let pages = SettingsPage.allCases
+        guard let index = PickerSelection.move(pages.firstIndex(of: page), by: delta, count: pages.count) else { return .ignored }
+        onChoose(pages[index])
+        focusedPage = pages[index]
+        return .handled
     }
 }
 

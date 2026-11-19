@@ -44,6 +44,7 @@ struct SettingsToggle: View {
 extension View {
     func tingSettingsForm() -> some View {
         formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             .controlSize(.regular)
             // Grouped Form supplies its own section inset; do not add another wide margin.
             .contentMargins(.horizontal, 4, for: .scrollContent)
