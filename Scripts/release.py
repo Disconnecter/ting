@@ -196,6 +196,10 @@ def main() -> None:
         if live and finish_pending_deploy(current, landing):
             return
         if live:
+            tag = f"refs/tags/v{current}"
+            released_tree = output("git", "rev-parse", "--verify", f"{tag}^{{tree}}")
+            if output("git", "rev-parse", "--verify", "HEAD^{tree}") == released_tree:
+                raise ValueError(f"No committed changes since Ting v{current}; release stopped.")
             prepare(current, following, landing)
         # The kit requires a clean app tree apart from its version and notes.
         # Include this entry point itself on its first run from a fresh checkout.
