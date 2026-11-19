@@ -59,7 +59,8 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   are Latin even when the person types with another layout.
 - In one group a key is used once.
 - Settings: `leader` (a key name with optional modifiers, such as `home`,
-  `f13`, `option+shift+cmd+f`; never a modifier alone), `showDelay` (seconds,
+  `f13`, `option+shift+cmd+f`; `pause` is the Pause key of a PC keyboard, the same key as `f15`
+  and saved as `f15`; never a modifier alone), `showDelay` (seconds,
   0–2, default 0 for immediate display), `unknownKey` (`shake` or `close`), `appearance` (`dark` or `light`),
   `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound` (booleans),
   `sound` (a system sound name from `/System/Library/Sounds` without extension,

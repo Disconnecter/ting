@@ -78,6 +78,20 @@ import Testing
 }
 
 @Suite struct HotkeyTests {
+    @Test(arguments: ["pause", "PAUSE", "Pause"])
+    func pauseAlias(_ text: String) throws {
+        let h = try #require(Hotkey(string: text))
+        #expect(h == .combo(keyCode: 113, modifiers: []))
+        #expect(h.isValid)
+        #expect(h.string == "f15")
+        #expect(h.display == "F15")
+        #expect(KeyCodes.name(for: 113) == "f15")
+    }
+    @Test func pauseAliasWithModifiers() {
+        let h = Hotkey(string: "shift+pause")
+        #expect(h == .combo(keyCode: 113, modifiers: .shift))
+        #expect(h?.string == "shift+f15")
+    }
     @Test(arguments: ["option+shift+cmd+f", "Cmd+Shift+Option+F", "f+COMMAND+alt+SHIFT", "shift+opt+command+f"])
     func realLeader(_ text: String) throws {
         let h = try #require(Hotkey(string: text))

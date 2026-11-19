@@ -144,6 +144,8 @@ public struct ModifierSet: OptionSet, Hashable, Sendable {
 /// Physical key codes of a US ANSI keyboard, used to store combo leaders in the config.
 /// Names: "a"..."z", "0"..."9", "f1"..."f20", "space", "return", "tab", "escape",
 /// "delete", "-", "=", "[", "]", ";", "'", ",", ".", "/", "\\", "`".
+/// Input alias: "pause" is key code 113, the same key as "f15" (macOS reports the Pause key
+/// of a PC keyboard as F15). The canonical name of 113 stays "f15".
 public enum KeyCodes {
     /// Name → key code for every name above. Letters: a=0 s=1 d=2 f=3 h=4 g=5 z=6 x=7 c=8 v=9
     /// b=11 q=12 w=13 e=14 r=15 y=16 t=17 1=18 2=19 3=20 4=21 6=22 5=23 ==24 9=25 7=26 -=27
@@ -172,6 +174,7 @@ public enum KeyCodes {
 
     public static func code(for name: String) -> UInt16? {
         if let code = ansi[name] { return code }
+        if name == "pause" { return 113 }
         guard name.hasPrefix("key"), let code = UInt16(name.dropFirst(3)), code < 128,
               ModifierKey(keyCode: code) == nil, code != 57 else { return nil }
         return code
@@ -194,7 +197,8 @@ public enum KeyCodes {
 /// Config string format:
 /// - combo: modifier tokens then the key name from `KeyCodes`, joined by "+".
 ///   Canonical order and tokens: "ctrl", "option", "shift", "cmd". Example: "option+shift+cmd+f".
-///   Parsing is case-insensitive, accepts any order and aliases "control", "alt", "opt", "command".
+///   Parsing is case-insensitive, accepts any order and aliases "control", "alt", "opt", "command",
+///   and the key name alias "pause" for "f15" (the string stays "f15", the display "F15").
 /// - modifierTap: the `ModifierKey` raw value, e.g. "right-option".
 public enum Hotkey: Equatable, Hashable, Sendable, Codable {
     case combo(keyCode: UInt16, modifiers: ModifierSet)
