@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(model: model,
                                           openSettings: { SettingsOpener.open() },
                                           openWelcome: { [weak self] in self?.welcome.show() })
-        if model.config.leader == nil { welcome.show() }
+        if model.config.leaders.isEmpty { welcome.show() }
         // Started by the Homebrew update helper: show the command, the output and the result of that run.
         if let run = HomebrewUpdate.resultDirectory(in: CommandLine.arguments, base: HomebrewUpdateRunner.defaultBase) {
             HomebrewUpdateWindowController.shared.showRun(run, role: .final)
@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Opening Ting again (Finder, Spotlight) shows Settings, or Welcome when there is no leader yet.
     /// This is the way back when the menu-bar icon is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if model.config.leader == nil { welcome.show() } else { SettingsOpener.open() }
+        if model.config.leaders.isEmpty { welcome.show() } else { SettingsOpener.open() }
         return false
     }
 }

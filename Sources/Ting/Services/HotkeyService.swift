@@ -12,7 +12,7 @@ private let log = Logger(subsystem: "io.bobuk.ting", category: "hotkey")
 final class HotkeyService {
     /// The hotkeys Ting registers. The raw value is the Carbon hotkey id.
     enum Slot: Hashable, Sendable {
-        case leader
+        case leader, alternateLeader
         case launcha
         case clipbawd
         case application(Int)
@@ -20,8 +20,18 @@ final class HotkeyService {
         /// Far above any application index.
         static let clipbawdID: UInt32 = 0x7FFF_0000
 
+        init(_ launcher: LauncherHotkey) {
+            switch launcher {
+            case .leader: self = .leader
+            case .alternateLeader: self = .alternateLeader
+            case .launcha: self = .launcha
+            case .clipbawd: self = .clipbawd
+            }
+        }
+
         var rawValue: UInt32 {
             switch self {
+            case .alternateLeader: Self.clipbawdID + 1
             case .leader: 1
             case .launcha: 2
             case .clipbawd: Self.clipbawdID
@@ -35,13 +45,14 @@ final class HotkeyService {
             case 1: self = .leader
             case 2: self = .launcha
             case Self.clipbawdID: self = .clipbawd
+            case Self.clipbawdID + 1: self = .alternateLeader
             default: self = .application(Int(rawValue - 3))
             }
         }
 
         var role: String {
             switch self {
-            case .leader: "be a leader"
+            case .leader, .alternateLeader: "be a leader"
             case .launcha: "open launcha"
             case .clipbawd: "open clipbawd"
             case .application: "open an application"
@@ -102,7 +113,7 @@ final class HotkeyService {
         if let other = registrations.keys.first(where: { $0 != slot && registrations[$0]?.hotkey == hotkey }) {
             let role: String
             switch other {
-            case .leader: role = "the leader"
+            case .leader, .alternateLeader: role = "the leader"
             case .launcha: role = "launcha"
             case .clipbawd: role = "clipbawd"
             case .application: role = "another application"
@@ -114,16 +125,22 @@ final class HotkeyService {
         else { register(keyCode: keyCode, modifiers: modifiers, display: hotkey.display, slot: slot) }
     }
 
-    /// Remove changed application registrations before the protected slots are changed.
-    func prepareApplications(_ shortcuts: [AppShortcut]) {
-        let wanted = Dictionary(uniqueKeysWithValues: shortcuts.enumerated().map { (Slot.application($0.offset), $0.element.hotkey) })
-        for slot in Array(registrations.keys) {
-            if case .application = slot, registrations[slot]?.hotkey != wanted[slot] { deactivate(slot) }
+    /// Release all changed slots before claiming any key, including swaps on config reload.
+    func apply(_ assignments: HotkeyAssignments?) {
+        var desired: [(Slot, Hotkey)] = []
+        if let assignments {
+            for launcher in LauncherHotkey.allCases {
+                if let key = assignments.launchers[launcher] { desired.append((Slot(launcher), key)) }
+            }
+            for (index, shortcut) in assignments.applications.enumerated() {
+                desired.append((.application(index), shortcut.hotkey))
+            }
         }
-    }
-
-    func activateApplications(_ shortcuts: [AppShortcut]) {
-        for (index, shortcut) in shortcuts.enumerated() { activate(shortcut.hotkey, for: .application(index)) }
+        let keys = Dictionary(uniqueKeysWithValues: desired)
+        for (slot, registration) in registrations where keys[slot] != registration.hotkey {
+            deactivate(slot)
+        }
+        for (slot, key) in desired { activate(key, for: slot) }
     }
 
     /// Probe an OS conflict while Ting's registrations are suspended for recording.

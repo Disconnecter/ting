@@ -7,8 +7,7 @@ import TingCore
 @MainActor
 final class AppShortcutServiceTests: XCTestCase {
     private func row(_ name: String = "Editor") -> LaunchaRow {
-        .init(id: "app:" + name, kind: .app(candidateID: "app:" + name), name: name,
-              url: URL(fileURLWithPath: "/Applications/\(name).app"), detail: "")
+        .init(id: "app:" + name, kind: .app(URL(fileURLWithPath: "/Applications/\(name).app")), name: name, detail: "")
     }
 
     private func model(register: @escaping (Hotkey, HotkeyService.Slot) -> HotkeyService.Status = { _, _ in .active }) throws -> (AppModel, HotkeyService, ConfigStore) {
@@ -47,6 +46,55 @@ final class AppShortcutServiceTests: XCTestCase {
         try model.setAppShortcut(for: row(), hotkey: nil)
         XCTAssertEqual(try store.load().get().appHotkeys, [])
         XCTAssertEqual(service.status(.application(0)), .inactive)
+    }
+
+    func testBothLeadersShareTheMenuAndMoveBetweenRegistrations() throws {
+        let (model, service, _) = try model()
+        model.update {
+            $0.leader = key("home")
+            $0.alternateLeader = key("cmd+f13")
+        }
+        service.onPress = { [weak model] in model?.hotkeyPressed($0, at: $1) }
+        service.onRelease = { [weak model] in model?.hotkeyReleased($0) }
+        model.leader.onDoubleTap = { [weak model] in model?.launcha.open() }
+        XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.alternateLeader.rawValue), .alternateLeader)
+        for slot in [HotkeyService.Slot.leader, .alternateLeader] {
+            service.receive(slot, pressed: true, at: 1)
+            XCTAssertTrue(model.leader.isOpen)
+            service.receive(slot, pressed: false)
+            service.receive(slot, pressed: true, at: 1.1)
+            XCTAssertTrue(model.launcha.isOpen)
+            XCTAssertFalse(model.leader.isOpen)
+            service.receive(slot, pressed: false)
+            model.launcha.close()
+        }
+
+        // A second physical key held down cannot turn repeats into a second tap.
+        service.receive(.leader, pressed: true, at: 3)
+        service.receive(.alternateLeader, pressed: true, at: 3.05)
+        service.receive(.leader, pressed: false)
+        service.receive(.alternateLeader, pressed: true, at: 3.1)
+        XCTAssertTrue(model.leader.isOpen)
+        service.receive(.alternateLeader, pressed: false)
+        service.receive(.alternateLeader, pressed: true, at: 3.2)
+        XCTAssertTrue(model.launcha.isOpen)
+        service.receive(.alternateLeader, pressed: false)
+        model.launcha.close()
+
+        model.update { config in
+            config.leader = key("cmd+f13")
+            config.alternateLeader = key("home")
+        }
+        XCTAssertEqual(service.hotkey(.leader), key("cmd+f13"))
+        XCTAssertEqual(service.status(.alternateLeader), .active)
+        model.isPaused = true
+        XCTAssertEqual(service.status(.leader), .inactive)
+        XCTAssertEqual(service.status(.alternateLeader), .inactive)
+        model.isPaused = false
+        XCTAssertEqual(service.status(.alternateLeader), .active)
+        model.update { $0.alternateLeader = nil }
+        XCTAssertEqual(service.status(.alternateLeader), .inactive)
+        XCTAssertEqual(service.status(.leader), .active)
     }
 
     func testChangingLeaderDisablesConflictingAppAndNeverStealsLeader() throws {
@@ -135,7 +183,7 @@ final class AppShortcutServiceTests: XCTestCase {
         service.receive(.application(0), pressed: false)
         service.receive(.application(0), pressed: true)
         XCTAssertEqual(presses, 2)
-        service.prepareApplications([])
+        service.apply(nil)
         service.receive(.application(0), pressed: true)
         XCTAssertEqual(presses, 2)
     }

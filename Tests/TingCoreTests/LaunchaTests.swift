@@ -164,6 +164,17 @@ import Testing
         #expect(candidates.map(\.id) == ["app:com.apple.safari", "app:com.example.x", "url:https://github.com"])
         #expect(candidates.map(\.name) == ["Safari", "com.example.X", "GitHub"])
     }
+    @Test func rankedMatchesKeepTheFirstBundleURLForDuplicateIDs() {
+        let system = URL(fileURLWithPath: "/System/Applications/Safari.app")
+        let copy = URL(fileURLWithPath: "/Applications/Safari.app")
+        let chat = URL(fileURLWithPath: "/Applications/Slack.app")
+        let entries = [(safari, system), (slack, chat), (safari, copy)]
+        var history = LaunchHistory()
+        history.record(.opened, id: slack.id, at: now)
+        let ranked = LaunchaSearch.ranked(for: "s", in: entries, history: history, now: now, candidate: { $0.0 })
+        #expect(ranked.map { $0.1 } == [chat, system])
+    }
+
     @Test func usageBeatsMatchQuality() {
         var h = LaunchHistory()
         // Messages matches "s" only as a substring, but it is used more.

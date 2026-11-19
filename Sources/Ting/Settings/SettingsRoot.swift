@@ -65,6 +65,15 @@ private struct GeneralSettings: View {
             } header: { MonoLabel("Panel", size: 9).foregroundStyle(Color.tingAmber) }
             Section {
                 LabeledContent("Leader") { LeaderField() }
+                LabeledContent("Second leader") {
+                    HStack {
+                        LeaderField(alternate: true)
+                        if model.config.alternateLeader != nil {
+                            Button("Clear") { model.update { $0.alternateLeader = nil } }
+                                .accessibilityLabel("Clear second leader key")
+                        }
+                    }
+                }
                 LabeledContent("Show menu after") {
                     HStack {
                         Slider(value: model.binding(\.showDelay), in: 0...1, step: 0.05).frame(width: 160)

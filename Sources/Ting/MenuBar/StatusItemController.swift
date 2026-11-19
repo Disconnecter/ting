@@ -44,7 +44,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let problem = model.needsAttention
         statusItem?.button?.appearsDisabled = !model.isLeaderActive
         statusItem?.button?.toolTip = model.isPaused ? "Ting is paused"
-            : model.config.leader == nil ? "Ting: no leader key yet"
+            : model.config.leaders.isEmpty ? "Ting: no leader key yet"
             : problem ? "Ting: needs attention" : "Ting: \(model.leaderDisplay)"
     }
 
@@ -70,7 +70,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
 
         let leaderItem = NSMenuItem(title: "Leader: \(model.leaderDisplay)", action: nil, keyEquivalent: "")
-        if model.config.leader == nil {
+        if model.config.leaders.isEmpty {
             leaderItem.title = "Leader: Not set — Choose…"
             leaderItem.action = #selector(chooseLeader)
             leaderItem.target = self
@@ -79,7 +79,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let problem = model.hotkeyProblem {
             menu.addItem(note(problem, symbol: "exclamationmark.triangle"))
         }
-        let launchaIssues: Set<ConfigIssue.Kind> = [.missingLeader, .invalidLaunchaHotkey, .launchaHotkeyConflict,
+        let launchaIssues: Set<ConfigIssue.Kind> = [.missingLeader, .invalidLeader, .invalidAlternateLeader, .invalidLaunchaHotkey, .launchaHotkeyConflict,
                                                     .invalidClipbawdHotkey, .clipbawdHotkeyConflict]
         if let error = model.configError ?? model.issues.first(where: { !launchaIssues.contains($0.kind) })?.message {
             menu.addItem(note(error, symbol: "exclamationmark.triangle"))

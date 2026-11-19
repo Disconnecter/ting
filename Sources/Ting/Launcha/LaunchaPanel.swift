@@ -176,7 +176,7 @@ final class LaunchaController: NSObject, NSWindowDelegate {
         self.config = config
         chrome.appHotkeys = config.appHotkeys
         chrome.showHeader = config.showPanelHeader
-        chrome.leader = config.leader?.display ?? ""
+        chrome.leader = config.leaderDisplay
         chrome.tokenDescription = Self.tokenDescription(config)
         model.calculator = config.launcha.calculator
         model.converter = config.launcha.converter
@@ -185,8 +185,13 @@ final class LaunchaController: NSObject, NSWindowDelegate {
     /// The real keys that open launcha, e.g. "Open launcha: ⌥Space pressed twice, or ⌘K".
     static func tokenDescription(_ config: Config) -> String {
         var ways: [String] = []
-        if config.launcha.doubleTap, let leader = config.leader { ways.append("\(leader.display) pressed twice") }
-        if let hotkey = config.launcha.hotkey, hotkey.isValid, hotkey != config.leader { ways.append(hotkey.display) }
+        let keys = HotkeyAssignments(config).launchers
+        if config.launcha.doubleTap {
+            for slot in [LauncherHotkey.leader, .alternateLeader] {
+                if let key = keys[slot] { ways.append("\(key.display) pressed twice") }
+            }
+        }
+        if let hotkey = keys[.launcha] { ways.append(hotkey.display) }
         return ways.isEmpty ? "Open launcha" : "Open launcha: " + ways.joined(separator: ", or ")
     }
 

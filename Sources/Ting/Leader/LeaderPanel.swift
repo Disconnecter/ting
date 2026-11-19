@@ -71,7 +71,7 @@ final class LeaderController: NSObject, NSWindowDelegate {
 
     private var machine = LeaderMachine(items: [])
     private var doubleTap = LeaderDoubleTap()
-    private var leaderKeyCode: UInt16?
+    private var leaderKeyCodes: [LauncherHotkey: UInt16] = [:]
     private var showDelay = Config().showDelay
     private var panel: LeaderPanel?
     private var reveal: DispatchWorkItem?
@@ -99,10 +99,13 @@ final class LeaderController: NSObject, NSWindowDelegate {
         }
         machine.unknownKey = config.unknownKey
         showDelay = config.showDelay
-        session.leader = config.leader?.display ?? ""
-        doubleTap.isEnabled = config.launcha.doubleTap && config.leader != nil
+        session.leader = config.leaderDisplay
+        doubleTap.isEnabled = config.launcha.doubleTap && !config.leaders.isEmpty
         doubleTap.window = config.launcha.doubleTapWindow
-        if case .combo(let keyCode, _)? = config.leader { leaderKeyCode = keyCode } else { leaderKeyCode = nil }
+        leaderKeyCodes.removeAll()
+        for source in [LauncherHotkey.leader, .alternateLeader] {
+            if case .combo(let keyCode, _)? = source.configured(in: config) { leaderKeyCodes[source] = keyCode }
+        }
         session.showPanelHeader = config.showPanelHeader
         if machine.isOpen {
             session.path = machine.path
@@ -114,8 +117,8 @@ final class LeaderController: NSObject, NSWindowDelegate {
     /// The leader hotkey went down. `time` is any monotonic clock in seconds.
     /// The first press acts at once; only the second press of a root double tap opens launcha.
     /// `accepted` runs before the press acts, and not at all for an ignored repeat.
-    func leaderPressed(at time: TimeInterval = ProcessInfo.processInfo.systemUptime, accepted: () -> Void = {}) {
-        let press = doubleTap.press(at: time, machine: machine)
+    func leaderPressed(at time: TimeInterval = ProcessInfo.processInfo.systemUptime, source: LauncherHotkey = .leader, accepted: () -> Void = {}) {
+        let press = doubleTap.press(at: time, machine: machine, source: source)
         guard press != .ignored else { return }
         accepted()
         switch press {
@@ -131,8 +134,8 @@ final class LeaderController: NSObject, NSWindowDelegate {
     }
 
     /// The leader hotkey went up (from Carbon, or the panel saw the key up).
-    func leaderReleased() {
-        doubleTap.release()
+    func leaderReleased(_ source: LauncherHotkey = .leader) {
+        doubleTap.release(source)
     }
 
     func close() {
@@ -279,8 +282,8 @@ final class LeaderController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.onKeyDown = { [weak self] event in self?.handleKeyDown(event) }
         panel.onKeyUp = { [weak self] event in
-            guard let self, event.keyCode == self.leaderKeyCode else { return }
-            self.leaderReleased()
+            guard let self else { return }
+            for (source, code) in self.leaderKeyCodes where code == event.keyCode { self.leaderReleased(source) }
         }
         let view = LeaderMenuView(session: session,
                                   onSelect: { [weak self] key in self?.select(key) },

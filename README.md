@@ -41,7 +41,7 @@ If Homebrew asks you to trust the cask, run `brew trust --cask bobuk-io/tap/ting
 
 Download the universal ZIP from [GitHub Releases](https://github.com/bobuk-io/ting/releases/latest), unzip it, move `Ting.app` to `/Applications`, and open it. Official releases are signed with Developer ID, notarized by Apple and include a stapled ticket.
 
-On first launch, choose a non-modifier key to use as your leader. Ting has no default leader.
+On first launch, choose a non-modifier key to use as your leader. If you switch keyboards, record another key in **Settings › General › Second leader**. Either key opens the same selecta bindings. When double tap is enabled, either key also opens launcha with two taps.
 
 ## Use
 

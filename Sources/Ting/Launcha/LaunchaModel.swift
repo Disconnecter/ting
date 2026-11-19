@@ -11,12 +11,12 @@ import BobukUI
 struct LaunchaRow: Identifiable, Equatable {
     enum Kind: Equatable {
         /// An indexed app. `candidateID` is the launch-history identity.
-        case app(candidateID: String)
-        case file
+        case app(URL)
+        case file(URL)
         case clipbawd
-        case lowkeySite(candidateID: String)
+        case lowkeySite(URL)
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
-        case micro(candidateID: String, start: LaunchaMicroStart, isWorking: Bool)
+        case micro(file: URL, start: LaunchaMicroStart, isWorking: Bool)
         /// The value of the query as a calculation or a conversion. Return copies it; the row
         /// name may show more, such as `4.572 m` for the value `4.572`.
         case calculation(value: String)
@@ -28,7 +28,12 @@ struct LaunchaRow: Identifiable, Equatable {
     var kind: Kind
     var name: String
     /// The retained app bundle URL, the file URL, or the micro-app file URL.
-    var url: URL
+    var url: URL? {
+        switch kind {
+        case .app(let url), .file(let url), .lowkeySite(let url), .micro(let url, _, _): url
+        case .clipbawd, .calculation: nil
+        }
+    }
     /// Secondary text: the folder of a file, with `~` for the home folder, or the
     /// description of a micro-app, or why a micro-app file does not work.
     var detail: String
@@ -57,6 +62,44 @@ struct LaunchaRow: Identifiable, Equatable {
     var isWorking: Bool {
         if case .micro(_, _, let working) = kind { return working }
         return true
+    }
+}
+
+/// A searchable source retains everything its row needs after ranking, including the exact bundle or file.
+private enum LaunchaEntry {
+    case app(IndexedLaunchaApp)
+    case micro(LaunchaMicroCandidate)
+    case site(LowkeySite)
+    case clipbawd
+
+    var candidate: LaunchaCandidate {
+        switch self {
+        case .app(let app): app.candidate
+        case .micro(let micro): micro.candidate
+        case .site(let site): site.candidate
+        case .clipbawd: LaunchaCandidate(id: "ting:clipbawd", name: "Clipbawd", target: .url("ting:clipbawd"))
+        }
+    }
+
+    func row(microFolder: URL) -> LaunchaRow {
+        let kind: LaunchaRow.Kind
+        let detail: String
+        switch self {
+        case .app(let app):
+            kind = .app(app.url)
+            detail = ""
+        case .micro(let micro):
+            kind = .micro(file: microFolder.appendingPathComponent(micro.file), start: micro.start, isWorking: micro.isWorking)
+            detail = micro.problem.map { "Not working: \($0)" } ?? micro.description
+        case .site(let site):
+            kind = .lowkeySite(site.url())
+            detail = "lowkey · \(site.alias) · \(site.startURL.host ?? "")"
+        case .clipbawd:
+            kind = .clipbawd
+            detail = "Clipboard history"
+        }
+        let match = candidate
+        return LaunchaRow(id: match.id, kind: kind, name: match.name, detail: detail)
     }
 }
 
@@ -232,40 +275,31 @@ final class LaunchaModel {
         guard isOpen, let row = selectedRow else { return nil }
         onRequestClose?()
         close()
-        // Return and Command-Return both copy a value; it has nothing to reveal.
-        if case .calculation(let value) = row.kind {
+        let outcome: LaunchOutcome
+        switch row.kind {
+        case .calculation(let value):
             onCopyValue?(value)
             return nil
-        }
-        if case .clipbawd = row.kind {
+        case .clipbawd:
             if !reveal { onOpenClipbawd?() }
             return nil
-        }
-        // A deep link is not a filesystem path. Command-Return never reveals it in Finder.
-        if case .lowkeySite(let candidateID) = row.kind {
+        case .lowkeySite(let url):
             guard !reveal else { return nil }
-            let outcome = await opener.openLowkeySite(row.url, name: row.name)
-            await record(outcome, id: candidateID)
-            return outcome
-        }
-        if reveal { return opener.reveal(row.url) }
-        if case .micro(let candidateID, let start, let isWorking) = row.kind {
-            // The same flow as a binding: approval, parameters, result. A broken file shows its own errors.
+            outcome = await opener.openLowkeySite(url, name: row.name)
+        case .app(let url):
+            if reveal { return opener.reveal(url) }
+            outcome = await opener.openApp(at: url, name: row.name)
+        case .file(let url):
+            if reveal { return opener.reveal(url) }
+            return await opener.openFile(url, name: row.name)
+        case .micro(let file, let start, let isWorking):
+            if reveal { return opener.reveal(file) }
             onStartMicro?(start)
             guard isWorking else { return .failed }
-            await record(.opened, id: candidateID)
-            return .opened
+            outcome = .opened
         }
-        switch row.kind {
-        case .app(let candidateID):
-            let outcome = await opener.openApp(at: row.url, name: row.name)
-            await record(outcome, id: candidateID)
-            return outcome
-        case .file:
-            return await opener.openFile(row.url, name: row.name)
-        case .micro, .calculation, .clipbawd, .lowkeySite:
-            return nil
-        }
+        await record(outcome, id: row.id)
+        return outcome
     }
 
     /// Records a launch through selecta or launcha. Failed opens and reveals are not counted.
@@ -374,32 +408,12 @@ final class LaunchaModel {
         guard isOpen else { return }
         let previous = keepSelection ? selectedRow?.id : nil
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let byID = Dictionary(apps.map { ($0.candidate.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let microByID = Dictionary(microApps.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let lowkeyByID = Dictionary(lowkeySites.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let folder = microFolder ?? home
-        let builtins = clipbawdEnabled ? [LaunchaCandidate(id: "ting:clipbawd", name: "Clipbawd", target: .url("ting:clipbawd"))] : []
-        let candidates = builtins + microApps.map(\.candidate) + lowkeySites.map(\.candidate) + apps.map(\.candidate)
-        let matches = LaunchaSearch.results(for: trimmed, in: candidates, history: history, now: Date())
-        let appRows = matches.compactMap { match -> LaunchaRow? in
-            if match.candidate.id == "ting:clipbawd" {
-                return LaunchaRow(id: "ting:clipbawd", kind: .clipbawd, name: "Clipbawd",
-                                  url: URL(fileURLWithPath: "/"), detail: "Clipboard history")
-            }
-            if let micro = microByID[match.candidate.id] {
-                return LaunchaRow(id: micro.id,
-                                  kind: .micro(candidateID: micro.id, start: micro.start, isWorking: micro.isWorking),
-                                  name: match.candidate.name, url: folder.appendingPathComponent(micro.file),
-                                  detail: micro.problem.map { "Not working: \($0)" } ?? micro.description)
-            }
-            if let site = lowkeyByID[match.candidate.id] {
-                return LaunchaRow(id: site.id, kind: .lowkeySite(candidateID: site.id), name: site.name,
-                                  url: site.url(), detail: "lowkey · \(site.alias) · \(site.startURL.host ?? "")")
-            }
-            guard let app = byID[match.candidate.id] else { return nil }
-            return LaunchaRow(id: match.candidate.id, kind: .app(candidateID: match.candidate.id),
-                              name: match.candidate.name, url: app.url, detail: "")
-        }
+        var entries: [LaunchaEntry] = clipbawdEnabled ? [.clipbawd] : []
+        entries.append(contentsOf: microApps.map(LaunchaEntry.micro))
+        entries.append(contentsOf: lowkeySites.map(LaunchaEntry.site))
+        entries.append(contentsOf: apps.map(LaunchaEntry.app))
+        let matches = LaunchaSearch.ranked(for: trimmed, in: entries, history: history, now: Date(), candidate: \.candidate)
+        let appRows = matches.map { $0.row(microFolder: microFolder ?? home) }
         // A query without letters or digits lists every app, so it never reaches Spotlight
         // unless the index is empty.
         let wantsFiles = !trimmed.isEmpty && hasIndex && appRows.isEmpty
@@ -410,7 +424,7 @@ final class LaunchaModel {
                 services.spotlight.search(trimmed)
             }
             rows = spotlight.files.map { file in
-                LaunchaRow(id: "file:" + file.url.path, kind: .file, name: file.name, url: file.url,
+                LaunchaRow(id: "file:" + file.url.path, kind: .file(file.url), name: file.name,
                            detail: displayFolder(of: file.url))
             }
         } else {
@@ -420,10 +434,10 @@ final class LaunchaModel {
         // A calculation or a conversion comes first, above the apps or files that match the same text.
         if calculator, let value = Calculator.evaluate(trimmed) {
             rows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: value), name: value,
-                                   url: URL(fileURLWithPath: "/"), detail: "Return copies the result"), at: 0)
+                                   detail: "Return copies the result"), at: 0)
         } else if converter, let result = Converter.evaluate(trimmed) {
             rows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: result.value),
-                                   name: result.display, url: URL(fileURLWithPath: "/"), detail: result.detail), at: 0)
+                                   name: result.display, detail: result.detail), at: 0)
         }
         if let previous, let index = rows.firstIndex(where: { $0.id == previous }) {
             selection = index

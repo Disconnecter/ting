@@ -37,6 +37,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
 {
   "version": 1,
   "leader": "home",
+  "alternateLeader": "f13",
   "items": [
     { "key": "space", "label": "WezTerm", "app": "com.github.wez.wezterm" },
     { "key": "t", "label": "Translate", "items": [
@@ -58,6 +59,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
 - `key`: a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`. Keys
   are Latin even when the person types with another layout.
 - In one group a key is used once.
+- `alternateLeader` is an optional second leader, recorded in Settings › General. Either key opens the same bindings. Two successive taps of either key open launcha when double tap is enabled. Omit the field or set it to `null` to clear it.
 - Settings: `leader` (a key name with optional modifiers, such as `home`,
   `f13`, `option+shift+cmd+f`; `pause` is the Pause key of a PC keyboard, the same key as `f15`
   and saved as `f15`; never a modifier alone), `showDelay` (seconds,
@@ -74,7 +76,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `fetchLinks` loads the title, icon or image of a copied link, `maxItems` is
   20–1000, `excludedApps` lists bundle identifiers whose copies are never kept,
   `ignoredPrefixes` lists case-sensitive starts of text that is never kept). The
-  Clipbawd hotkey cannot be the leader or the launcha hotkey. Clipbawd is also searchable by name in launcha while enabled.
+  Clipbawd hotkey cannot match either leader or the launcha hotkey. Clipbawd is also searchable by name in launcha while enabled.
 - Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 
 ### lowkey sites
@@ -135,13 +137,12 @@ the same syntax as the leader: a non-modifier key, optionally with modifiers.
 
 Each app has one shortcut and each shortcut belongs to one app. Saving in
 launcha replaces both the app's old shortcut and any other app's assignment to
-the new shortcut; the editor names the other app before Save. The leader and
-`launcha.hotkey` are always reserved, even while recording suspends them. An
+the new shortcut; the editor names the other app before Save. Both leaders, `launcha.hotkey` and the enabled clipbawd hotkey are reserved, even while recording suspends them. An
 OS registration conflict or failed save keeps the old configuration.
 
 In a hand-written file, invalid or duplicate entries produce validation
 issues; only the first valid assignment for an app and key is registered.
-An app shortcut that conflicts with the leader or launcha is disabled, never
+An app shortcut that conflicts with either leader, launcha or enabled clipbawd is disabled, never
 the protected shortcut. Changing a protected key later can therefore disable
 an app assignment without deleting it. Pausing Ting or recording a shortcut
 suspends application hotkeys too. Holding an app shortcut launches only once

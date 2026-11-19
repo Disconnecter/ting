@@ -17,6 +17,8 @@ final class AppModel {
     private(set) var configError: String?
     private(set) var issues: [ConfigIssue] = []
     private(set) var hotkeyStatus: HotkeyService.Status = .inactive
+    private(set) var alternateLeaderStatus: HotkeyService.Status = .inactive
+    @ObservationIgnored private var assignments = HotkeyAssignments(Config())
     private(set) var launchaHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var clipbawdHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var loginItemError: String?
@@ -88,14 +90,18 @@ final class AppModel {
         }
     }
 
-    var leaderDisplay: String { config.leader?.display ?? "Not set" }
-    var isLeaderActive: Bool { hotkeyStatus == .active && !isPaused }
+    var leaderDisplay: String { config.leaders.isEmpty ? "Not set" : config.leaderDisplay }
+    var isLeaderActive: Bool { (hotkeyStatus == .active || alternateLeaderStatus == .active) && !isPaused }
 
     var hotkeyProblem: String? {
-        switch hotkeyStatus {
-        case .failed(let reason): reason
-        case .inactive, .active: nil
-        }
+        leaderProblem(alternate: false) ?? leaderProblem(alternate: true)
+    }
+
+    func leaderProblem(alternate: Bool) -> String? {
+        let kind: ConfigIssue.Kind = alternate ? .invalidAlternateLeader : .invalidLeader
+        if let issue = issues.first(where: { $0.kind == kind }) { return issue.message }
+        if case .failed(let reason) = alternate ? alternateLeaderStatus : hotkeyStatus { return reason }
+        return nil
     }
 
     /// The menu-bar item shows its problem mark.
@@ -136,6 +142,7 @@ final class AppModel {
         hotkeys.onStatusChange = { [weak self] slot, status in
             switch slot {
             case .leader: self?.hotkeyStatus = status
+            case .alternateLeader: self?.alternateLeaderStatus = status
             case .launcha: self?.launchaHotkeyStatus = status
             case .clipbawd: self?.clipbawdHotkeyStatus = status
             case .application: self?.refreshAppShortcutProblems()
@@ -279,10 +286,11 @@ final class AppModel {
 
     /// Saves exactly the retained app selected in launcha, never a different bundle-ID match.
     func setAppShortcut(for row: LaunchaRow, hotkey: Hotkey?) throws {
-        guard case .app(let id) = row.kind else { throw AppShortcutRules.Problem.invalidTarget }
+        guard case .app(let url) = row.kind else { throw AppShortcutRules.Problem.invalidTarget }
+        let id = row.id
         var next = config
         if let hotkey {
-            let shortcut = AppShortcut(id: id, name: row.name, path: row.url.path, hotkey: hotkey)
+            let shortcut = AppShortcut(id: id, name: row.name, path: url.path, hotkey: hotkey)
             try AppShortcutRules.assign(shortcut, in: &next)
             // The editor suspends Ting's registrations first. OS conflicts fail without a save.
             if isRecordingHotkey, let error = hotkeys.checkAvailable(hotkey) {
@@ -399,7 +407,8 @@ final class AppModel {
     private func apply(_ next: Config) {
         let previous = config
         config = next
-        issues = ConfigValidator.validate(next)
+        assignments = HotkeyAssignments(next)
+        issues = assignments.issues + ConfigValidator.bindingIssues(in: next)
         runner.prepare(next.items)
         leader.configure(next)
         launcha.configure(next)
@@ -417,31 +426,17 @@ final class AppModel {
     }
 
     private func applyHotkey() {
-        let wanted = isPaused || isRecordingHotkey ? [] : AppShortcutRules.active(in: config)
-        hotkeys.prepareApplications(wanted)
-        activeAppShortcuts = wanted
-        if isPaused || isRecordingHotkey {
+        let active = isPaused || isRecordingHotkey ? nil : assignments
+        activeAppShortcuts = active?.applications ?? []
+        hotkeys.apply(active)
+        if active == nil {
             leader.close()
             clipbawdPanel.close()
             if isPaused || launcha.chrome.shortcutEditor == nil { launcha.close() }
-            hotkeys.activate(nil, for: .launcha)
-            hotkeys.activate(nil, for: .clipbawd)
-            hotkeys.activate(nil, for: .leader)
-        } else {
-            // The leader wins a conflict, then launcha: free the other slots first.
-            let separate = config.launcha.hotkey.flatMap { $0.isValid && $0 != config.leader ? $0 : nil }
-            let clipboard = config.clipbawd.activeHotkey.flatMap {
-                $0.isValid && $0 != config.leader && $0 != config.launcha.hotkey ? $0 : nil
-            }
-            if hotkeys.hotkey(.launcha) != separate { hotkeys.activate(nil, for: .launcha) }
-            if hotkeys.hotkey(.clipbawd) != clipboard { hotkeys.activate(nil, for: .clipbawd) }
-            hotkeys.activate(config.leader, for: .leader)
-            hotkeys.activate(separate, for: .launcha)
-            hotkeys.activate(clipboard, for: .clipbawd)
-            hotkeys.activateApplications(wanted)
         }
         refreshAppShortcutProblems()
         hotkeyStatus = hotkeys.status(.leader)
+        alternateLeaderStatus = hotkeys.status(.alternateLeader)
         launchaHotkeyStatus = hotkeys.status(.launcha)
         clipbawdHotkeyStatus = hotkeys.status(.clipbawd)
     }
@@ -449,6 +444,7 @@ final class AppModel {
     func hotkeyReleased(_ slot: HotkeyService.Slot) {
         switch slot {
         case .leader: leader.leaderReleased()
+        case .alternateLeader: leader.leaderReleased(.alternateLeader)
         case .launcha: launchaKey.release()
         case .clipbawd: clipbawdKey.release()
         case .application: break
@@ -458,10 +454,10 @@ final class AppModel {
     func hotkeyPressed(_ slot: HotkeyService.Slot, at time: TimeInterval) {
         guard !isMenuTracking else { return }
         switch slot {
-        case .leader:
+        case .leader, .alternateLeader:
             // The leader switches from launcha back to selecta. A repeat of a held leader
             // is ignored and leaves launcha open.
-            leader.leaderPressed(at: time) { [launcha, clipbawdPanel] in
+            leader.leaderPressed(at: time, source: slot == .leader ? .leader : .alternateLeader) { [launcha, clipbawdPanel] in
                 if launcha.isOpen { launcha.close() }
                 clipbawdPanel.close()
             }

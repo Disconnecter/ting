@@ -249,8 +249,8 @@ private struct ResultRow: View {
                     MicroRowIcon(isWorking: row.isWorking)
                 } else if row.isCalculation {
                     CalculationRowIcon()
-                } else {
-                    RowIcon(url: row.url, icons: icons)
+                } else if let url = row.url {
+                    RowIcon(url: url, icons: icons)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.name)
@@ -305,7 +305,7 @@ private struct ResultRow: View {
         if row.isCalculation { return row.name }
         if row.isLowkeySite { return "\(row.name): \(row.detail)" }
         if case .clipbawd = row.kind { return "Open Clipbawd clipboard history" }
-        return row.isApp ? row.name : row.url.path
+        return row.isApp ? row.name : row.url?.path ?? row.name
     }
 
     private var accessibilityLabel: String {

@@ -40,9 +40,12 @@ public enum AppShortcutRules {
 
     public static func problem(for hotkey: Hotkey, in config: Config) -> Problem? {
         if !hotkey.isValid { return .invalidKey }
-        if hotkey == config.leader { return .leader }
-        if hotkey == config.launcha.hotkey { return .launcha }
-        if hotkey == config.clipbawd.activeHotkey { return .clipbawd }
+        switch LauncherHotkey.owner(of: hotkey, in: config) {
+        case .leader, .alternateLeader: return .leader
+        case .launcha: return .launcha
+        case .clipbawd: return .clipbawd
+        case nil: break
+        }
         return nil
     }
 
@@ -56,14 +59,6 @@ public enum AppShortcutRules {
 
     /// First valid assignment wins in a hand-written file. Reserved keys always win over apps.
     public static func active(in config: Config) -> [AppShortcut] {
-        var ids: Set<String> = []
-        var keys: Set<Hotkey> = []
-        return config.appHotkeys.filter {
-            guard $0.hasValidTarget, problem(for: $0.hotkey, in: config) == nil,
-                  !ids.contains($0.id), !keys.contains($0.hotkey) else { return false }
-            ids.insert($0.id)
-            keys.insert($0.hotkey)
-            return true
-        }
+        HotkeyAssignments(config).applications
     }
 }

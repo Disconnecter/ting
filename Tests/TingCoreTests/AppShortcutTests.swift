@@ -13,6 +13,31 @@ final class AppShortcutTests: XCTestCase {
         XCTAssertEqual(try ConfigCodec.decode(ConfigCodec.encode(config)), config)
     }
 
+    func testEitherLeaderReservesTheKeyAcrossConfigRoundTrips() throws {
+        var config = try ConfigCodec.decode(Data(#"{"leader":"home"}"#.utf8))
+        XCTAssertNil(config.alternateLeader)
+        let key = try XCTUnwrap(Hotkey(string: "cmd+f13"))
+        config.alternateLeader = key
+        XCTAssertEqual(try ConfigCodec.decode(ConfigCodec.encode(config)), config)
+        config.launcha.hotkey = key
+        config.clipbawd.enabled = true
+        config.clipbawd.hotkey = key
+        config.appHotkeys = [shortcut("Editor", "cmd+f13")]
+        let plan = HotkeyAssignments(config)
+        XCTAssertEqual(plan.launchers, [.leader: config.leader!, .alternateLeader: key])
+        XCTAssertEqual(plan.applications, [])
+        XCTAssertEqual(plan.issues.map(\.kind), [.launchaHotkeyConflict, .clipbawdHotkeyConflict, .appHotkey])
+        XCTAssertThrowsError(try AppShortcutRules.assign(shortcut("Other", "cmd+f13"), in: &config))
+
+        config.leader = nil
+        XCTAssertFalse(ConfigValidator.validate(config).contains { $0.kind == .missingLeader })
+        config.leader = key
+        XCTAssertNil(HotkeyAssignments(config).launchers[.alternateLeader])
+        config.alternateLeader = Hotkey(string: "right-option")
+        XCTAssertTrue(ConfigValidator.validate(config).contains { $0.kind == .invalidAlternateLeader })
+        XCTAssertNil(HotkeyAssignments(config).launchers[.alternateLeader])
+    }
+
     func testAssignmentReplacesTheAppAndTheKeyButKeepsOthers() throws {
         var config = Config()
         config.appHotkeys = [shortcut("One", "cmd+f12"), shortcut("Two", "cmd+f13"), shortcut("Three", "cmd+f14")]

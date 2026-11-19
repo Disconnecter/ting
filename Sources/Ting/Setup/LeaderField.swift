@@ -6,27 +6,15 @@ import TingCore
 @MainActor
 @Observable
 final class HotkeyRecording: HotkeyRecordingOwner {
-    enum Target {
-        case leader, launcha, clipbawd
-
-        var role: String {
-            switch self {
-            case .leader: "be a leader"
-            case .launcha: "open launcha"
-            case .clipbawd: "open Clipbawd"
-            }
-        }
-    }
-
     private(set) var isRecording = false
     private(set) var preview = ""
     private(set) var warning: String?
     @ObservationIgnored private let monitor = KeyMonitor()
     @ObservationIgnored private var model: AppModel?
     @ObservationIgnored private var resignObserver: NSObjectProtocol?
-    @ObservationIgnored private var target = Target.leader
+    @ObservationIgnored private var target = LauncherHotkey.leader
 
-    func start(model: AppModel, target: Target = .leader) {
+    func start(model: AppModel, target: LauncherHotkey = .leader) {
         // Starting again first stops this recording's monitor and observer.
         stopListening()
         self.model = model
@@ -73,12 +61,8 @@ final class HotkeyRecording: HotkeyRecordingOwner {
             let config = model?.config
             if KeyCodes.name(for: event.keyCode) == nil || !hotkey.isValid {
                 warning = "A modifier alone cannot \(target.role). Press any other key."
-            } else if target != .leader, hotkey == config?.leader {
-                warning = "\(hotkey.display) is the leader. Press another key."
-            } else if target != .launcha, hotkey == config?.launcha.hotkey {
-                warning = "\(hotkey.display) already opens launcha. Press another key."
-            } else if target != .clipbawd, hotkey == config?.clipbawd.activeHotkey {
-                warning = "\(hotkey.display) already opens Clipbawd. Press another key."
+            } else if let config, let owner = LauncherHotkey.owner(of: hotkey, in: config, excluding: target) {
+                warning = owner.conflict(for: hotkey) + " Press another key."
             } else {
                 finish(hotkey)
             }
@@ -93,6 +77,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
         cancel()
         switch target {
         case .leader: model?.setLeader(hotkey)
+        case .alternateLeader: model?.update { $0.alternateLeader = hotkey }
         case .launcha: model?.setLaunchaHotkey(hotkey)
         case .clipbawd: model?.setClipbawdHotkey(hotkey)
         }
@@ -103,15 +88,19 @@ final class HotkeyRecording: HotkeyRecordingOwner {
 struct LeaderField: View {
     @Environment(AppModel.self) private var model
     @State private var recording = HotkeyRecording()
+    var alternate = false
     var large = false
     /// Welcome starts listening at once: the user just presses the leader.
     var autoStart = false
 
     var body: some View {
+        let target: LauncherHotkey = alternate ? .alternateLeader : .leader
+        let key = target.configured(in: model.config)
+        let name = alternate ? "Second leader key" : "Leader key"
         let isRecording = recording.isRecording
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                if isRecording { recording.cancel() } else { recording.start(model: model) }
+                if isRecording { recording.cancel() } else { recording.start(model: model, target: target) }
             } label: {
                 HStack(spacing: 10) {
                     if isRecording {
@@ -119,7 +108,7 @@ struct LeaderField: View {
                         let preview = recording.preview
                         Text(preview.isEmpty ? "Press your leader…" : preview)
                             .foregroundStyle(preview.isEmpty ? Color.tingMuted : Color.tingInk)
-                    } else if let hotkey = model.config.leader {
+                    } else if let hotkey = key {
                         Text(hotkey.display)
                     } else {
                         Text("Click to record").foregroundStyle(Color.tingMuted)
@@ -137,15 +126,15 @@ struct LeaderField: View {
                                   style: StrokeStyle(lineWidth: isRecording ? 1.5 : 1, dash: isRecording ? [4, 3] : [])))
             }
             .buttonStyle(.plain)
-            .onAppear { if autoStart && model.config.leader == nil { recording.start(model: model) } }
+            .onAppear { if autoStart && model.config.leaders.isEmpty { recording.start(model: model, target: target) } }
             .onDisappear { recording.cancel() }
             // The config file changed the leader while recording: show the new one.
-            .onChange(of: model.config.leader) { recording.cancel() }
-            .accessibilityLabel(model.config.leader.map { "Leader key \($0.display). Click to change." } ?? "Record leader key")
+            .onChange(of: key) { recording.cancel() }
+            .accessibilityLabel(key.map { "\(name) \($0.display). Click to change." } ?? "Record \(name)")
 
             if let warning = recording.warning {
                 hint(warning, symbol: "exclamationmark.triangle", color: .tingAmber)
-            } else if let problem = model.hotkeyProblem, !isRecording {
+            } else if let problem = model.leaderProblem(alternate: alternate), !isRecording {
                 hint(problem, symbol: "exclamationmark.triangle", color: .tingAmber)
             } else if large {
                 Text("Press any key: Home, Space, A, F13, or a combination such as ⌥⇧⌘F. Modifiers alone cannot be leaders.")
@@ -172,7 +161,7 @@ struct ClipbawdHotkeyField: View {
 
 /// The hotkey of a Ting window (launcha or clipbawd).
 private struct WindowHotkeyField: View {
-    let target: HotkeyRecording.Target
+    let target: LauncherHotkey
     @Environment(AppModel.self) private var model
     @State private var recording = HotkeyRecording()
 

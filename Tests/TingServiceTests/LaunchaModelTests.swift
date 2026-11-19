@@ -135,7 +135,7 @@ final class LaunchaModelTests: XCTestCase {
         model.open()
         try await wait("index") { model.hasIndex && model.rows.count == 2 }
         XCTAssertEqual(model.rows.map(\.name), ["Beta", "Alpha"])
-        XCTAssertEqual(model.rows.last?.url.path, alpha.path)
+        XCTAssertEqual(model.rows.last?.url?.path, alpha.path)
         XCTAssertTrue(fixture.calls.all.isEmpty)
 
         model.query = "alp"
@@ -144,9 +144,9 @@ final class LaunchaModelTests: XCTestCase {
 
         model.query = "zeta"
         XCTAssertTrue(model.rows.isEmpty)
-        try await wait("files") { model.rows.first?.kind == .file }
+        try await wait("files") { model.rows.first?.kind == .file(note) }
         XCTAssertEqual(fixture.calls.all, ["zeta"])
-        XCTAssertEqual(model.rows.map(\.url.path), [note.path])
+        XCTAssertEqual(model.rows.compactMap { $0.url?.path }, [note.path])
         XCTAssertEqual(model.rows.first?.detail, "~/Projects")
         XCTAssertTrue(model.showsConsentNotice, "Protected folders were skipped; the search is not complete")
 
@@ -398,7 +398,7 @@ extension LaunchaModelTests {
         XCTAssertEqual(model.rows.first?.kind, .calculation(value: "4"))
         XCTAssertEqual(model.rows.first?.name, "4")
         try await wait("files") { model.rows.count == 2 }
-        XCTAssertEqual(model.rows.map(\.kind), [.calculation(value: "4"), .file])
+        XCTAssertEqual(model.rows.map(\.kind), [.calculation(value: "4"), .file(report)])
         XCTAssertEqual(model.selection, 0)
 
         // An app whose name matches the digits comes after the value.

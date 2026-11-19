@@ -53,7 +53,7 @@ struct WelcomeView: View {
     let onContinue: () -> Void
 
     var body: some View {
-        let ready = model.config.leader != nil
+        let ready = !model.config.leaders.isEmpty
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 TingMark(size: 14)

@@ -440,18 +440,33 @@ public enum LaunchaSearch {
     /// 4. name (localized, case-insensitive), then id.
     public static func results(for query: String, in candidates: [LaunchaCandidate],
                                history: LaunchHistory, now: Date) -> [LaunchaMatch] {
+        rankedMatches(for: query, in: candidates, history: history, now: now, candidate: { $0 }).map(\.match)
+    }
+
+    /// Rank the original targets, retaining the first one's identity and payload when ids coincide.
+    public static func ranked<Entry>(for query: String, in entries: [Entry], history: LaunchHistory,
+                                     now: Date, candidate: (Entry) -> LaunchaCandidate) -> [Entry] {
+        rankedMatches(for: query, in: entries, history: history, now: now, candidate: candidate).map(\.entry)
+    }
+
+    private static func rankedMatches<Entry>(for query: String, in entries: [Entry], history: LaunchHistory,
+                                             now: Date, candidate: (Entry) -> LaunchaCandidate)
+        -> [(entry: Entry, match: LaunchaMatch)] {
         let listAll = KeyboardLayoutSwap.variants(of: query).allSatisfy { NameMatcher.words(in: $0).isEmpty }
         var seen: Set<String> = []
-        var matches: [LaunchaMatch] = []
-        for candidate in candidates where seen.insert(candidate.id).inserted {
+        var matches: [(entry: Entry, match: LaunchaMatch)] = []
+        for entry in entries {
+            let candidate = candidate(entry)
+            guard seen.insert(candidate.id).inserted else { continue }
             let quality = listAll ? nil : ([candidate.name] + candidate.searchNames)
                 .compactMap { NameMatcher.match(query, name: $0) }.min()
             guard listAll || quality != nil else { continue }
-            matches.append(LaunchaMatch(candidate: candidate, quality: quality,
+            let match = LaunchaMatch(candidate: candidate, quality: quality,
                                         recentCount: history.recentCount(id: candidate.id, now: now),
-                                        lastLaunch: history.lastLaunch(id: candidate.id)))
+                                        lastLaunch: history.lastLaunch(id: candidate.id))
+            matches.append((entry, match))
         }
-        return matches.sorted(by: ranksBefore)
+        return matches.sorted { ranksBefore($0.match, $1.match) }
     }
 
     static func ranksBefore(_ lhs: LaunchaMatch, _ rhs: LaunchaMatch) -> Bool {
@@ -503,7 +518,8 @@ public struct LeaderDoubleTap: Sendable {
 
     public var isEnabled: Bool
     public var window: TimeInterval
-    public private(set) var isHeld = false
+    private var heldKeys: Set<LauncherHotkey> = []
+    public var isHeld: Bool { !heldKeys.isEmpty }
     private var firstPressAt: TimeInterval?
     private var lastPressAt: TimeInterval?
 
@@ -519,13 +535,14 @@ public struct LeaderDoubleTap: Sendable {
     /// A leader key-down at `time` (seconds, any monotonic clock).
     /// `menuOpenAtRoot`: the leader menu is open with an empty path, before this press.
     /// `menuOpen`: the leader menu is open at all, before this press.
-    public mutating func press(at time: TimeInterval, menuOpen: Bool, menuOpenAtRoot: Bool) -> LeaderPress {
+    public mutating func press(at time: TimeInterval, menuOpen: Bool, menuOpenAtRoot: Bool, source: LauncherHotkey = .leader) -> LeaderPress {
         defer { lastPressAt = time }
         if isHeld, let last = lastPressAt, time - last > LeaderDoubleTap.staleHold || time < last {
-            isHeld = false
+            heldKeys.removeAll()
         }
-        guard !isHeld else { return .ignored }
-        isHeld = true
+        let wasHeld = isHeld
+        heldKeys.insert(source)
+        guard !wasHeld else { return .ignored }
         if isEnabled, menuOpen, menuOpenAtRoot, let first = firstPressAt, time >= first, time - first <= window {
             firstPressAt = nil
             return .double
@@ -535,13 +552,13 @@ public struct LeaderDoubleTap: Sendable {
     }
 
     /// Convenience: reads the menu state from `machine`.
-    public mutating func press(at time: TimeInterval, machine: LeaderMachine) -> LeaderPress {
-        press(at: time, menuOpen: machine.isOpen, menuOpenAtRoot: machine.isOpen && machine.path.isEmpty)
+    public mutating func press(at time: TimeInterval, machine: LeaderMachine, source: LauncherHotkey = .leader) -> LeaderPress {
+        press(at: time, menuOpen: machine.isOpen, menuOpenAtRoot: machine.isOpen && machine.path.isEmpty, source: source)
     }
 
     /// The leader key was released.
-    public mutating func release() {
-        isHeld = false
+    public mutating func release(_ source: LauncherHotkey = .leader) {
+        heldKeys.remove(source)
     }
 
     /// Any key, ⌫ or selection in the menu. The next leader press is not a double tap.

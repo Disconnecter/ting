@@ -155,7 +155,7 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
 }
 
 /// The whole config file (`~/.config/ting/config.json`).
-/// JSON keys: "version", "leader" (Hotkey string or null), "showDelay", "unknownKey",
+/// JSON keys: "version", "leader" and "alternateLeader" (Hotkey strings or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
 /// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipbawd" (`ClipbawdSettings`),
 /// "appHotkeys", "items".
@@ -166,6 +166,15 @@ public struct Config: Equatable, Sendable, Codable {
     public var version: Int = Config.currentVersion
     /// There is no default leader: nil until the user records one.
     public var leader: Hotkey? = nil
+    public var alternateLeader: Hotkey?
+
+    /// Distinct configured leader keys, in settings order.
+    public var leaders: [Hotkey] {
+        [leader, alternateLeader == leader ? nil : alternateLeader].compactMap { $0 }
+    }
+
+    public var leaderDisplay: String { leaders.map(\.display).joined(separator: " or ") }
+
     /// Seconds before the menu becomes visible. Clamped to 0...2 when decoding.
     public var showDelay: Double = 0
     public var unknownKey: UnknownKeyBehavior = .shake
@@ -208,7 +217,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, appHotkeys, items
+        case version, leader, alternateLeader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, appHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -216,6 +225,7 @@ public struct Config: Equatable, Sendable, Codable {
         let defaults = Config()
         version = try container.decodeIfPresent(Int.self, forKey: .version) ?? defaults.version
         leader = try container.decodeIfPresent(Hotkey.self, forKey: .leader)
+        alternateLeader = try container.decodeIfPresent(Hotkey.self, forKey: .alternateLeader)
         let delay = try container.decodeIfPresent(Double.self, forKey: .showDelay) ?? defaults.showDelay
         showDelay = min(max(delay, 0), 2)
         unknownKey = try container.decodeIfPresent(UnknownKeyBehavior.self, forKey: .unknownKey) ?? defaults.unknownKey
@@ -241,6 +251,7 @@ public struct Config: Equatable, Sendable, Codable {
         } else {
             try container.encodeNil(forKey: .leader)
         }
+        try container.encodeIfPresent(alternateLeader, forKey: .alternateLeader)
         try container.encode(showDelay, forKey: .showDelay)
         try container.encode(unknownKey, forKey: .unknownKey)
         try container.encode(appearance, forKey: .appearance)
@@ -335,6 +346,7 @@ public struct ConfigIssue: Equatable, Sendable {
         case missingLeader
         /// The leader is not `isValid`.
         case invalidLeader
+        case invalidAlternateLeader
         /// The launcha hotkey is not `isValid` (for example a modifier on its own).
         case invalidLaunchaHotkey
         /// The launcha hotkey is the same as the leader.
@@ -363,53 +375,11 @@ public enum ConfigValidator {
     /// Leader issues first, then launcha and clipbawd hotkey issues, then app hotkey issues, then all item issues depth-first in item order. For a duplicate key, report one issue per duplicate
     /// after the first, with the duplicate's sequence.
     public static func validate(_ config: Config) -> [ConfigIssue] {
+        HotkeyAssignments(config).issues + bindingIssues(in: config)
+    }
+
+    public static func bindingIssues(in config: Config) -> [ConfigIssue] {
         var issues: [ConfigIssue] = []
-        if let leader = config.leader {
-            if !leader.isValid {
-                issues.append(ConfigIssue(kind: .invalidLeader, sequence: [],
-                                          message: "\(leader.display) cannot be a leader. Choose a key that is not a modifier."))
-            }
-        } else {
-            issues.append(ConfigIssue(kind: .missingLeader, sequence: [], message: "No leader key yet."))
-        }
-        if let hotkey = config.launcha.hotkey {
-            if !hotkey.isValid {
-                issues.append(ConfigIssue(kind: .invalidLaunchaHotkey, sequence: [],
-                                          message: "\(hotkey.display) cannot open launcha. Choose a key that is not a modifier."))
-            } else if hotkey == config.leader {
-                issues.append(ConfigIssue(kind: .launchaHotkeyConflict, sequence: [],
-                                          message: "\(hotkey.display) is already the leader. Choose another key for launcha."))
-            }
-        }
-        if let hotkey = config.clipbawd.activeHotkey {
-            if !hotkey.isValid {
-                issues.append(ConfigIssue(kind: .invalidClipbawdHotkey, sequence: [],
-                                          message: "\(hotkey.display) cannot open clipbawd. Choose a key that is not a modifier."))
-            } else if hotkey == config.leader {
-                issues.append(ConfigIssue(kind: .clipbawdHotkeyConflict, sequence: [],
-                                          message: "\(hotkey.display) is already the leader. Choose another key for clipbawd."))
-            } else if hotkey == config.launcha.hotkey {
-                issues.append(ConfigIssue(kind: .clipbawdHotkeyConflict, sequence: [],
-                                          message: "\(hotkey.display) already opens launcha. Choose another key for clipbawd."))
-            }
-        }
-        var appIDs: Set<String> = []
-        var appKeys: Set<Hotkey> = []
-        for shortcut in config.appHotkeys {
-            let problem: String?
-            if !shortcut.hasValidTarget { problem = AppShortcutRules.Problem.invalidTarget.description }
-            else if let reserved = AppShortcutRules.problem(for: shortcut.hotkey, in: config) { problem = reserved.description }
-            else if appIDs.contains(shortcut.id) || appKeys.contains(shortcut.hotkey) {
-                problem = "An application or shortcut is assigned more than once."
-            } else {
-                appIDs.insert(shortcut.id)
-                appKeys.insert(shortcut.hotkey)
-                problem = nil
-            }
-            if let problem {
-                issues.append(ConfigIssue(kind: .appHotkey, sequence: [], message: "\(shortcut.name): \(problem)"))
-            }
-        }
         validate(config.items, prefix: [], into: &issues)
         return issues
     }

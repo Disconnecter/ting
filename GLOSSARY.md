@@ -4,7 +4,7 @@ The terms used for Ting in code, documents and the interface.
 
 ## Menus
 
-- **leader:** the global key, alone or with modifiers, that opens selecta. A
+- **leader:** either of up to two global keys that open the same selecta menu. Each can be used alone or with modifiers. A
   modifier key on its own is never a leader.
 - **selecta:** the leader menu: one key or a short sequence opens an app, a URL
   or a micro-app.
