@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 import TingCore
+import BobukUI
 @testable import Ting
 
 @MainActor
@@ -15,20 +16,21 @@ final class SettingsVisualDesignTests: XCTestCase {
             + [(.clipbawd, "storage"), (.clipbawd, "privacy")]
         for dark in [false, true] {
             for (page, target) in variants {
-                let hosting = NSHostingView(rootView: SettingsRoot(page: page, target: target)
+                let hosting = ChromeWindow.hosting(SettingsRoot(page: page, target: target)
                     .environment(model).environment(\.colorScheme, dark ? .dark : .light))
                 let size = NSSize(width: 900, height: 600)
-                let window = SettingsWindow(size: size)
+                let window = SettingsWindow.make(contentSize: size)
                 window.isReleasedWhenClosed = false
                 window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-                window.contentView = hosting
-                window.setContentSize(size)
+                window.setContent(hosting)
+                window.setContentSize(ChromeMetrics.windowSize(forBody: size))
                 hosting.setFrameSize(size)
                 hosting.layoutSubtreeIfNeeded()
                 try await Task.sleep(for: .milliseconds(80))
                 XCTAssertEqual(hosting.bounds.width, size.width, accuracy: 0.5)
                 XCTAssertEqual(hosting.bounds.height, size.height, accuracy: 0.5)
-                XCTAssertFalse(window.styleMask.contains(.titled))
+                XCTAssertEqual(window.body.bounds.size, size, "the body is exactly the requested size")
+                XCTAssertTrue(window.styleMask.contains(.titled))
                 XCTAssertFalse(window.isKeyWindow)
                 if let path = ProcessInfo.processInfo.environment["TING_SETTINGS_PREVIEW_DIR"] {
                     let output = URL(fileURLWithPath: path)
@@ -52,14 +54,14 @@ final class SettingsVisualDesignTests: XCTestCase {
             var info = ["pid": ProcessInfo.processInfo.processIdentifier]
             // Only one visible review window: no stacked light/dark duplicates to close.
             for dark in [ProcessInfo.processInfo.environment["TING_SETTINGS_REVIEW_THEME"] == "dark"] {
-                let hosting = NSHostingView(rootView: SettingsRoot(page: .bindings).environment(model)
+                let hosting = ChromeWindow.hosting(SettingsRoot(page: .bindings).environment(model)
                     .environment(\.colorScheme, dark ? .dark : .light))
-                let window = SettingsWindow(size: NSSize(width: 1040, height: 740))
+                let window = SettingsWindow.make(contentSize: NSSize(width: 1040, height: 740))
                 window.setFrameOrigin(NSPoint(x: 100, y: 100))
                 window.isReleasedWhenClosed = false
                 window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 window.title = "Ting Settings Review"
-                window.contentView = hosting
+                window.setContent(hosting)
                 window.orderBack(nil)
                 windows.append(window)
                 info[dark ? "darkWindow" : "lightWindow"] = Int32(window.windowNumber)

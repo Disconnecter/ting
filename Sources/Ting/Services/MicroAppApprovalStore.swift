@@ -19,10 +19,7 @@ final class MicroAppApprovalStore {
     /// `~/Library/Application Support/Ting/micro-approvals.json`.
     nonisolated static func defaultURL(environment: [String: String] = ProcessInfo.processInfo.environment,
                                        home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        if let config = environment["TING_CONFIG"], !config.isEmpty {
-            return URL(fileURLWithPath: (config as NSString).expandingTildeInPath).appendingPathExtension("micro-approvals.json")
-        }
-        return home.appendingPathComponent("Library/Application Support/Ting/micro-approvals.json")
+        AppPaths.ting(environment: environment, home: home).dataFile("micro-approvals.json")
     }
 
     /// Reads the file again. A missing or unreadable file approves nothing.

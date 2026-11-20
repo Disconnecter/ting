@@ -2,6 +2,7 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukSystem
 
 @MainActor
 @Observable

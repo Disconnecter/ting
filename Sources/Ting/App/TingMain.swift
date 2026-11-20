@@ -1,11 +1,17 @@
 // The entry point: command-line modes first, then the menu-bar app.
+import BobukUpdates
 import Foundation
 import TingCore
 
 @main
 enum TingMain {
     static func main() {
-        let arguments = Array(CommandLine.arguments.dropFirst())
+        // Only the progress window of a Homebrew update, from the copy in its run folder; never returns.
+        MainActor.assumeIsolated {
+            HomebrewLaunch.runViewerIfRequested(app: .ting, palette: TingPickerStyle.palette)
+        }
+        // The update helper restarts Ting with its own arguments: they are not a command line.
+        let arguments = HomebrewLaunch.isUpdateLaunch() ? [] : Array(CommandLine.arguments.dropFirst())
         if MicroAppCheckCommand.handles(arguments) {
             // Before the app starts: no window, no menu-bar icon, no config read, no file written.
             exit(runCheck(arguments))
@@ -14,11 +20,6 @@ enum TingMain {
             // The same rules as --check: nothing starts, nothing is read but the bundle, nothing is written.
             print(AgentPromptSource.text())
             exit(0)
-        }
-        if let run = HomebrewUpdate.resultDirectory(in: arguments, base: HomebrewUpdateRunner.defaultBase,
-                                                    argument: HomebrewUpdate.viewerArgument) {
-            // Only the progress window of a Homebrew update, from the copy in its run folder.
-            MainActor.assumeIsolated { HomebrewUpdateViewer.run(run) }
         }
         TingApp.main()
     }

@@ -3,6 +3,7 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
 
 struct MicroAppFlowView: View {
     let session: MicroAppFlowSession

@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 import TingCore
+import BobukUI
 @testable import Ting
 
 @MainActor
@@ -14,11 +15,11 @@ final class SettingsLayoutTests: XCTestCase {
         let cases: [(String, SettingsRoot)] = SettingsPage.allCases.map { ($0.rawValue, SettingsRoot(page: $0)) }
             + [("search", SettingsRoot(query: "days")), ("empty-search", SettingsRoot(query: "not-a-setting"))]
         for (name, root) in cases {
-            let hosting = NSHostingView(rootView: root.environment(model))
+            let hosting = ChromeWindow.hosting(root.environment(model))
             let size = NSSize(width: 1040, height: 720)
-            let window = SettingsWindow(size: size)
+            let window = SettingsWindow.make(contentSize: size)
             window.isReleasedWhenClosed = false
-            window.contentView = hosting
+            window.setContent(hosting)
             hosting.setFrameSize(size)
             hosting.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(100))
@@ -41,16 +42,16 @@ final class SettingsLayoutTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppModel(presentsWindows: false, store: ConfigStore(url: directory.appendingPathComponent("config.json")))
         for target in ["storage", "privacy"] {
-            let hosting = NSHostingView(rootView: SettingsRoot(page: .clipbawd, target: target).environment(model))
+            let hosting = ChromeWindow.hosting(SettingsRoot(page: .clipbawd, target: target).environment(model))
             let size = NSSize(width: 900, height: 600)
-            let window = SettingsWindow(size: size)
+            let window = SettingsWindow.make(contentSize: size)
             window.isReleasedWhenClosed = false
             defer { window.close() }
-            window.contentView = hosting
-            window.setContentSize(size)
+            window.setContent(hosting)
+            window.setContentSize(ChromeMetrics.windowSize(forBody: size))
             hosting.setFrameSize(size)
             window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
-            window.orderBack(nil) // Render the actual borderless host without taking focus.
+            window.orderBack(nil) // Render the actual Settings window without taking focus.
             try await Task.sleep(for: .milliseconds(200))
             hosting.layoutSubtreeIfNeeded()
             XCTAssertFalse(window.isKeyWindow)

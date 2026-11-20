@@ -1,17 +1,18 @@
 // Native Mac preferences: stable sidebar, clear page hierarchy and readable grouped controls.
-// Amber identifies Ting; ordinary controls retain the system accent.
+// Amber identifies Ting; ordinary controls retain the system accent. The window (`SettingsWindow`)
+// owns the only close control: the strip's close button and ⌘W.
 import AppKit
 import BobukUI
 import SwiftUI
 import TingCore
 import UniformTypeIdentifiers
+import BobukUpdates
 
 struct SettingsRoot: View {
     @Environment(AppModel.self) private var model
     @State private var page: SettingsPage? = .general
     @State private var query = ""
     @State private var target: String?
-    @State private var windowReference = SettingsWindowReference()
 
     init(page: SettingsPage = .general, query: String = "", target: String? = nil) {
         _page = State(initialValue: page)
@@ -33,11 +34,10 @@ struct SettingsRoot: View {
                 .background(Color.tingPanel)
         }
         .foregroundStyle(Color.tingInk)
-        .padding(.top, PickerMetrics.accentHeight)
-        .padding([.leading, .trailing, .bottom], PickerMetrics.borderWidth)
-        .pickerPanel(palette: TingPickerStyle.palette)
-        .frame(minWidth: 900, idealWidth: 1040, minHeight: 600, idealHeight: 720)
-        .background(SettingsWindowBehavior(reference: windowReference))
+        .frame(minWidth: SettingsWindow.minimumContentSize.width, idealWidth: 1040,
+               minHeight: SettingsWindow.minimumContentSize.height, idealHeight: 720)
+        // The window draws the accent line, the strip with the close button and the separator.
+        .background(Color(nsColor: TingPickerStyle.palette.surface))
     }
 
     private var detail: some View {
@@ -51,17 +51,6 @@ struct SettingsRoot: View {
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Button { windowReference.close() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.tingMuted)
-                        .frame(width: 26, height: 26)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut("w", modifiers: .command)
-                .accessibilityLabel("Close Settings")
-                .help("Close Settings (⌘W)")
             }
             .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 16)
             if let error = model.configError {

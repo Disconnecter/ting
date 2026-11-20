@@ -178,8 +178,8 @@ private struct ConsentExplanation: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button("Not Now", action: onCancel).buttonStyle(QuietButtonStyle())
-                Button("Allow Access", action: onAllow).buttonStyle(QuietButtonStyle(prominent: true))
+                Button("Not Now", action: onCancel).buttonStyle(.tingQuiet())
+                Button("Allow Access", action: onAllow).buttonStyle(.tingQuiet(prominent: true))
             }
         }
         .padding(12)

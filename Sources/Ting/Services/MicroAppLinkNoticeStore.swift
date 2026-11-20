@@ -1,6 +1,7 @@
 // Whether the user has read the warning shown on the first click on a link of a micro-app result.
 // Kept apart from the config file, so a shared or synced config never skips the warning.
 import Foundation
+import TingCore
 
 @MainActor
 final class MicroAppLinkNoticeStore {
@@ -22,10 +23,7 @@ final class MicroAppLinkNoticeStore {
     /// the real one. Otherwise `~/Library/Application Support/Ting/micro-link-notice.json`.
     nonisolated static func defaultURL(environment: [String: String] = ProcessInfo.processInfo.environment,
                                        home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        if let config = environment["TING_CONFIG"], !config.isEmpty {
-            return URL(fileURLWithPath: (config as NSString).expandingTildeInPath).appendingPathExtension("micro-link-notice.json")
-        }
-        return home.appendingPathComponent("Library/Application Support/Ting/micro-link-notice.json")
+        AppPaths.ting(environment: environment, home: home).dataFile("micro-link-notice.json")
     }
 
     private func load() {

@@ -188,6 +188,33 @@ final class AppShortcutServiceTests: XCTestCase {
         XCTAssertEqual(presses, 2)
     }
 
+    /// Ting's layer over BobukKit's hotkey center: role messages, status reports and releases.
+    func testRoleMessagesStatusesAndReleaseOnDeactivate() {
+        var reports: [(HotkeyService.Slot, HotkeyService.Status)] = []
+        var registered: [HotkeyService.Slot] = []
+        var released: [HotkeyService.Slot] = []
+        let service = HotkeyService(register: { _, slot in registered.append(slot); return .active })
+        service.onStatusChange = { reports.append(($0, $1)) }
+        service.onRelease = { released.append($0) }
+        XCTAssertEqual(HotkeyService.signature, 0x5449_4E47)
+        service.activate(key("cmd+f12"), for: .launcha)
+        XCTAssertEqual(service.status(.launcha), .active)
+        service.activate(key("cmd+f12"), for: .application(0))
+        XCTAssertEqual(service.status(.application(0)), .failed("\(key("cmd+f12").display) is already used for launcha."))
+        XCTAssertEqual(service.hotkey(.application(0)), key("cmd+f12"))
+        service.activate(key("left-cmd"), for: .leader)
+        XCTAssertEqual(service.status(.leader), .failed("\(key("left-cmd").display) cannot be a leader. Choose a key that is not a modifier."))
+        XCTAssertEqual(registered, [.launcha], "Ting's own refusals never reach the backend")
+        XCTAssertEqual(reports.last?.0, .leader)
+        service.activate(nil, for: .launcha)
+        XCTAssertEqual(service.status(.launcha), .inactive)
+        XCTAssertEqual(released, [.launcha], "a slot that goes off reports a release")
+        service.apply(nil)
+        XCTAssertEqual(service.status(.leader), .inactive)
+        XCTAssertEqual(service.status(.application(0)), .inactive)
+        XCTAssertNil(service.checkAvailable(key("cmd+f13")))
+    }
+
     func testKeyboardCaptureThenReturnSavesAndTabCanReachButtons() throws {
         let editor = LaunchaShortcutEditor(row: row(), original: nil)
         var saved: Hotkey?
@@ -276,10 +303,5 @@ final class AppShortcutServiceTests: XCTestCase {
         XCTAssertEqual(saves, 1)
         XCTAssertEqual(reveals, 0)
         XCTAssertFalse(panel.isVisible)
-    }
-
-    func testShortcutCommandUsesPhysicalLatinKey() {
-        XCTAssertEqual(LaunchaPanel.route(keyCode: KeyCodes.code(for: "k")!, latin: "k", flags: [.command, .shift]), .editShortcut)
-        XCTAssertEqual(LaunchaPanel.route(keyCode: KeyCodes.code(for: "k")!, latin: "k", flags: [.command]), .swallow)
     }
 }

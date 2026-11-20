@@ -2,6 +2,8 @@ import AppKit
 import Observation
 import SwiftUI
 import TingCore
+import BobukSystem
+import BobukUI
 
 /// Captures keys only in launcha's own panel. It never installs a global keyboard monitor.
 @MainActor
@@ -113,15 +115,15 @@ struct LaunchaShortcutEditorView: View {
             }
             HStack {
                 if !editor.isListening {
-                    Button("Record Again", action: editor.recordAgain).buttonStyle(QuietButtonStyle())
+                    Button("Record Again", action: editor.recordAgain).buttonStyle(.tingQuiet())
                 }
                 if editor.original != nil {
-                    Button("Remove", action: editor.remove).buttonStyle(QuietButtonStyle())
+                    Button("Remove", action: editor.remove).buttonStyle(.tingQuiet())
                 }
                 Spacer()
-                Button("Cancel", action: editor.cancel).buttonStyle(QuietButtonStyle())
+                Button("Cancel", action: editor.cancel).buttonStyle(.tingQuiet())
                 Button("Save", action: editor.save)
-                    .buttonStyle(QuietButtonStyle(prominent: true))
+                    .buttonStyle(.tingQuiet(prominent: true))
                     .disabled(editor.candidate == nil || editor.warning != nil)
             }
         }

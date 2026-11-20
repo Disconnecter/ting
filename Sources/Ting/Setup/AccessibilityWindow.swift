@@ -2,8 +2,9 @@
 // or from Settings. It opens Privacy & Security › Accessibility and lets the person drag Ting
 // into its list, then closes by itself once macOS gives Ting access.
 import AppKit
-import ApplicationServices
+import BobukSystem
 import SwiftUI
+import BobukUI
 
 /// Whether Ting may use Accessibility. Read again while the window is open.
 @MainActor
@@ -12,7 +13,7 @@ final class AccessibilityAccess {
     private(set) var isTrusted: Bool
     @ObservationIgnored private let check: () -> Bool
 
-    init(check: @escaping () -> Bool = { AXIsProcessTrusted() }) {
+    init(check: @escaping () -> Bool = { AccessibilityPermission.isTrusted }) {
         self.check = check
         isTrusted = check()
     }
@@ -27,7 +28,7 @@ final class AccessibilityAccess {
 }
 
 @MainActor
-final class AccessibilityWindowController: NSObject, NSWindowDelegate {
+final class AccessibilityWindowController {
     /// Privacy & Security › Accessibility of System Settings.
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
     /// How often the open window checks for access.
@@ -41,7 +42,26 @@ final class AccessibilityWindowController: NSObject, NSWindowDelegate {
     private let openURL: (URL) -> Void
     /// `false` builds the window but never puts it on screen, for tests.
     private let presentsWindow: Bool
-    private var window: NSWindow?
+    /// The window stays built while Ting runs (the poll keeps its state); a fixed `ChromeWindow`
+    /// sized to its content, closed by its strip button or ⌘W.
+    private lazy var hosted: HostedWindowController = {
+        let hosted = HostedWindowController(releasesContentOnClose: false, window: {
+            let window = ChromeWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 400),
+                                      style: TingPickerStyle.palette.chromeStyle, resizable: false)
+            window.title = "Allow Accessibility"
+            window.isMovableByWindowBackground = true
+            // Above System Settings, so the icon can be dragged into its list.
+            window.level = .floating
+            window.hidesOnDeactivate = false
+            return window
+        }, rootView: { [access = self.access, appURL = self.appURL] in
+            AccessibilityGuideView(access: access, appURL: appURL,
+                                   onOpenSettings: { [weak self] in self?.openSettings() })
+        })
+        hosted.sizesToFitContent = true
+        hosted.onClose = { [weak self] in self?.didClose() }
+        return hosted
+    }()
     private var timer: Timer?
 
     init(access: AccessibilityAccess? = nil, appURL: URL = Bundle.main.bundleURL,
@@ -59,25 +79,26 @@ final class AccessibilityWindowController: NSObject, NSWindowDelegate {
     func show() {
         access.refresh()
         guard !access.isTrusted else { return }
-        let window = self.window ?? makeWindow()
+        // Built also without presenting it (tests), never shown then.
+        let window = hosted.prepare()
         isOpen = true
         startPolling()
         guard presentsWindow else { return }
-        NSApp.activate()
+        AppActivation.activate()
         if !window.isVisible { window.center() }
         window.makeKeyAndOrderFront(nil)
     }
 
     func close() {
-        window?.close()
-        if !presentsWindow { windowWillClose(Notification(name: NSWindow.willCloseNotification)) }
+        hosted.close()
+        if isOpen { didClose() }
     }
 
     /// Opens System Settings and moves the window to the left of the screen, so the list of apps
     /// stays free for the drop.
     func openSettings() {
         openURL(Self.settingsURL)
-        guard presentsWindow, let window, let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        guard presentsWindow, let window = hosted.window, let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
         window.setFrameOrigin(NSPoint(x: visible.minX + 24, y: visible.midY - window.frame.height / 2))
     }
 
@@ -89,7 +110,7 @@ final class AccessibilityWindowController: NSObject, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.close() }
     }
 
-    func windowWillClose(_ notification: Notification) {
+    private func didClose() {
         isOpen = false
         stopPolling()
     }
@@ -104,29 +125,6 @@ final class AccessibilityWindowController: NSObject, NSWindowDelegate {
     private func stopPolling() {
         timer?.invalidate()
         timer = nil
-    }
-
-    private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 400),
-                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "Allow Accessibility"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.isReleasedWhenClosed = false
-        // Above System Settings, so the icon can be dragged into its list.
-        window.level = .floating
-        window.hidesOnDeactivate = false
-        window.delegate = self
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        let view = AccessibilityGuideView(access: access, appURL: appURL,
-                                          onOpenSettings: { [weak self] in self?.openSettings() })
-        let hosting = NSHostingView(rootView: view)
-        window.contentView = hosting
-        window.setContentSize(hosting.fittingSize)
-        self.window = window
-        return window
     }
 }
 
@@ -187,7 +185,7 @@ struct AccessibilityGuideView: View {
                 Spacer()
                 if !granted {
                     Button("Open Accessibility Settings", action: onOpenSettings)
-                        .buttonStyle(QuietButtonStyle(prominent: true))
+                        .buttonStyle(.tingQuiet(prominent: true))
                         .keyboardShortcut(.defaultAction)
                 }
             }

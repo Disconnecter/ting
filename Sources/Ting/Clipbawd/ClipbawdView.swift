@@ -253,7 +253,7 @@ private struct ClipPreview: View {
                 } label: {
                     Label("Never Keep from \(source.name)", systemImage: "hand.raised")
                 }
-                .buttonStyle(QuietButtonStyle())
+                .buttonStyle(.tingQuiet())
                 .help("Removes the items of \(source.name) and never records it again. Undo in Settings › Clipbawd.")
             }
         }

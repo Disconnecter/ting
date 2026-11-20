@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
 
 /// The form of one start: the pure `MicroAppForm` plus focus, typed filters and the mark of the
 /// field that stopped Enter.
@@ -279,7 +280,7 @@ private struct FormTextField: NSViewRepresentable {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 14)
-        field.textColor = .theme(light: 0x222A2E, dark: 0xEEF1EC)
+        field.textColor = .dynamic(light: 0x222A2E, dark: 0xEEF1EC)
         field.usesSingleLineMode = true
         field.lineBreakMode = .byTruncatingTail
         field.cell?.isScrollable = true
@@ -299,7 +300,7 @@ private struct FormTextField: NSViewRepresentable {
         let composing = (field.currentEditor() as? NSTextView)?.hasMarkedText() == true
         if !composing, field.stringValue != text { field.stringValue = text }
         let placeholder = isChoice ? item.value : ""
-        let color: NSColor = isChoice ? .theme(light: 0x222A2E, dark: 0xEEF1EC) : .placeholderTextColor
+        let color: NSColor = isChoice ? .dynamic(light: 0x222A2E, dark: 0xEEF1EC) : .placeholderTextColor
         if field.placeholderAttributedString?.string != placeholder {
             field.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
                 .foregroundColor: color, .font: NSFont.systemFont(ofSize: 14),

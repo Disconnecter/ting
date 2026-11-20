@@ -4,6 +4,7 @@ import AppKit
 import Carbon
 import CoreGraphics
 import TingCore
+import BobukSystem
 
 @MainActor
 protocol MicroAppKeyboardSending: AnyObject {

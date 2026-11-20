@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 import TingCore
+import BobukUI
 @testable import Ting
 
 @MainActor
@@ -186,16 +187,45 @@ final class ClipbawdServiceTests: XCTestCase {
 
 @MainActor
 final class ClipbawdPanelTests: XCTestCase {
+    /// clipbawd's own ⌘ keys first, then BobukPanel's `EditCommand` routing.
     func testKeyRoutes() {
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 36, latin: nil, flags: .command), .copy)
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 76, latin: nil, flags: .command), .copy)
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 51, latin: nil, flags: [.command, .shift]), .delete)
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 51, latin: nil, flags: .command), .editor)
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 51, latin: nil, flags: .option), .editor)
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 9, latin: "v", flags: .command), .action(#selector(NSText.paste(_:))))
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 40, latin: "k", flags: [.command, .shift]), .swallow)
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 12, latin: "q", flags: .command), .swallow)
-        XCTAssertEqual(ClipbawdPanel.route(keyCode: 0, latin: "a", flags: []), .editor)
+        func command(_ keyCode: UInt16, _ latin: String?, _ flags: NSEvent.ModifierFlags) -> ClipbawdPanel.Command? {
+            ClipbawdPanel.command(EditCommand.classify(keyCode: keyCode, latin: latin, flags: flags), keyCode: keyCode, flags: flags)
+        }
+        XCTAssertEqual(command(VirtualKey.returnKey, nil, .command), .copy)
+        XCTAssertEqual(command(VirtualKey.keypadEnter, nil, .command), .copy)
+        XCTAssertEqual(command(VirtualKey.delete, nil, [.command, .shift]), .delete)
+        // ⌘⌫ still erases the search text; the rest is BobukPanel's.
+        XCTAssertNil(command(VirtualKey.delete, nil, .command))
+        XCTAssertEqual(EditCommand.classify(keyCode: VirtualKey.delete, latin: nil, flags: .command), .editor)
+        XCTAssertEqual(EditCommand.classify(keyCode: VirtualKey.delete, latin: nil, flags: .option), .notCommand)
+        XCTAssertNil(command(9, "v", .command))
+        XCTAssertEqual(EditCommand.classify(keyCode: 9, latin: "v", flags: .command), .text(#selector(NSText.paste(_:))))
+        XCTAssertNil(command(40, "k", [.command, .shift]))
+        XCTAssertEqual(EditCommand.classify(keyCode: 40, latin: "k", flags: [.command, .shift]), .other)
+        XCTAssertNil(command(12, "q", .command))
+        XCTAssertNil(command(VirtualKey.returnKey, nil, [.command, .shift]))
+        XCTAssertNil(command(0, "a", []))
+    }
+
+    func testPanelCopiesDeletesAndSwallowsQuit() throws {
+        _ = NSApplication.shared
+        let panel = ClipbawdPanel()
+        var copies = 0
+        var deletes = 0
+        panel.onCopy = { copies += 1 }
+        panel.onDelete = { deletes += 1 }
+        func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+                                           windowNumber: panel.windowNumber, context: nil, characters: text,
+                                           charactersIgnoringModifiers: text, isARepeat: false, keyCode: code))
+        }
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(VirtualKey.returnKey, "\r", .command)))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(VirtualKey.delete, "\u{7F}", [.command, .shift])))
+        XCTAssertFalse(panel.performKeyEquivalent(with: try key(VirtualKey.delete, "\u{7F}", .command)))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: "q")!, "q", .command)))
+        XCTAssertEqual(copies, 1)
+        XCTAssertEqual(deletes, 1)
     }
 
     private func controller() -> (ClipbawdController, ClipbawdHistory, NSPasteboard) {

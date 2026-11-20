@@ -2,6 +2,8 @@
 import AppKit
 import Observation
 import TingCore
+import BobukUpdates
+import BobukSystem
 
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
@@ -187,7 +189,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func checkForUpdates() { UpdateService.shared.checkForUpdates() }
 
     @objc private func showAbout() {
-        NSApp.activate()
+        AppActivation.activate()
         NSApp.orderFrontStandardAboutPanel(nil)
     }
 

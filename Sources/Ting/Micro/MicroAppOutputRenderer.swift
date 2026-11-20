@@ -3,6 +3,7 @@
 // with ANSI colours; `text`: plain; `code`: monospaced. An error is always console text.
 import AppKit
 import TingCore
+import BobukUI
 
 enum MicroAppOutputRenderer {
     static let bodySize: CGFloat = 13
@@ -10,8 +11,8 @@ enum MicroAppOutputRenderer {
     /// The space between two table columns.
     static let columnGap: CGFloat = 18
 
-    static var ink: NSColor { .theme(light: 0x222A2E, dark: 0xEEF1EC) }
-    static var muted: NSColor { .theme(light: 0x59666C, dark: 0xA4AFB3) }
+    static var ink: NSColor { .dynamic(light: 0x222A2E, dark: 0xEEF1EC) }
+    static var muted: NSColor { .dynamic(light: 0x59666C, dark: 0xA4AFB3) }
     static var codeBackground: NSColor { ink.withAlphaComponent(0.08) }
 
     static func render(_ content: MicroAppPanelContent) -> NSAttributedString {
@@ -44,7 +45,7 @@ enum MicroAppOutputRenderer {
             var foreground = style.foreground.map(NSColor.console) ?? ink
             var background = style.background.map(NSColor.console)
             if style.inverse {
-                let swapped = background ?? NSColor.theme(light: 0xEEEDE6, dark: 0x181C1F)
+                let swapped = background ?? NSColor.dynamic(light: 0xEEEDE6, dark: 0x181C1F)
                 background = foreground
                 foreground = swapped
             }
@@ -233,7 +234,7 @@ extension NSColor {
         switch color {
         case .basic(let n):
             let pair = consoleBasic[max(0, min(15, n))]
-            return .theme(light: pair.light, dark: pair.dark)
+            return .dynamic(light: pair.light, dark: pair.dark)
         case .palette(let n):
             if n >= 232 {
                 let level = CGFloat(8 + (n - 232) * 10) / 255

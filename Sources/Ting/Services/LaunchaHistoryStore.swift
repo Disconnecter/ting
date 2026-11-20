@@ -16,11 +16,7 @@ actor LaunchaHistoryStore {
 
     nonisolated static func defaultURL(environment: [String: String] = ProcessInfo.processInfo.environment,
                                       home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        if let config = environment["TING_CONFIG"], !config.isEmpty {
-            // Each override gets its own sibling history, including overrides in the same directory.
-            return URL(fileURLWithPath: (config as NSString).expandingTildeInPath).appendingPathExtension("launcha-history.json")
-        }
-        return home.appendingPathComponent("Library/Application Support/Ting/launcha-history.json")
+        AppPaths.ting(environment: environment, home: home).dataFile("launcha-history.json")
     }
 
     func load() -> Snapshot {

@@ -1,5 +1,6 @@
 // Ting: a leader-key launcher that lives in the menu bar (LSUIElement, no Dock icon).
 import AppKit
+import BobukUpdates
 import SwiftUI
 import TingCore
 
@@ -32,9 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                           openWelcome: { [weak self] in self?.welcome.show() })
         if model.config.leaders.isEmpty { welcome.show() }
         // Started by the Homebrew update helper: show the command, the output and the result of that run.
-        if let run = HomebrewUpdate.resultDirectory(in: CommandLine.arguments, base: HomebrewUpdateRunner.defaultBase) {
-            HomebrewUpdateWindowController.shared.showRun(run, role: .final)
-        }
+        HomebrewLaunch.showResultIfRequested(app: .ting, palette: TingPickerStyle.palette)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

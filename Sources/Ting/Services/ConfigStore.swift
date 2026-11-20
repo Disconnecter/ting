@@ -1,4 +1,5 @@
 // Reads, writes and watches the config file (`~/.config/ting/config.json`, or `$TING_CONFIG`).
+import BobukSystem
 import Foundation
 import TingCore
 
@@ -20,10 +21,7 @@ final class ConfigStore {
     }
 
     let url: URL
-    private var directorySource: DispatchSourceFileSystemObject?
-    private var fileSource: DispatchSourceFileSystemObject?
-    private var pendingReload: DispatchWorkItem?
-    private var onChange: (() -> Void)?
+    private var watcher: FileWatcher?
 
     init(url: URL = ConfigStore.defaultURL()) {
         self.url = url
@@ -69,45 +67,14 @@ final class ConfigStore {
         watchFile()
     }
 
-    /// Watches the directory (editors often replace the file) and the file itself (in-place saves).
+    /// Watches the directory (editors often replace the file) and the file itself (in-place saves),
+    /// coalescing the burst of events of one save.
     func watch(onChange: @escaping () -> Void) {
-        self.onChange = onChange
-        directorySource?.cancel()
-        directorySource = makeSource(path: url.deletingLastPathComponent().path)
-        watchFile()
+        watcher = FileWatcher(url: url, onChange: onChange)
     }
 
+    /// The atomic write replaced the watched file: watch the new one.
     private func watchFile() {
-        guard onChange != nil else { return }
-        fileSource?.cancel()
-        fileSource = makeSource(path: url.path)
-    }
-
-    private func makeSource(path: String) -> DispatchSourceFileSystemObject? {
-        let descriptor = open(path, O_EVTONLY)
-        guard descriptor >= 0 else { return nil }
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor,
-                                                               eventMask: [.write, .delete, .rename, .extend],
-                                                               queue: .main)
-        source.setEventHandler { [weak self] in
-            MainActor.assumeIsolated { self?.scheduleReload() }
-        }
-        source.setCancelHandler { close(descriptor) }
-        source.resume()
-        return source
-    }
-
-    /// Coalesces bursts of events from one save.
-    private func scheduleReload() {
-        pendingReload?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.watchFile()
-                self.onChange?()
-            }
-        }
-        pendingReload = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        watcher?.fileWasReplaced()
     }
 }

@@ -1,74 +1,45 @@
+// The Settings window: BobukKit's `ChromeWindow` in Ting's palette. The window draws the accent
+// line and the strip with its close button (also ⌘W); the content fills the window's body.
 import AppKit
+import BobukUI
 import SwiftUI
 import TingCore
 
-/// BobukKit is the window surface itself, not a card inside a native titled window.
 @MainActor
-final class SettingsWindow: NSWindow {
-    init(size: NSSize = NSSize(width: 1040, height: 720)) {
-        super.init(contentRect: NSRect(origin: .zero, size: size),
-                   styleMask: [.borderless, .closable, .resizable], backing: .buffered, defer: false)
-        title = "Ting Settings" // Accessibility/Mission Control only; no titlebar is drawn.
-        identifier = NSUserInterfaceItemIdentifier("io.bobuk.ting.settings")
-        backgroundColor = .clear
-        isOpaque = false
-        hasShadow = true
-        isMovableByWindowBackground = true
-        isReleasedWhenClosed = false
-        contentMinSize = NSSize(width: 900, height: 600)
-    }
+enum SettingsWindow {
+    static let title = "Ting Settings"
+    static let identifier = NSUserInterfaceItemIdentifier("io.bobuk.ting.settings")
+    static let frameName = "io.bobuk.ting.settings.frame"
+    /// The pages are laid out for at least this much room below the strip.
+    static let minimumContentSize = NSSize(width: 900, height: 600)
 
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    // AppKit's default performClose requires a native titlebar button. This window has none.
-    override func performClose(_ sender: Any?) {
-        guard delegate?.windowShouldClose?(self) != false else { return }
-        close()
+    /// A Settings window whose body is `contentSize`. The content is added by the caller.
+    static func make(contentSize: NSSize = NSSize(width: 1040, height: 720)) -> ChromeWindow {
+        let window = ChromeWindow(contentRect: NSRect(origin: .zero, size: ChromeMetrics.windowSize(forBody: contentSize)),
+                                  style: TingPickerStyle.palette.chromeStyle, resizable: true)
+        window.title = title
+        window.identifier = identifier
+        window.contentMinSize = ChromeMetrics.windowSize(forBody: minimumContentSize)
+        return window
     }
 }
 
+/// The one Settings window. Its content is released on close, so a shortcut recorder cannot keep
+/// intercepting keys.
 @MainActor
-final class SettingsWindowController: NSObject, NSWindowDelegate {
-    private(set) var window: SettingsWindow?
-    private let model: AppModel
-    private let remembersFrame: Bool
-    private static let frameName = "io.bobuk.ting.settings.frame"
+final class SettingsWindowController {
+    private let hosted: HostedWindowController
 
     init(model: AppModel, remembersFrame: Bool = true) {
-        self.model = model
-        self.remembersFrame = remembersFrame
+        hosted = HostedWindowController(frameName: remembersFrame ? SettingsWindow.frameName : nil,
+                                        releasesContentOnClose: true,
+                                        window: { SettingsWindow.make() },
+                                        rootView: { SettingsRoot().environment(model) })
     }
 
-    func show(activate: Bool = true) {
-        let window = self.window ?? makeWindow()
-        if activate {
-            NSApp.activate()
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            window.orderBack(nil)
-        }
-    }
+    var window: NSWindow? { hosted.window }
 
-    func close() { window?.performClose(nil) }
+    func show(activate: Bool = true) { hosted.show(activate: activate) }
 
-    /// Destroy the view on close so shortcut recording cannot keep intercepting keys.
-    func windowWillClose(_ notification: Notification) {
-        window?.contentView = nil
-        window = nil
-    }
-
-    private func makeWindow() -> SettingsWindow {
-        let window = SettingsWindow()
-        window.delegate = self
-        window.contentView = NSHostingView(rootView: SettingsRoot().environment(model))
-        if remembersFrame {
-            if !window.setFrameUsingName(Self.frameName) { window.center() }
-            window.setFrameAutosaveName(Self.frameName)
-        } else {
-            window.center()
-        }
-        self.window = window
-        return window
-    }
+    func close() { hosted.close() }
 }

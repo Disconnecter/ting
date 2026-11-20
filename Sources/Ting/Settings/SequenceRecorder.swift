@@ -2,6 +2,8 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukSystem
+import BobukUI
 
 /// A new binding has no assigned keys until the user saves it.
 enum BindingRecording {
@@ -59,9 +61,9 @@ struct SequenceRecorder: View {
             .font(.caption)
             .fixedSize(horizontal: false, vertical: true)
             HStack {
-                Button("Clear") { keys = [] }.buttonStyle(QuietButtonStyle()).disabled(keys.isEmpty)
+                Button("Clear") { keys = [] }.buttonStyle(.tingQuiet()).disabled(keys.isEmpty)
                 Spacer()
-                Button("Cancel", action: finish).buttonStyle(QuietButtonStyle())
+                Button("Cancel", action: finish).buttonStyle(.tingQuiet())
                 Button("Done") {
                     do {
                         switch recording {
@@ -75,7 +77,7 @@ struct SequenceRecorder: View {
                         saveError = "Cannot save these keys."
                     }
                 }
-                .buttonStyle(QuietButtonStyle(prominent: problem == nil))
+                .buttonStyle(.tingQuiet(prominent: problem == nil))
                 .disabled(problem != nil)
             }
         }

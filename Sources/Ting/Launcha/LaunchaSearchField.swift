@@ -3,6 +3,7 @@
 // (↑ ↓ ↩ Esc) are taken from it, and never while an input method is composing.
 import AppKit
 import SwiftUI
+import BobukUI
 
 struct LaunchaSearchField: NSViewRepresentable {
     @Binding var text: String
@@ -24,7 +25,7 @@ struct LaunchaSearchField: NSViewRepresentable {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 16)
-        field.textColor = .theme(light: 0x222A2E, dark: 0xEEF1EC)
+        field.textColor = .dynamic(light: 0x222A2E, dark: 0xEEF1EC)
         field.placeholderString = placeholder
         field.usesSingleLineMode = true
         field.lineBreakMode = .byTruncatingTail

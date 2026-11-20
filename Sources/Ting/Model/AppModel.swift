@@ -5,6 +5,8 @@ import AppKit
 import Observation
 import SwiftUI
 import TingCore
+import BobukSystem
+import BobukUI
 
 @MainActor
 @Observable
@@ -42,7 +44,7 @@ final class AppModel {
     @ObservationIgnored private var activeAppShortcuts: [AppShortcut] = []
     @ObservationIgnored let leader: LeaderController
     @ObservationIgnored private let runner: ActionRunner
-    @ObservationIgnored private let toast = ToastController()
+    @ObservationIgnored private let toast = ToastController(palette: TingPickerStyle.toast, mark: AnyView(TingMark(size: 12)))
     @ObservationIgnored private let launchaModel: LaunchaModel
     @ObservationIgnored let launcha: LaunchaController
     @ObservationIgnored let lowkey: LowkeyIntegration
@@ -422,7 +424,7 @@ final class AppModel {
         next.appearance.apply()
         applyHotkey()
         if next.launchAtLogin != previous.launchAtLogin {
-            loginItemError = LoginItemService.set(next.launchAtLogin)
+            loginItemError = LoginItem.setReportingError(next.launchAtLogin, openSettingsIfNeeded: false)
         }
     }
 
@@ -488,9 +490,9 @@ final class AppModel {
 
     func beginMenuTracking() {
         isMenuTracking = true
-        leader.keysSuspended = true
-        launcha.keysSuspended = true
-        clipbawdPanel.keysSuspended = true
+        leader.suspendKeys()
+        launcha.suspendKeys()
+        clipbawdPanel.suspendKeys()
     }
 
     /// The menu ended. A launcher takes keys again unless a chosen item opened another window.

@@ -18,10 +18,7 @@ final class MicroAppValueStore {
     /// `~/Library/Application Support/Ting/micro-values.json`.
     nonisolated static func defaultURL(environment: [String: String] = ProcessInfo.processInfo.environment,
                                        home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        if let config = environment["TING_CONFIG"], !config.isEmpty {
-            return URL(fileURLWithPath: (config as NSString).expandingTildeInPath).appendingPathExtension("micro-values.json")
-        }
-        return home.appendingPathComponent("Library/Application Support/Ting/micro-values.json")
+        AppPaths.ting(environment: environment, home: home).dataFile("micro-values.json")
     }
 
     /// Reads the file again. A missing or unreadable file gives no values.

@@ -1,15 +1,19 @@
 // The launcha window: a non-activating panel with a real text input. Unlike the selecta
 // panel it never routes keys to the sequence handler, so typing, paste and input methods work.
 import AppKit
+import BobukUI
 import SwiftUI
 import TingCore
+import BobukSystem
 
 extension Notification.Name {
     static let launchaEditAppShortcut = Notification.Name("io.bobuk.ting.launcha.editAppShortcut")
     static let launchaRemoveAppShortcut = Notification.Name("io.bobuk.ting.launcha.removeAppShortcut")
 }
 
-final class LaunchaPanel: NSPanel {
+/// A `BobukPanel`: it closes on focus loss, Esc and ⌘W, sends ⌘C/⌘V/⌘X/⌘A/⌘Z to the field by
+/// the Latin layout and swallows other ⌘ shortcuts (⌘Q). launcha adds ⇧⌘K and ⌘↩.
+final class LaunchaPanel: BobukPanel {
     /// ⌘↩: show the selected result in Finder.
     var onReveal: (() -> Void)?
     /// List navigation must keep working when Tab moves focus away from the search field.
@@ -19,31 +23,19 @@ final class LaunchaPanel: NSPanel {
     var onRecordShortcut: ((NSEvent) -> Bool)?
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
-                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        isFloatingPanel = true
-        level = .popUpMenu
-        // Every Space and above full-screen apps, like the selecta panel.
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        backgroundColor = .clear
-        isOpaque = false
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600), kind: .launcher)
+        // The card draws its own SwiftUI shadow.
         hasShadow = false
-        hidesOnDeactivate = false
-        becomesKeyOnlyIfNeeded = false
-        isReleasedWhenClosed = false
-        animationBehavior = .none
+        onCommandKey = { [unowned self] event, command in self.handleCommand(event, command) }
     }
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
 
     static func navigationDelta(keyCode: UInt16, flags: NSEvent.ModifierFlags, composing: Bool) -> Int? {
         guard !composing, flags.intersection([.command, .shift, .option, .control]).isEmpty else { return nil }
         switch keyCode {
-        case 126: return -1
-        case 125: return 1
-        case 116: return -8
-        case 121: return 8
+        case VirtualKey.up: return -1
+        case VirtualKey.down: return 1
+        case VirtualKey.pageUp: return -8
+        case VirtualKey.pageDown: return 8
         default: return nil
         }
     }
@@ -52,73 +44,41 @@ final class LaunchaPanel: NSPanel {
         if (event.type == .keyDown || event.type == .flagsChanged), onRecordShortcut?(event) == true { return }
         if event.type == .keyDown, let onMove,
            let delta = Self.navigationDelta(keyCode: event.keyCode, flags: event.modifierFlags,
-                                           composing: (firstResponder as? NSTextView)?.hasMarkedText() == true) {
+                                           composing: KeyEquivalent.isComposing(in: self)) {
             onMove(delta)
             return
         }
         super.sendEvent(event)
     }
 
-    /// What the panel does with a ⌘ key equivalent.
-    enum KeyEquivalentRoute: Equatable {
-        /// Not a ⌘ shortcut, or text navigation and deletion: the text editor handles it.
-        case editor
+    /// launcha's own ⌘ shortcuts, on top of BobukPanel's edit routing.
+    enum Command: Equatable {
+        /// ⇧⌘K: record a shortcut for the selected app.
+        case editShortcut
         /// ⌘↩: show the selected result in Finder.
         case reveal
-        case editShortcut
-        /// A text command sent to the field through the responder chain.
-        case action(Selector)
-        /// Any other ⌘ shortcut, for example ⌘Q: ignored, so it never reaches Ting's menu.
-        case swallow
     }
 
-    /// Arrow keys, ⌫ and ⌦: ⌘ moves or deletes to the line edge, also with ⇧ or ⌥.
-    private static let editingKeyCodes: Set<UInt16> = [51, 117, 123, 124, 125, 126]
-
-    /// Ting has no Edit menu while it is not the active app, so text shortcuts are sent
-    /// to the field here. Keys are matched by the Latin layout, so ⌘V also works with
-    /// Russian or Ukrainian input. ⌘ with arrows, ⌫ or ⌦ goes to the text editor.
-    /// Other ⌘ shortcuts are swallowed: ⌘Q must not quit Ting.
-    static func route(keyCode: UInt16, latin: String?, flags: NSEvent.ModifierFlags) -> KeyEquivalentRoute {
-        let flags = flags.intersection([.command, .shift, .option, .control])
-        guard flags.contains(.command) else { return .editor }
-        if latin == "k", flags == [.command, .shift] { return .editShortcut }
-        if editingKeyCodes.contains(keyCode) { return .editor }
-        if keyCode == 36 || keyCode == 76 { return flags == .command ? .reveal : .swallow }
-        let action: String? = switch (latin ?? "", flags) {
-        case ("x", .command): "cut:"
-        case ("c", .command): "copy:"
-        case ("v", .command): "paste:"
-        case ("a", .command): "selectAll:"
-        case ("z", .command): "undo:"
-        case ("z", [.command, .shift]): "redo:"
-        default: nil
-        }
-        return action.map { .action(Selector($0)) } ?? .swallow
+    /// The launcha shortcut of a ⌘ key, matched by the Latin layout; nil leaves the key to
+    /// BobukPanel (text commands, ⌘W, swallowing the rest).
+    static func command(_ command: EditCommand, latin: String?, flags: NSEvent.ModifierFlags) -> Command? {
+        if latin == "k", flags.intersection([.command, .shift, .option, .control]) == [.command, .shift] { return .editShortcut }
+        return command == .commandReturn ? .reveal : nil
     }
 
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
+    private func handleCommand(_ event: NSEvent, _ command: EditCommand) -> Bool {
+        // The inline recorder takes every key first, including ⌘Q.
         if onRecordShortcut?(event) == true { return true }
-        switch Self.route(keyCode: event.keyCode, latin: KeyTranslator.latin(event.keyCode), flags: event.modifierFlags) {
-        case .editor:
-            // Text navigation returns false at once: the event then reaches the field's
-            // `keyDown`. Other keys keep the default window handling.
-            if event.modifierFlags.contains(.command) { return false }
-            return super.performKeyEquivalent(with: event)
-        case .editShortcut:
-            if (firstResponder as? NSTextView)?.hasMarkedText() != true { onEditShortcut?() }
-            return true
-        case .reveal:
-            let composing = (firstResponder as? NSTextView)?.hasMarkedText() == true
-            if !composing { onReveal?() }
-            return true
-        case .action(let selector):
-            NSApp.sendAction(selector, to: nil, from: self)
-            return true
-        case .swallow:
-            return true
+        guard let shortcut = Self.command(command, latin: KeyEquivalent.latin(of: event), flags: event.modifierFlags) else {
+            return false
         }
+        // While an input method composes, the key is swallowed and does nothing.
+        guard !KeyEquivalent.isComposing(in: self) else { return true }
+        switch shortcut {
+        case .editShortcut: onEditShortcut?()
+        case .reveal: onReveal?()
+        }
+        return true
     }
 }
 
@@ -141,7 +101,7 @@ final class LaunchaChrome {
 
 /// Shows and hides the launcha panel for `LaunchaModel`.
 @MainActor
-final class LaunchaController: NSObject, NSWindowDelegate {
+final class LaunchaController: NSObject {
     let model: LaunchaModel
     let chrome = LaunchaChrome()
     private var panel: LaunchaPanel?
@@ -206,10 +166,9 @@ final class LaunchaController: NSObject, NSWindowDelegate {
             return
         }
         let panel = self.panel ?? makePanel()
-        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        if let visible = screen?.visibleFrame {
+        if let visible = Screens.underPointer?.visibleFrame {
             // Card near the upper third, so it does not jump while the list grows.
-            let top = visible.maxY - max(40, visible.height * 0.16)
+            let top = PanelPlacement.top(in: visible, anchor: .upper())
             let height = max(240, min(640, top - visible.minY - 20))
             let width: CGFloat = 520
             panel.setFrame(NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: false)
@@ -264,7 +223,11 @@ final class LaunchaController: NSObject, NSWindowDelegate {
 
     private func makePanel() -> LaunchaPanel {
         let panel = LaunchaPanel()
-        panel.delegate = self
+        // Focus loss, Esc and ⌘W close the open launcher (not while a menu tracks over it).
+        panel.onDismiss = { [weak self] _ in
+            guard let self, self.isOpen else { return }
+            self.close()
+        }
         panel.onReveal = { [weak self] in self?.activate(reveal: true) }
         panel.onMove = { [weak self] delta in self?.model.moveSelection(by: delta) }
         panel.onEditShortcut = { [weak self] in self?.editShortcut() }
@@ -305,18 +268,9 @@ final class LaunchaController: NSObject, NSWindowDelegate {
         Task { await model.activateSelection(reveal: reveal) }
     }
 
-    /// Set while a menu tracks over the panel: losing key status keeps it open.
-    var keysSuspended = false
+    /// While a menu tracks over the panel, losing key status keeps it open.
+    func suspendKeys() { panel?.suspendDismissal() }
 
     /// The menu is gone: take keys again, or close if another window took focus meanwhile.
-    func resumeKeys() {
-        keysSuspended = false
-        guard isOpen, let panel else { return }
-        if let key = NSApp.keyWindow, key !== panel { close() } else { panel.makeKeyAndOrderFront(nil) }
-    }
-
-    func windowDidResignKey(_ notification: Notification) {
-        guard isOpen, !keysSuspended else { return }
-        close()
-    }
+    func resumeKeys() { panel?.resumeDismissal() }
 }

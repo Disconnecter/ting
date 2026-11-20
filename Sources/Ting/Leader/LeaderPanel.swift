@@ -1,32 +1,20 @@
 // The leader menu window: a non-activating panel that takes keyboard focus at once,
 // so keys typed after the leader never reach the front app.
 import AppKit
+import BobukUI
 import SwiftUI
 import TingCore
+import BobukSystem
 
-final class LeaderPanel: NSPanel {
+final class LeaderPanel: BobukPanel {
     /// Every keyDown goes here instead of the responder chain.
     var onKeyDown: ((NSEvent) -> Void)?
     /// Key releases, a second source for the leader release next to Carbon.
     var onKeyUp: ((NSEvent) -> Void)?
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 460, height: 640),
-                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        isFloatingPanel = true
-        level = .popUpMenu
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        backgroundColor = .clear
-        isOpaque = false
-        hasShadow = true
-        hidesOnDeactivate = false
-        becomesKeyOnlyIfNeeded = false
-        isReleasedWhenClosed = false
-        animationBehavior = .none
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 460, height: 640), kind: .launcher)
     }
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown {
@@ -37,11 +25,12 @@ final class LeaderPanel: NSPanel {
         super.sendEvent(event)
     }
 
-    /// Swallow ⌘ shortcuts so, for example, ⌘Q does not quit Ting while the menu is up.
+    /// AppKit also offers plain keys and arrows here before `sendEvent`: they must reach
+    /// `onKeyDown`, so only ⌘ shortcuts are handled here (BobukPanel swallows them, so ⌘Q
+    /// does not quit Ting while the menu is up).
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // AppKit also offers arrows here before sendEvent. Claiming every event
-        // discards navigation before the controller can see it.
-        event.type == .keyDown && event.modifierFlags.contains(.command)
+        guard event.type == .keyDown, event.modifierFlags.contains(.command) else { return false }
+        return super.performKeyEquivalent(with: event)
     }
 }
 
@@ -62,7 +51,7 @@ final class LeaderSession {
 
 /// Drives the leader panel with `LeaderMachine`.
 @MainActor
-final class LeaderController: NSObject, NSWindowDelegate {
+final class LeaderController: NSObject {
     let session = LeaderSession()
     /// Called after the panel closed for an action.
     var onRun: ((Item) -> Void)?
@@ -147,21 +136,25 @@ final class LeaderController: NSObject, NSWindowDelegate {
     // MARK: Events
 
     /// Set while a menu tracks over the panel: no keys, and losing key status keeps it open.
-    var keysSuspended = false
+    private(set) var keysSuspended = false
+
+    func suspendKeys() {
+        keysSuspended = true
+        panel?.suspendDismissal()
+    }
 
     /// The menu is gone: take keys again, or close if another window took focus meanwhile.
     func resumeKeys() {
         keysSuspended = false
-        guard machine.isOpen, presentsWindow, let panel else { return }
-        if let key = NSApp.keyWindow, key !== panel { close() } else { panel.makeKeyAndOrderFront(nil) }
+        panel?.resumeDismissal()
     }
 
     func handleKeyDown(_ event: NSEvent) {
         guard machine.isOpen, !keysSuspended else { return }
         let plain = event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
-        if plain, event.keyCode == 125 || event.keyCode == 126 {
+        if plain, event.keyCode == VirtualKey.down || event.keyCode == VirtualKey.up {
             doubleTap.sequenceInput()
-            let delta = event.keyCode == 125 ? 1 : -1
+            let delta = event.keyCode == VirtualKey.down ? 1 : -1
             session.selection = min(max(session.selection + delta, 0), max(0, session.items.count - 1))
             reveal?.perform()
             return
@@ -171,13 +164,13 @@ final class LeaderController: NSObject, NSWindowDelegate {
         doubleTap.sequenceInput()
         if plain {
             switch event.keyCode {
-            case 123:
+            case VirtualKey.left:
                 apply(machine.handle(.back))
                 return
-            case 124:
+            case VirtualKey.right:
                 if let item = session.selectedItem, item.isGroup { select(item.key) }
                 return
-            case 36, 76:
+            case VirtualKey.returnKey, VirtualKey.keypadEnter:
                 if !session.items.contains(where: { $0.key == "return" }) {
                     if let item = session.selectedItem { select(item.key) }
                     return
@@ -186,11 +179,11 @@ final class LeaderController: NSObject, NSWindowDelegate {
             }
         }
         // Modified arrows are not sequence keys and must not close or shake the menu.
-        if (123...126).contains(event.keyCode) { return }
+        if [VirtualKey.left, VirtualKey.right, VirtualKey.down, VirtualKey.up].contains(event.keyCode) { return }
         switch event.keyCode {
-        case 53:
+        case VirtualKey.escape:
             apply(machine.handle(.escape))
-        case 51, 117:
+        case VirtualKey.delete, VirtualKey.forwardDelete:
             apply(machine.handle(.back))
         default:
             let flags = event.modifierFlags
@@ -262,12 +255,11 @@ final class LeaderController: NSObject, NSWindowDelegate {
     private func resizePanel() {
         guard let panel else { return }
         panel.contentView?.layoutSubtreeIfNeeded()
-        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        guard let visible = screen?.visibleFrame else { return }
+        guard let visible = Screens.underPointer?.visibleFrame else { return }
         let fitting = panel.contentView?.fittingSize ?? NSSize(width: 340, height: 640)
         let size = NSSize(width: 340, height: min(max(100, fitting.height), visible.height))
-        panel.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
-                              width: size.width, height: size.height), display: false)
+        // Centered on the screen with the pointer; a menu as tall as the screen fills it.
+        panel.place(size: size, anchor: .center(), margin: 0)
         panel.invalidateShadow()
     }
 
@@ -279,7 +271,11 @@ final class LeaderController: NSObject, NSWindowDelegate {
 
     private func makePanel() -> LeaderPanel {
         let panel = LeaderPanel()
-        panel.delegate = self
+        // Focus loss closes the open menu; Esc and other keys arrive through `onKeyDown`.
+        panel.onDismiss = { [weak self] _ in
+            guard let self, self.machine.isOpen else { return }
+            self.close()
+        }
         panel.onKeyDown = { [weak self] event in self?.handleKeyDown(event) }
         panel.onKeyUp = { [weak self] event in
             guard let self else { return }
@@ -293,10 +289,5 @@ final class LeaderController: NSObject, NSWindowDelegate {
         panel.contentView = hosting
         self.panel = panel
         return panel
-    }
-
-    func windowDidResignKey(_ notification: Notification) {
-        guard machine.isOpen, !keysSuspended else { return }
-        close()
     }
 }

@@ -1,6 +1,7 @@
 // The user's choice to let launcha search Desktop, Documents and Downloads.
 // Kept apart from the config file, so a shared or synced config never grants it.
 import Foundation
+import TingCore
 
 @MainActor
 final class LaunchaConsentStore {
@@ -23,10 +24,7 @@ final class LaunchaConsentStore {
     /// change the real one. Otherwise `~/Library/Application Support/Ting/launcha-consent.json`.
     nonisolated static func defaultURL(environment: [String: String] = ProcessInfo.processInfo.environment,
                                        home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        if let config = environment["TING_CONFIG"], !config.isEmpty {
-            return URL(fileURLWithPath: (config as NSString).expandingTildeInPath).appendingPathExtension("launcha-consent.json")
-        }
-        return home.appendingPathComponent("Library/Application Support/Ting/launcha-consent.json")
+        AppPaths.ting(environment: environment, home: home).dataFile("launcha-consent.json")
     }
 
     private func load() {

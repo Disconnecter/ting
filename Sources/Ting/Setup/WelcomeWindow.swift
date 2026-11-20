@@ -2,50 +2,37 @@
 import AppKit
 import SwiftUI
 import TingCore
+import BobukUI
 
+/// The Welcome window: a fixed `ChromeWindow` sized to its content. Its content is released on
+/// close, so the leader recorder stops (its onDisappear runs).
 @MainActor
-final class WelcomeWindowController: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
-    private let model: AppModel
+final class WelcomeWindowController {
+    private let hosted: HostedWindowController
 
     init(model: AppModel) {
-        self.model = model
+        // Set once the hosted controller exists; the Continue button closes through it.
+        weak var weakHosted: HostedWindowController?
+        hosted = HostedWindowController(window: {
+            let window = ChromeWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 300),
+                                      style: TingPickerStyle.palette.chromeStyle, resizable: false)
+            window.title = "Welcome to Ting"
+            window.isMovableByWindowBackground = true
+            return window
+        }, rootView: { WelcomeView { weakHosted?.close() }.environment(model) })
+        hosted.sizesToFitContent = true
+        weakHosted = hosted
     }
 
-    /// Drop the SwiftUI content on close so the leader recorder stops (its onDisappear runs).
-    func windowWillClose(_ notification: Notification) {
-        window?.contentView = nil
-        window = nil
-    }
+    var window: NSWindow? { hosted.window }
 
+    /// Centered on every open, as before.
     func show() {
-        let window = self.window ?? makeWindow()
-        NSApp.activate()
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        hosted.prepare().center()
+        hosted.show()
     }
 
-    func close() {
-        window?.close()
-    }
-
-    private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 300),
-                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "Welcome to Ting"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        let hosting = NSHostingView(rootView: WelcomeView { [weak self] in self?.close() }.environment(model))
-        window.contentView = hosting
-        window.setContentSize(hosting.fittingSize)
-        self.window = window
-        return window
-    }
+    func close() { hosted.close() }
 }
 
 struct WelcomeView: View {
@@ -72,7 +59,7 @@ struct WelcomeView: View {
                     .foregroundStyle(ready ? Color.tingAmber : Color.tingMuted)
                 Spacer()
                 Button("Continue", action: onContinue)
-                    .buttonStyle(QuietButtonStyle(prominent: ready))
+                    .buttonStyle(.tingQuiet(prominent: ready))
                     .disabled(!ready)
                     .keyboardShortcut(.defaultAction)
             }

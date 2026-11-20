@@ -3,6 +3,7 @@ import AppKit
 import SwiftUI
 import TingCore
 import UniformTypeIdentifiers
+import BobukUI
 
 /// One table row: a flattened binding plus the validator's first issue for it.
 private struct BindingRow: Identifiable {

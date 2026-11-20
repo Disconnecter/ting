@@ -9,26 +9,19 @@
 - Commit the changes you make for each task before reporting it complete. Use a
   clear subject that says what changed. Explain why in the body when the reason
   would be hard to infer from the subject alone.
-- Keep README, release notes, security policy and other documentation in English.
-  Keep the repository focused on the shipping application, without discarded
-  design experiments, prototypes or their history. Local design material belongs
-  in the ignored `/design/` directory.
-- Original code is 0BSD; preserve the MIT attribution for the adapted scripts and
-  the Sparkle license in `THIRD_PARTY_NOTICES.md`.
+- Shared UI and infrastructure come from BobukKit (`Vendor/BobukKit`, read-only); read
+  `../BobukKit/README.md` before adding windows, panels, controls, hotkeys, file stores,
+  processes or update code here, and follow `../AGENTS.md`. The release kit in
+  `Scripts/release/` is a managed copy of `../BobukKit/ReleaseKit`; never edit it here.
 - A leader is any non-modifier key, alone or with modifiers. A modifier key on its
   own must never become a leader.
-- `Sources/TingCore` holds pure logic with tests. Keep AppKit out of it. Run
+- `Sources/TingCore` holds pure logic with tests (it re-exports BobukCore). Run
   the fewest tests that prove a change after every change
   (`swift test --filter <name>` for the code you changed); do not run a test again after
   it passed, and docs-only changes need no tests. The seemasta checks after a Run and the
   release scripts run the full `swift test`; tests must pass without warnings.
-- Do not add GitHub Actions or other hosted CI: they are slow. Run tests and
-  release checks locally.
-- Releases use the shared bobuk.io release kit in `Scripts/release/` (see its
-  `README.md`). Ting holds the canonical copy: change the kit here, run
-  `Scripts/release/test_kit.sh`, then copy it to the other apps with
-  `Scripts/release/sync_kit.sh ../splash-fihish ../HAScS ../lowkey`. App facts live in
-  `release.env`; never edit a kit copy in another repository.
+- Releases use the shared release kit (`Scripts/release/README.md`); app facts live in
+  `release.env`.
 - Every release must be signed with Developer ID, notarized and stapled, signed
   for Sparkle, published to GitHub Releases, **installed at `/Applications/Ting.app`
   and restarted**. The update feed of installed copies is
@@ -43,22 +36,19 @@
   Prepare the notes file of the next version, commit the landing page changes (clean
   `../landing` on main) and set `APP_IDENTITY` and `NOTARY_PROFILE` (`ting`). Check
   readiness with `Scripts/release/doctor.sh`. After a failure, run the same command
-  again: it goes on with the same version. Test the kit only with the offline
-  `Scripts/release/test_kit.sh`; never run `release_next.sh`, `release.sh` or
-  `publish.sh` for a check, since they publish or install a real release.
+  again: it goes on with the same version.
 - Each release needs a higher `BUILD_NUMBER` in `version.env` and release notes in
-  `docs/releases/v<version>.md`. Never modify a ZIP after the appcast signed it.
+  `docs/releases/v<version>.md`.
 - The Sparkle EdDSA private key stays in the login Keychain under account
   `io.bobuk.ting`. Never export, print, commit or upload it.
-- Release artifacts must pass `Scripts/check_bundle.swift` and
-  `Scripts/release/check_privacy.swift`; do not ship local home or build paths.
+- Release artifacts must also pass `Scripts/check_bundle.swift`.
 - Never overwrite the user's `~/.config/ting/config.json` during development or
   testing. Use `TING_CONFIG=/tmp/...` for manual checks.
 - Tests and manual checks of micro-apps use a temporary micro-apps folder through
   `TING_CONFIG` (`$TING_CONFIG.micro/`); never write to `~/.config/ting/micro/`,
   its error log or the approvals and values in `~/Library/Application Support/Ting/`.
-- Do not send synthetic key presses while the user is working: the leader menu
-  takes keyboard focus and can swallow their typing.
+- The leader menu takes keyboard focus and can swallow the user's typing: never send
+  synthetic key presses while the user works.
 - For lowkey automation, use the native `lowkey` step, not shell commands or
   synthetic input. See `docs/CONFIGURING.md#lowkey-sites` for bindings and
   `docs/micro-apps/FORMAT.md#lowkey-steps` for action syntax. Validate examples

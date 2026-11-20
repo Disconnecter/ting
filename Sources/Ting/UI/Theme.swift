@@ -3,15 +3,30 @@ import AppKit
 import SwiftUI
 import TingCore
 import BobukUI
+import BobukSystem
 
 /// App-owned colors; BobukKit owns shared picker geometry and rendering.
 enum TingPickerStyle {
     static var palette: PickerPalette {
-        PickerPalette(surface: NSColor(Color.soundPanel), text: NSColor(Color.tingInk),
-                      secondary: NSColor(Color.tingMuted), accent: NSColor(Color.tingAmber),
-                      border: NSColor(Color.tingStroke).withAlphaComponent(0.6),
-                      badgeInk: NSColor(Color.soundKeyInk))
+        PickerPalette(surface: TingColors.soundPanel, text: BobukColors.ink, secondary: BobukColors.muted,
+                      accent: BobukColors.amber, border: BobukColors.stroke.withAlphaComponent(0.6),
+                      badgeInk: TingColors.soundKeyInk)
     }
+
+    /// The toast keeps Ting's graphite capsule with a full-strength outline.
+    static var toast: PickerPalette {
+        var palette = palette
+        palette.surface = BobukColors.panel
+        palette.border = BobukColors.stroke
+        return palette
+    }
+}
+
+/// Ting's own "Soundsystem" colors; the graphite and amber shared with the other apps are `BobukColors`.
+enum TingColors {
+    static let soundPanel = NSColor.dynamic(light: 0xEEEDE6, dark: 0x181C1F)
+    static let soundKey = NSColor.dynamic(light: 0xD99A2B, dark: 0xE7BB74)
+    static let soundKeyInk = NSColor.dynamic(light: 0x2A1C05, dark: 0x1D1609)
 }
 
 extension Appearance {
@@ -23,46 +38,22 @@ extension Appearance {
     }
 }
 
-extension NSColor {
-    static func theme(light: UInt32, dark: UInt32) -> NSColor {
-        NSColor(name: nil) { appearance in
-            let hex = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
-            return NSColor(srgbRed: Double((hex >> 16) & 255) / 255, green: Double((hex >> 8) & 255) / 255,
-                           blue: Double(hex & 255) / 255, alpha: 1)
-        }
-    }
-}
-
 extension Color {
-    static func theme(light: UInt32, dark: UInt32) -> Color { Color(nsColor: .theme(light: light, dark: dark)) }
+    static var tingPanel: Color { Color(nsColor: BobukColors.panel) }
+    static var tingInk: Color { Color(nsColor: BobukColors.ink) }
+    static var tingMuted: Color { Color(nsColor: BobukColors.muted) }
+    static var tingAmber: Color { Color(nsColor: BobukColors.amber) }
+    static var tingStroke: Color { Color(nsColor: BobukColors.stroke) }
 
-    static var tingPanel: Color { .theme(light: 0xF7F8F5, dark: 0x222A2E) }
-    static var tingInk: Color { .theme(light: 0x222A2E, dark: 0xEEF1EC) }
-    static var tingMuted: Color { .theme(light: 0x59666C, dark: 0xA4AFB3) }
-    static var tingAmber: Color { .theme(light: 0x885500, dark: 0xE7BB74) }
-    static var tingStroke: Color { .theme(light: 0xB3BEC1, dark: 0x526064) }
-
-    static var soundPanel: Color { .theme(light: 0xEEEDE6, dark: 0x181C1F) }
-    static var soundKey: Color { .theme(light: 0xD99A2B, dark: 0xE7BB74) }
-    static var soundKeyInk: Color { .theme(light: 0x2A1C05, dark: 0x1D1609) }
+    static var soundPanel: Color { Color(nsColor: TingColors.soundPanel) }
+    static var soundKey: Color { Color(nsColor: TingColors.soundKey) }
+    static var soundKeyInk: Color { Color(nsColor: TingColors.soundKeyInk) }
 }
 
-/// Mono, tracked, upper-case label: "TING", "W / WEB", "04".
-struct MonoLabel: View {
-    let text: String
-    var size: CGFloat = 10
-    var weight: Font.Weight = .semibold
-    var tracking: CGFloat = 1.5
-
-    init(_ text: String, size: CGFloat = 10, weight: Font.Weight = .semibold, tracking: CGFloat = 1.5) {
-        self.text = text
-        self.size = size
-        self.weight = weight
-        self.tracking = tracking
-    }
-
-    var body: some View {
-        Text(text.uppercased()).font(.system(size: size, weight: weight, design: .monospaced)).tracking(tracking)
+extension ButtonStyle where Self == QuietButtonStyle {
+    /// BobukKit's quiet button in Ting's colors; `prominent` fills it with the soundsystem key.
+    static func tingQuiet(prominent: Bool = false) -> QuietButtonStyle {
+        QuietButtonStyle(palette: TingPickerStyle.palette, prominent: prominent, prominentFill: TingColors.soundKey)
     }
 }
 
@@ -178,23 +169,6 @@ struct KeyCap: View {
         case .quiet: Color.tingInk.opacity(0.12)
         case .sound: .clear
         }
-    }
-}
-
-/// Small bordered button used across Ting surfaces (Splash Finish "Snooze" style).
-struct QuietButtonStyle: ButtonStyle {
-    var prominent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .medium))
-            .padding(.horizontal, 13)
-            .frame(height: 30)
-            .foregroundStyle(prominent ? Color.soundKeyInk : Color.tingInk)
-            .background(prominent ? Color.soundKey.opacity(configuration.isPressed ? 0.8 : 1)
-                                  : Color.tingInk.opacity(configuration.isPressed ? 0.14 : 0.05),
-                        in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.tingInk.opacity(prominent ? 0 : 0.1)))
     }
 }
 

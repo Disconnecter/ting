@@ -3,49 +3,58 @@ import TingRuntime
 // clipboard, the app or a mix).
 // Only one flow is open at a time; a new start closes the open one and stops its command.
 import AppKit
+import BobukUI
 import SwiftUI
 import TingCore
 
-/// The flow window: a non-activating panel that takes keyboard focus, like launcha.
+/// The flow window: a `BobukPanel` that takes keyboard focus, like launcha.
 /// ↩, ⌘↩, ⌘O and Esc go to the flow; other keys go to the panel's views (the fields, the result text).
-final class MicroAppFlowPanel: NSPanel {
+/// BobukPanel sends ⌘C/⌘V/⌘X/⌘A/⌘Z to the text by the Latin layout and swallows other ⌘ shortcuts,
+/// so ⌘Q never quits Ting.
+final class MicroAppFlowPanel: BobukPanel {
     enum Key { case enter, commandEnter, escape, toggleOptional, up, down }
     var onKey: ((Key) -> Void)?
     var multilineInput = false
     var choosing = false
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
-                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        isFloatingPanel = true
-        level = .popUpMenu
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        backgroundColor = .clear
-        isOpaque = false
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600), kind: .launcher)
+        // The card draws its own SwiftUI shadow.
         hasShadow = false
-        hidesOnDeactivate = false
-        becomesKeyOnlyIfNeeded = false
-        isReleasedWhenClosed = false
-        animationBehavior = .none
+        onCommandKey = { [unowned self] event, command in
+            guard let key = Self.key(for: command, latin: KeyEquivalent.latin(of: event), flags: event.modifierFlags) else {
+                return false
+            }
+            self.onKey?(key)
+            return true
+        }
     }
 
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
+    /// The flow's ⌘ shortcuts: ⌘↩ (also ⌘Enter) confirms, ⌘O shows the optional parameters, matched
+    /// by the Latin layout. AppKit sends ⌘ shortcuts here before `sendEvent`, so ⌘↩ is handled here.
+    /// nil leaves the key to BobukPanel.
+    static func key(for command: EditCommand, latin: String?, flags: NSEvent.ModifierFlags) -> Key? {
+        if command == .commandReturn { return .commandEnter }
+        if command == .other, latin == "o", flags.intersection([.command, .shift, .option, .control]) == .command {
+            return .toggleOptional
+        }
+        return nil
+    }
 
     override func sendEvent(_ event: NSEvent) {
         // While an input method composes in a field, ↩ and Esc belong to it.
-        if event.type == .keyDown, (firstResponder as? NSTextView)?.hasMarkedText() != true {
+        if event.type == .keyDown, !KeyEquivalent.isComposing(in: self) {
             let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
             switch event.keyCode {
-            case 53:
+            case VirtualKey.escape:
                 onKey?(.escape)
                 return
-            case 125, 126:
+            case VirtualKey.down, VirtualKey.up:
                 if choosing && flags.isEmpty {
-                    onKey?(event.keyCode == 125 ? .down : .up)
+                    onKey?(event.keyCode == VirtualKey.down ? .down : .up)
                     return
                 }
-            case 36, 76:
+            case VirtualKey.returnKey, VirtualKey.keypadEnter:
                 if flags.isEmpty && multilineInput { super.sendEvent(event); return }
                 if flags.isEmpty { onKey?(.enter); return }
                 if flags == .command { onKey?(.commandEnter); return }
@@ -55,32 +64,6 @@ final class MicroAppFlowPanel: NSPanel {
             }
         }
         super.sendEvent(event)
-    }
-
-    /// Ting has no Edit menu while it is not the active app: ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z go to the text
-    /// here, and ⌘O shows the optional parameters, matched by the Latin layout. ⌘Return and ⌘Enter
-    /// confirm. Every other ⌘ shortcut is swallowed, so ⌘Q never quits Ting.
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
-        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        // Command navigation/deletion (including selection with Shift) belongs to the editor.
-        if flags.contains(.command), [51, 117, 123, 124, 125, 126].contains(event.keyCode) { return false }
-        guard flags == .command else { return flags.contains(.command) ? true : super.performKeyEquivalent(with: event) }
-        // AppKit sends Command shortcuts here before `sendEvent`, so Cmd+Enter is handled here.
-        if event.keyCode == 36 || event.keyCode == 76 {
-            onKey?(.commandEnter)
-            return true
-        }
-        switch KeyTranslator.latin(event.keyCode) {
-        case "c": NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
-        case "x": NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self)
-        case "v": NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self)
-        case "a": NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)
-        case "z": firstResponder?.undoManager?.undo()
-        case "o": onKey?(.toggleOptional)
-        default: break
-        }
-        return true
     }
 }
 
@@ -117,7 +100,7 @@ final class MicroAppFlowSession {
 }
 
 @MainActor
-final class MicroAppFlowController: NSObject, NSWindowDelegate {
+final class MicroAppFlowController: NSObject {
     let session = MicroAppFlowSession()
     /// Shows a short message (the 'Copied' toast, errors that fit two lines).
     var onToast: ((String) -> Void)?
@@ -540,10 +523,9 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
             return
         }
         if !panel.isVisible {
-            let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-            if let visible = screen?.visibleFrame {
+            if let visible = Screens.underPointer?.visibleFrame {
                 // Near the upper third, like launcha.
-                let top = visible.maxY - max(40, visible.height * 0.16)
+                let top = PanelPlacement.top(in: visible, anchor: .upper())
                 let height = max(240, min(CGFloat(MicroAppFormLayout.panelCap), top - visible.minY - 20))
                 let width: CGFloat = 640
                 panel.setFrame(NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: false)
@@ -557,7 +539,7 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
 
     private func makePanel() -> MicroAppFlowPanel {
         let panel = MicroAppFlowPanel()
-        panel.delegate = self
+        panel.onDismiss = { [weak self] reason in self?.dismiss(reason) }
         panel.onKey = { [weak self] key in self?.handle(key) }
         let view = MicroAppFlowView(session: session,
                                     onApprove: { [weak self] in self?.approve() },
@@ -579,8 +561,9 @@ final class MicroAppFlowController: NSObject, NSWindowDelegate {
     }
 
     /// A click elsewhere closes the approval (refused) and the result panel. A running command
-    /// keeps running; its result comes back to the front.
-    func windowDidResignKey(_ notification: Notification) {
+    /// keeps running; its result comes back to the front. Esc and ⌘W act as Esc in the flow.
+    func dismiss(_ reason: BobukPanel.DismissReason) {
+        guard reason == .resignedKey else { return handle(.escape) }
         switch session.state {
         case .approval, .form, .interaction, .result: close()
         case .working, .closed: break

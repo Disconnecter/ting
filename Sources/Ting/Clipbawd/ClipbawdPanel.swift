@@ -4,8 +4,11 @@ import AppKit
 import SwiftUI
 import TingCore
 import BobukUI
+import BobukSystem
 
-final class ClipbawdPanel: NSPanel {
+/// A `BobukPanel` like launcha's, with ⌘↩ copying and ⇧⌘⌫ removing the selected item; ⌘⌫ still
+/// erases the search text, as in launcha.
+final class ClipbawdPanel: BobukPanel {
     static let width: CGFloat = 800
 
     var onMove: ((Int) -> Void)?
@@ -15,73 +18,47 @@ final class ClipbawdPanel: NSPanel {
     var onDelete: (() -> Void)?
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 600),
-                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        isFloatingPanel = true
-        level = .popUpMenu
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        backgroundColor = .clear
-        isOpaque = false
+        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 600), kind: .launcher)
+        // The card draws its own SwiftUI shadow.
         hasShadow = false
-        hidesOnDeactivate = false
-        becomesKeyOnlyIfNeeded = false
-        isReleasedWhenClosed = false
-        animationBehavior = .none
+        onCommandKey = { [unowned self] event, command in self.handleCommand(event, command) }
     }
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-
-    private var composing: Bool { (firstResponder as? NSTextView)?.hasMarkedText() == true }
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, let onMove,
-           let delta = LaunchaPanel.navigationDelta(keyCode: event.keyCode, flags: event.modifierFlags, composing: composing) {
+           let delta = LaunchaPanel.navigationDelta(keyCode: event.keyCode, flags: event.modifierFlags,
+                                                   composing: KeyEquivalent.isComposing(in: self)) {
             onMove(delta)
             return
         }
         super.sendEvent(event)
     }
 
-    enum KeyEquivalentRoute: Equatable {
-        case editor
+    /// clipbawd's own ⌘ shortcuts, on top of BobukPanel's edit routing.
+    enum Command: Equatable {
+        /// ⌘↩: copy without pasting.
         case copy
+        /// ⇧⌘⌫: remove the selected item.
         case delete
-        case action(Selector)
-        case swallow
     }
 
-    /// launcha's routes, with ⌘↩ copying and ⇧⌘⌫ removing the selected item; ⌘⌫ still
-    /// erases the search text, as in launcha.
-    static func route(keyCode: UInt16, latin: String?, flags: NSEvent.ModifierFlags) -> KeyEquivalentRoute {
-        let flags = flags.intersection([.command, .shift, .option, .control])
-        if flags == .command, keyCode == 36 || keyCode == 76 { return .copy }
-        if flags == [.command, .shift], keyCode == 51 { return .delete }
-        switch LaunchaPanel.route(keyCode: keyCode, latin: latin, flags: flags) {
-        case .editor: return .editor
-        case .action(let selector): return .action(selector)
-        case .reveal, .editShortcut, .swallow: return .swallow
-        }
+    /// nil leaves the key to BobukPanel (text commands, ⌘⌫ in the field, ⌘W, swallowing the rest).
+    static func command(_ command: EditCommand, keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Command? {
+        if command == .commandReturn { return .copy }
+        if flags.intersection([.command, .shift, .option, .control]) == [.command, .shift],
+           keyCode == VirtualKey.delete { return .delete }
+        return nil
     }
 
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
-        switch Self.route(keyCode: event.keyCode, latin: KeyTranslator.latin(event.keyCode), flags: event.modifierFlags) {
-        case .editor:
-            if event.modifierFlags.contains(.command) { return false }
-            return super.performKeyEquivalent(with: event)
-        case .copy:
-            if !composing { onCopy?() }
-            return true
-        case .delete:
-            if !composing { onDelete?() }
-            return true
-        case .action(let selector):
-            NSApp.sendAction(selector, to: nil, from: self)
-            return true
-        case .swallow:
-            return true
+    private func handleCommand(_ event: NSEvent, _ command: EditCommand) -> Bool {
+        guard let shortcut = Self.command(command, keyCode: event.keyCode, flags: event.modifierFlags) else { return false }
+        // While an input method composes, the key is swallowed and does nothing.
+        guard !KeyEquivalent.isComposing(in: self) else { return true }
+        switch shortcut {
+        case .copy: onCopy?()
+        case .delete: onDelete?()
         }
+        return true
     }
 }
 
@@ -136,7 +113,7 @@ final class ClipbawdState {
 
 /// Shows and hides the clipbawd panel, and pastes or copies the chosen item.
 @MainActor
-final class ClipbawdController: NSObject, NSWindowDelegate {
+final class ClipbawdController: NSObject {
     let state: ClipbawdState
     private var panel: ClipbawdPanel?
     private var observers: [NSObjectProtocol] = []
@@ -144,7 +121,6 @@ final class ClipbawdController: NSObject, NSWindowDelegate {
     private let keyboard: MicroAppKeyboard
     /// The app that was in front at open: ↩ pastes into it.
     private(set) var target: MicroAppTarget?
-    var keysSuspended = false
 
     var onWillOpen: (() -> Void)?
     /// A paste failed; the error says why (Accessibility, secure input, the app is gone).
@@ -190,9 +166,8 @@ final class ClipbawdController: NSObject, NSWindowDelegate {
         onWillOpen?()
         guard presentsWindow else { return }
         let panel = self.panel ?? makePanel()
-        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        if let visible = screen?.visibleFrame {
-            let top = visible.maxY - max(40, visible.height * 0.16)
+        if let visible = Screens.underPointer?.visibleFrame {
+            let top = PanelPlacement.top(in: visible, anchor: .upper())
             let height = max(320, min(640, top - visible.minY - 20))
             let width = min(ClipbawdPanel.width, visible.width - 40)
             panel.setFrame(NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: false)
@@ -238,7 +213,11 @@ final class ClipbawdController: NSObject, NSWindowDelegate {
 
     private func makePanel() -> ClipbawdPanel {
         let panel = ClipbawdPanel()
-        panel.delegate = self
+        // Focus loss, Esc and ⌘W close the open panel (not while a menu tracks over it).
+        panel.onDismiss = { [weak self] _ in
+            guard let self, self.isOpen else { return }
+            self.close()
+        }
         panel.onMove = { [weak self] delta in self?.state.move(by: delta) }
         panel.onCopy = { [weak self] in self?.choose(paste: false) }
         panel.onDelete = { [weak self] in self?.removeSelected() }
@@ -253,17 +232,11 @@ final class ClipbawdController: NSObject, NSWindowDelegate {
         return panel
     }
 
-    /// The menu is gone: take keys again, or close if another window took focus meanwhile.
-    func resumeKeys() {
-        keysSuspended = false
-        guard isOpen, let panel else { return }
-        if let key = NSApp.keyWindow, key !== panel { close() } else { panel.makeKeyAndOrderFront(nil) }
-    }
+    /// While a menu tracks over the panel, losing key status keeps it open.
+    func suspendKeys() { panel?.suspendDismissal() }
 
-    func windowDidResignKey(_ notification: Notification) {
-        guard isOpen, !keysSuspended else { return }
-        close()
-    }
+    /// The menu is gone: take keys again, or close if another window took focus meanwhile.
+    func resumeKeys() { panel?.resumeDismissal() }
 }
 
 /// Small pictures of copied images and favicons, made off the main thread from the image header

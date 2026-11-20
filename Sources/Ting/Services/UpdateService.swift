@@ -1,22 +1,15 @@
-// Updates. A copy that Homebrew manages updates with brew only, from a progress window; Sparkle
-// is not created for it at all, so it neither checks nor shows its window. Every other release
-// copy updates with Sparkle from the public feed (`SUFeedURL` in Info.plist), verified with the
-// EdDSA public key in `SUPublicEDKey` and by Apple's code signature checks.
+// Updates through BobukKit's `UpdateService`: a copy that Homebrew manages updates with brew only,
+// from a progress window, and Sparkle is not created for it at all. Every other release copy
+// updates with Sparkle from the public feed (`SUFeedURL` in Info.plist), verified with the EdDSA
+// public key in `SUPublicEDKey` and by Apple's code signature checks. Sparkle is not a kit
+// dependency: this file holds Ting's adapter.
 import AppKit
-import Observation
+import BobukUpdates
 import Sparkle
 import TingCore
 
-/// What the app needs from Sparkle; a protocol so tests can check that Sparkle is never created.
 @MainActor
-protocol SparkleUpdating: AnyObject {
-    var automaticallyChecks: Bool { get set }
-    var canCheck: Bool { get }
-    func check()
-}
-
-@MainActor
-private final class SparkleUpdater: SparkleUpdating {
+final class SparkleUpdater: SparkleUpdating {
     private let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil,
                                                           userDriverDelegate: nil)
     var automaticallyChecks: Bool {
@@ -27,65 +20,15 @@ private final class SparkleUpdater: SparkleUpdating {
     func check() { controller.checkForUpdates(nil) }
 }
 
-@MainActor
-@Observable
-final class UpdateService {
-    static let shared: UpdateService = {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let hasFeed = (info["SUFeedURL"] as? String)?.isEmpty == false
-        let hasKey = (info["SUPublicEDKey"] as? String)?.isEmpty == false
-        // Only a release copy can be one that Homebrew installed; a development build never looks.
-        let homebrew = hasFeed && hasKey
-            ? HomebrewDetection.install(of: Bundle.main.bundleURL,
-                                        prefixes: HomebrewDetection.prefixes(environment: ProcessInfo.processInfo.environment))
-            : nil
-        return UpdateService(choice: UpdaterChoice.choose(homebrew: homebrew, hasFeed: hasFeed, hasKey: hasKey),
-                             makeSparkle: { SparkleUpdater() })
-    }()
+extension AppUpdateIdentity {
+    static let ting = AppUpdateIdentity(displayName: "Ting", executableName: "Ting",
+                                        cask: HomebrewCask(name: "ting", appBundleName: "Ting.app"),
+                                        bundleIdentifier: "io.bobuk.ting",
+                                        keptNotice: "Settings, bindings and micro-apps are kept.")
+}
 
-    let choice: UpdaterChoice
-    @ObservationIgnored private let sparkle: SparkleUpdating?
-
-    init(choice: UpdaterChoice, makeSparkle: () -> SparkleUpdating) {
-        self.choice = choice
-        sparkle = choice == .sparkle ? makeSparkle() : nil
-        automaticallyChecks = sparkle?.automaticallyChecks ?? false
-    }
-
-    /// True when Sparkle updates this copy; its controls are shown then.
-    var isAvailable: Bool { sparkle != nil }
-
-    /// The Homebrew record when Homebrew manages this copy.
-    var homebrew: HomebrewInstall? {
-        if case .homebrew(let install) = choice { return install }
-        return nil
-    }
-
-    /// The one update action of the Ting menu (menu-bar icon and launcher gear) and Settings.
-    var menuTitle: String? {
-        switch choice {
-        case .homebrew: "Update Ting via Homebrew…"
-        case .sparkle: "Check for Updates…"
-        case .none: nil
-        }
-    }
-
-    /// Mirrors Sparkle's own preference, which Sparkle stores in the app's user defaults.
-    var automaticallyChecks: Bool {
-        didSet {
-            guard let sparkle, sparkle.automaticallyChecks != automaticallyChecks else { return }
-            sparkle.automaticallyChecks = automaticallyChecks
-        }
-    }
-
-    var canCheck: Bool { sparkle?.canCheck ?? false }
-
-    func checkForUpdates() {
-        NSApp.activate()
-        if let homebrew {
-            HomebrewUpdateWindowController.shared.start(homebrew)
-        } else {
-            sparkle?.check()
-        }
-    }
+extension UpdateService {
+    /// The updater of the running copy: Homebrew, Sparkle or nothing (development builds).
+    static let shared = UpdateService.detect(app: .ting, palette: TingPickerStyle.palette,
+                                             makeSparkle: { SparkleUpdater() })
 }

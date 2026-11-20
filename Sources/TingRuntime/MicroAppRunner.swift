@@ -296,7 +296,8 @@ package struct MicroAppRunner: Sendable {
     /// `xcode-select -p` succeeds only when Xcode or the Command Line Tools are installed.
     package static func hasCommandLineTools() async -> Bool {
         let request = ChildProcessRequest(executable: "/usr/bin/xcode-select", arguments: ["-p"], environment: [:],
-                                          workingDirectory: "/", timeLimit: 5)
+                                          workingDirectory: "/", timeLimit: 5,
+                                          outputLimit: MicroAppRunRules.outputLimit)
         return await ChildProcess.run(request).end == .exited(0)
     }
 }
