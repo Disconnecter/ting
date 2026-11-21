@@ -109,6 +109,11 @@ latest published version.
 - The parameter values of the last started run of each micro-app are stored as
   plain text in `~/Library/Application Support/Ting/micro-values.json`, unless
   the file says `remember: false`. Esc in the parameter panel saves nothing.
+- launcha keeps the times of launches made through it in
+  `~/Library/Application Support/Ting/launcha-history.json` (the last 7 days, plus the last launch).
+  The opt-in **Rank by apps you use** also records which apps you bring to the front, at most once
+  per app every 30 minutes, in `app-usage.json` next to it; turning it off deletes that file.
+  Neither file leaves the Mac.
 - Clipbawd keeps history in memory by default. Opt-in **Keep history between launches**
   saves an unencrypted local binary archive in `~/Library/Application Support/Ting/Clipbawd/`
   (directory mode 700, file mode 600, excluded from backups). `TING_CONFIG` overrides use

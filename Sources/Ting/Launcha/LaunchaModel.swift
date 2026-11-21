@@ -2,6 +2,7 @@
 // calculation or a conversion, a Spotlight file search only when no app matches, protected-folder consent and
 // launch history.
 // No AppKit windows here, so it can be tested without a panel.
+import AppKit
 import Foundation
 import Observation
 import TingCore
@@ -156,6 +157,24 @@ final class LaunchaModel {
     var calculator = true {
         didSet { if calculator != oldValue, isOpen { recompute(keepSelection: true) } }
     }
+    /// Rank apps also by switching to them outside launcha (`launcha.appSwitching`). Turning it on
+    /// starts watching which app comes to the front; turning it off stops and deletes that record.
+    var appSwitching = false {
+        didSet {
+            guard appSwitching != oldValue else { return }
+            if appSwitching { startWatchingApps() } else { stopWatchingApps() }
+            refreshRunning()
+            if isOpen { recompute(keepSelection: true) }
+        }
+    }
+    /// Running apps first, last or anywhere (`launcha.runningApps`); only with `appSwitching`.
+    var runningApps: RunningAppsOrder = .any {
+        didSet {
+            guard runningApps != oldValue else { return }
+            refreshRunning()
+            if isOpen { recompute(keepSelection: true) }
+        }
+    }
     /// A conversion such as `5 yd to m` or `now + 2 days` shows its value first (`launcha.converter`).
     var converter = true {
         didSet { if converter != oldValue, isOpen { recompute(keepSelection: true) } }
@@ -165,6 +184,15 @@ final class LaunchaModel {
     @ObservationIgnored private var services: Services
     @ObservationIgnored private let opener: LaunchaOpening
     @ObservationIgnored let historyStore: LaunchaHistoryStore
+    /// Apps brought to the front outside launcha, only while `appSwitching` is on.
+    @ObservationIgnored let usageStore: LaunchaHistoryStore
+    @ObservationIgnored private var usage = LaunchHistory()
+    @ObservationIgnored private var usageSerial = 0
+    @ObservationIgnored private var appliedUsage = 0
+    @ObservationIgnored private var activationObserver: NSObjectProtocol?
+    /// Candidate ids of the running apps; read on open and on every scan.
+    @ObservationIgnored private let runningAppIDs: () -> Set<String>
+    @ObservationIgnored private var running: Set<String> = []
     @ObservationIgnored private let consent: LaunchaConsentStore
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let refreshInterval: Duration
@@ -182,12 +210,17 @@ final class LaunchaModel {
     @ObservationIgnored private var refreshLoop: Task<Void, Never>?
 
     init(opener: LaunchaOpening, historyStore: LaunchaHistoryStore, consent: LaunchaConsentStore,
+         usageStore: LaunchaHistoryStore? = nil,
          home: URL = FileManager.default.homeDirectoryForCurrentUser,
          refreshInterval: Duration = .seconds(15),
          lowkeySites: @escaping () -> [LowkeySite] = { [] },
+         runningAppIDs: @escaping () -> Set<String> = { [] },
          makeServices: ServiceFactory? = nil) {
         self.opener = opener
         self.historyStore = historyStore
+        self.usageStore = usageStore ?? LaunchaHistoryStore(
+            url: historyStore.url.deletingLastPathComponent().appendingPathComponent("app-usage.json"))
+        self.runningAppIDs = runningAppIDs
         self.consent = consent
         self.home = home
         self.refreshInterval = refreshInterval
@@ -218,6 +251,7 @@ final class LaunchaModel {
         isExplainingConsent = false
         query = ""
         selection = 0
+        refreshRunning()
         recompute(keepSelection: false)
         loadHistory()
         startScan(onOpen: true)
@@ -412,7 +446,9 @@ final class LaunchaModel {
         entries.append(contentsOf: microApps.map(LaunchaEntry.micro))
         entries.append(contentsOf: lowkeySites.map(LaunchaEntry.site))
         entries.append(contentsOf: apps.map(LaunchaEntry.app))
-        let matches = LaunchaSearch.ranked(for: trimmed, in: entries, history: history, now: Date(), candidate: \.candidate)
+        let ranking = LaunchaRanking(history: history, usage: appSwitching ? usage : LaunchHistory(),
+                                     running: running, runningOrder: appSwitching ? runningApps : .any)
+        let matches = LaunchaSearch.ranked(for: trimmed, in: entries, ranking: ranking, now: Date(), candidate: \.candidate)
         let appRows = matches.map { $0.row(microFolder: microFolder ?? home) }
         // A query without letters or digits lists every app, so it never reaches Spotlight
         // unless the index is empty.
@@ -458,6 +494,7 @@ final class LaunchaModel {
 
     private func startScan(onOpen: Bool) {
         lowkeySites = loadLowkeySites()
+        refreshRunning()
         if isOpen { recompute(keepSelection: true) }
         scanSerial += 1
         let serial = scanSerial
@@ -481,6 +518,7 @@ final class LaunchaModel {
     }
 
     private func loadHistory() {
+        if appSwitching { loadUsage() }
         historySerial += 1
         let serial = historySerial
         let store = historyStore
@@ -496,5 +534,73 @@ final class LaunchaModel {
         history = snapshot.history
         historyIssue = snapshot.issues.first.map { "Launch history: \($0.message)" }
         recompute(keepSelection: true)
+    }
+
+    // MARK: App use outside launcha
+
+    /// The ids of running regular apps, as launcha candidates.
+    static func runningAppIDs(_ workspace: NSWorkspace = .shared) -> Set<String> {
+        Set(workspace.runningApplications.filter { $0.activationPolicy == .regular }
+            .compactMap(\.bundleIdentifier).map { LaunchaCandidate.app(bundleID: $0, name: "").id })
+    }
+
+    /// An app came to the front. Ting itself is not counted.
+    func noteActivation(bundleID: String, at time: Date = Date()) {
+        guard appSwitching, bundleID.lowercased() != Bundle.main.bundleIdentifier?.lowercased() else { return }
+        let id = LaunchaCandidate.app(bundleID: bundleID, name: "").id
+        usageSerial += 1
+        let serial = usageSerial
+        let store = usageStore
+        Task { [weak self] in
+            let snapshot = await store.recordUse(id: id, at: time)
+            self?.applyUsage(snapshot, serial: serial)
+        }
+    }
+
+    private func startWatchingApps() {
+        loadUsage()
+        guard activationObserver == nil else { return }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard let bundleID = app?.bundleIdentifier else { return }
+                MainActor.assumeIsolated { self?.noteActivation(bundleID: bundleID) }
+            }
+    }
+
+    /// Stops watching and deletes the record of app use.
+    private func stopWatchingApps() {
+        if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
+        activationObserver = nil
+        usage = LaunchHistory()
+        usageSerial += 1
+        let serial = usageSerial
+        let store = usageStore
+        Task { [weak self] in
+            let snapshot = await store.clear()
+            self?.applyUsage(snapshot, serial: serial)
+        }
+    }
+
+    private func loadUsage() {
+        usageSerial += 1
+        let serial = usageSerial
+        let store = usageStore
+        Task { [weak self] in
+            await store.reopen()
+            let snapshot = await store.load()
+            self?.applyUsage(snapshot, serial: serial)
+        }
+    }
+
+    private func applyUsage(_ snapshot: LaunchaHistoryStore.Snapshot, serial: Int) {
+        guard serial > appliedUsage else { return }
+        appliedUsage = serial
+        usage = snapshot.history
+        if isOpen { recompute(keepSelection: true) }
+    }
+
+    private func refreshRunning() {
+        running = appSwitching && runningApps != .any ? runningAppIDs() : []
     }
 }

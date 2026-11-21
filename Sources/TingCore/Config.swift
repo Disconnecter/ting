@@ -103,9 +103,19 @@ public enum Appearance: String, Codable, Sendable, CaseIterable {
     case dark, light
 }
 
+/// Where launcha ranks apps that are already running, when `LaunchaSettings.appSwitching` is on.
+public enum RunningAppsOrder: String, Codable, Sendable, CaseIterable {
+    /// Running apps first within each match group.
+    case higher
+    /// Running apps last within each match group: launcha is mostly for apps that are not open.
+    case lower
+    /// No preference (default).
+    case any
+}
+
 /// Launcha settings: the name search panel.
 /// JSON: {"hotkey": Hotkey string or null, "doubleTap": Bool, "doubleTapWindow": seconds, "calculator": Bool,
-///       "converter": Bool}.
+///       "converter": Bool, "appSwitching": Bool, "runningApps": "higher" | "lower" | "any"}.
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct LaunchaSettings: Equatable, Sendable, Codable {
     /// Allowed range of `doubleTapWindow`. Decoding clamps to it.
@@ -121,11 +131,16 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
     public var calculator: Bool = true
     /// A conversion such as `5 yd to m`, `255 to hex` or `now + 2 days` shows its value first. On by default.
     public var converter: Bool = true
+    /// Rank apps also by how often you switch to them outside launcha. Off by default: Ting then
+    /// keeps a local record of the apps you bring to the front.
+    public var appSwitching: Bool = false
+    /// Where running apps go in the results. Used only with `appSwitching`. An unknown value reads as `.any`.
+    public var runningApps: RunningAppsOrder = .any
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case hotkey, doubleTap, doubleTapWindow, calculator, converter
+        case hotkey, doubleTap, doubleTapWindow, calculator, converter, appSwitching, runningApps
     }
 
     public init(from decoder: Decoder) throws {
@@ -138,6 +153,9 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
         doubleTapWindow = min(max(window, range.lowerBound), range.upperBound)
         calculator = try container.decodeIfPresent(Bool.self, forKey: .calculator) ?? defaults.calculator
         converter = try container.decodeIfPresent(Bool.self, forKey: .converter) ?? defaults.converter
+        appSwitching = try container.decodeIfPresent(Bool.self, forKey: .appSwitching) ?? defaults.appSwitching
+        runningApps = (try? container.decodeIfPresent(String.self, forKey: .runningApps))
+            .flatMap { $0.flatMap(RunningAppsOrder.init(rawValue:)) } ?? defaults.runningApps
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -151,6 +169,8 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
         try container.encode(doubleTapWindow, forKey: .doubleTapWindow)
         try container.encode(calculator, forKey: .calculator)
         try container.encode(converter, forKey: .converter)
+        try container.encode(appSwitching, forKey: .appSwitching)
+        try container.encode(runningApps, forKey: .runningApps)
     }
 }
 

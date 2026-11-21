@@ -365,6 +365,16 @@ private struct LaunchaSettingsSection: View {
                            isOn: model.binding(\.launcha.calculator))
             SettingsToggle("Convert in launcha", detail: "Units, number bases and dates. Try 5 yd to m or now + 2 days.",
                            isOn: model.binding(\.launcha.converter))
+            SettingsToggle("Rank by apps you use",
+                           detail: "Also count the apps you switch to outside launcha, at most once per app every 30 minutes. Off by default; the record stays on this Mac, and turning this off deletes it.",
+                           isOn: model.binding(\.launcha.appSwitching))
+            Picker("Running apps", selection: model.binding(\.launcha.runningApps)) {
+                Text("Higher").tag(RunningAppsOrder.higher)
+                Text("Lower").tag(RunningAppsOrder.lower)
+                Text("No preference").tag(RunningAppsOrder.any)
+            }
+            .disabled(!launcha.appSwitching)
+            .help("Where launcha lists apps that are already open, among equally good matches.")
             SettingsToggle("Search Desktop, Documents and Downloads", detail: "Off by default. macOS may ask for folder access.", isOn: Binding(
                 get: { model.protectedFoldersAllowed },
                 set: { allowed in

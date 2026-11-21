@@ -233,6 +233,15 @@ public struct LaunchHistory: Equatable, Sendable, Codable {
         return true
     }
 
+    /// Records that the app `id` was in use at `time` (brought to the front outside launcha): at
+    /// most one event per `session`, so switching back and forth counts once. Returns true when
+    /// the history changed.
+    @discardableResult
+    public mutating func recordUse(id: String, at time: Date, session: TimeInterval = 30 * 60) -> Bool {
+        if let last = entries[id]?.events.last, time >= last, time.timeIntervalSince(last) < session { return false }
+        return record(.activated, id: id, at: time)
+    }
+
     /// Launches of `id` with time ≥ `now` − 7 days. The boundary is inclusive.
     public func recentCount(id: String, now: Date) -> Int {
         guard let events = entries[id]?.events else { return 0 }
@@ -297,6 +306,8 @@ public struct LaunchaMatch: Equatable, Sendable {
     public var lastLaunch: Date?
     /// Fuzzy alignment score of the best name; compare only within one query.
     public var score: Int
+    /// The app is running (`LaunchaRanking.running`).
+    public var isRunning = false
 
     public init(candidate: LaunchaCandidate, quality: MatchQuality?, recentCount: Int, lastLaunch: Date?, score: Int = 0) {
         self.candidate = candidate
@@ -318,42 +329,82 @@ public struct LaunchaMatch: Equatable, Sendable {
     }
 }
 
+/// What ranks launcha results besides the name.
+public struct LaunchaRanking: Sendable {
+    /// Launches through launcha and selecta.
+    public var history: LaunchHistory
+    /// Apps brought to the front outside launcha (`LaunchaSettings.appSwitching`); empty when off.
+    /// Counts and last use add to `history`.
+    public var usage: LaunchHistory
+    /// Candidate ids of running apps.
+    public var running: Set<String>
+    public var runningOrder: RunningAppsOrder
+
+    public init(history: LaunchHistory, usage: LaunchHistory = LaunchHistory(), running: Set<String> = [],
+                runningOrder: RunningAppsOrder = .any) {
+        self.history = history
+        self.usage = usage
+        self.running = running
+        self.runningOrder = runningOrder
+    }
+
+    func recentCount(id: String, now: Date) -> Int {
+        history.recentCount(id: id, now: now) + usage.recentCount(id: id, now: now)
+    }
+
+    func lastUse(id: String) -> Date? {
+        [history.lastLaunch(id: id), usage.lastLaunch(id: id)].compactMap { $0 }.max()
+    }
+}
+
 public enum LaunchaSearch {
     /// Candidates that match `query`, ranked. A query without letters or digits lists every
     /// candidate. Duplicate ids keep the first candidate. Order:
     /// 1. the query as typed (exact … substring), then scattered letters, then typos;
-    /// 2. more successful launches in the last 7 days (at `now`);
-    /// 3. later last launch (never launched is last);
-    /// 4. better `MatchQuality`;
-    /// 5. among scattered letters and typos: the higher alignment score;
-    /// 6. the shorter name ("Safari" before "1Password for Safari" for "sfr");
-    /// 7. name (localized, case-insensitive), then id.
+    /// 2. running apps first or last (`LaunchaRanking.runningOrder`, default no preference);
+    /// 3. more successful launches in the last 7 days (at `now`), plus app use outside launcha;
+    /// 4. later last launch or use (never launched is last);
+    /// 5. better `MatchQuality`;
+    /// 6. among scattered letters and typos: the higher alignment score;
+    /// 7. the shorter name ("Safari" before "1Password for Safari" for "sfr");
+    /// 8. name (localized, case-insensitive), then id.
     /// So a used app never beats an app whose name contains the query only because the user
     /// typed loosely. When nothing matches, a 3-letter query is tried again with one typo
     /// ("1pv" → 1Password); otherwise such typos would add noise to every short query.
     public static func results(for query: String, in candidates: [LaunchaCandidate],
                                history: LaunchHistory, now: Date) -> [LaunchaMatch] {
-        rankedMatches(for: query, in: candidates, history: history, now: now, candidate: { $0 }).map(\.match)
+        results(for: query, in: candidates, ranking: LaunchaRanking(history: history), now: now)
+    }
+
+    public static func results(for query: String, in candidates: [LaunchaCandidate],
+                               ranking: LaunchaRanking, now: Date) -> [LaunchaMatch] {
+        rankedMatches(for: query, in: candidates, ranking: ranking, now: now, candidate: { $0 }).map(\.match)
     }
 
     /// Rank the original targets, retaining the first one's identity and payload when ids coincide.
     public static func ranked<Entry>(for query: String, in entries: [Entry], history: LaunchHistory,
                                      now: Date, candidate: (Entry) -> LaunchaCandidate) -> [Entry] {
-        rankedMatches(for: query, in: entries, history: history, now: now, candidate: candidate).map(\.entry)
+        ranked(for: query, in: entries, ranking: LaunchaRanking(history: history), now: now, candidate: candidate)
     }
 
-    private static func rankedMatches<Entry>(for query: String, in entries: [Entry], history: LaunchHistory,
+    public static func ranked<Entry>(for query: String, in entries: [Entry], ranking: LaunchaRanking,
+                                     now: Date, candidate: (Entry) -> LaunchaCandidate) -> [Entry] {
+        rankedMatches(for: query, in: entries, ranking: ranking, now: now, candidate: candidate).map(\.entry)
+    }
+
+    private static func rankedMatches<Entry>(for query: String, in entries: [Entry], ranking: LaunchaRanking,
                                              now: Date, candidate: (Entry) -> LaunchaCandidate)
         -> [(entry: Entry, match: LaunchaMatch)] {
         let prepared = FuzzyQuery(query)
-        var matches = collect(prepared, fallback: false, in: entries, history: history, now: now, candidate: candidate)
+        var matches = collect(prepared, fallback: false, in: entries, ranking: ranking, now: now, candidate: candidate)
         if matches.isEmpty, prepared.hasFallback {
-            matches = collect(prepared, fallback: true, in: entries, history: history, now: now, candidate: candidate)
+            matches = collect(prepared, fallback: true, in: entries, ranking: ranking, now: now, candidate: candidate)
         }
-        return matches.sorted { ranksBefore($0.match, $1.match) }
+        let order = ranking.runningOrder
+        return matches.sorted { ranksBefore($0.match, $1.match, running: order) }
     }
 
-    private static func collect<Entry>(_ prepared: FuzzyQuery, fallback: Bool, in entries: [Entry], history: LaunchHistory,
+    private static func collect<Entry>(_ prepared: FuzzyQuery, fallback: Bool, in entries: [Entry], ranking: LaunchaRanking,
                                        now: Date, candidate: (Entry) -> LaunchaCandidate)
         -> [(entry: Entry, match: LaunchaMatch)] {
         let listAll = prepared.isEmpty
@@ -365,16 +416,18 @@ public enum LaunchaSearch {
             let best = listAll ? nil
                 : prepared.bestMatch(in: [candidate.name] + candidate.searchNames, fallback: fallback)?.match
             guard listAll || best != nil else { continue }
-            let match = LaunchaMatch(candidate: candidate, quality: best?.kind,
-                                     recentCount: history.recentCount(id: candidate.id, now: now),
-                                     lastLaunch: history.lastLaunch(id: candidate.id), score: best?.score ?? 0)
+            var match = LaunchaMatch(candidate: candidate, quality: best?.kind,
+                                     recentCount: ranking.recentCount(id: candidate.id, now: now),
+                                     lastLaunch: ranking.lastUse(id: candidate.id), score: best?.score ?? 0)
+            match.isRunning = ranking.running.contains(candidate.id)
             matches.append((entry, match))
         }
         return matches
     }
 
-    static func ranksBefore(_ lhs: LaunchaMatch, _ rhs: LaunchaMatch) -> Bool {
+    static func ranksBefore(_ lhs: LaunchaMatch, _ rhs: LaunchaMatch, running: RunningAppsOrder = .any) -> Bool {
         if lhs.tier != rhs.tier { return lhs.tier < rhs.tier }
+        if running != .any, lhs.isRunning != rhs.isRunning { return lhs.isRunning == (running == .higher) }
         if lhs.recentCount != rhs.recentCount { return lhs.recentCount > rhs.recentCount }
         if lhs.lastLaunch != rhs.lastLaunch {
             guard let left = lhs.lastLaunch else { return false }

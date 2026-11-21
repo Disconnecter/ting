@@ -268,6 +268,50 @@ import Testing
         extensionUsed.record(.opened, id: extensionApp.id, at: now - day)
         #expect(names("sfr", [safari, extensionApp], extensionUsed) == ["1Password for Safari", "Safari"])
     }
+    @Test func appUseCountsOncePerSession() {
+        var usage = LaunchHistory()
+        let first = usage.recordUse(id: safari.id, at: now)
+        let repeated = usage.recordUse(id: safari.id, at: now + 10 * 60)
+        let later = usage.recordUse(id: safari.id, at: now + 31 * 60)
+        #expect(first && !repeated && later)
+        #expect(usage.recentCount(id: safari.id, now: now + 3600) == 2)
+        #expect(usage.lastLaunch(id: safari.id) == now + 31 * 60)
+    }
+
+    @Test func appUseAndRunningAppsRank() {
+        let extensionApp = LaunchaCandidate.app(bundleID: "com.1password.safari", name: "1Password for Safari")
+        var usage = LaunchHistory()
+        usage.recordUse(id: safari.id, at: now - day)
+        // Use outside launcha adds to launches.
+        var launches = LaunchHistory()
+        launches.record(.opened, id: slack.id, at: now - 2 * day)
+        let ranking = LaunchaRanking(history: launches, usage: usage)
+        #expect(LaunchaSearch.results(for: "s", in: [slack, safari], ranking: ranking, now: now)
+            .map(\.candidate.name) == ["Safari", "Slack"])
+        usage.recordUse(id: slack.id, at: now - 3 * day)
+        #expect(LaunchaSearch.results(for: "s", in: [safari, slack], ranking: LaunchaRanking(history: launches, usage: usage), now: now)
+            .map(\.candidate.name) == ["Slack", "Safari"])
+        // Running apps first or last, still inside the match groups.
+        let running = LaunchaRanking(history: LaunchHistory(), running: [extensionApp.id], runningOrder: .higher)
+        #expect(LaunchaSearch.results(for: "safari", in: [safari, extensionApp], ranking: running, now: now)
+            .map(\.candidate.name) == ["1Password for Safari", "Safari"])
+        var lower = running
+        lower.runningOrder = .lower
+        lower.running = [safari.id]
+        #expect(LaunchaSearch.results(for: "safari", in: [safari, extensionApp], ranking: lower, now: now)
+            .map(\.candidate.name) == ["1Password for Safari", "Safari"])
+        #expect(LaunchaSearch.results(for: "sfr", in: [safari, extensionApp], ranking: lower, now: now)
+            .map(\.candidate.name) == ["1Password for Safari", "Safari"])
+        let terminal = LaunchaCandidate.app(bundleID: "com.apple.Terminal", name: "Terminal")
+        let telegram = LaunchaCandidate.app(bundleID: "ru.keepcoder.Telegram", name: "Telegram")
+        let telegramRunning = LaunchaRanking(history: LaunchHistory(), running: [telegram.id], runningOrder: .higher)
+        #expect(LaunchaSearch.results(for: "term", in: [telegram, terminal], ranking: telegramRunning, now: now)
+            .map(\.candidate.name) == ["Terminal", "Telegram"])
+        let neutral = LaunchaRanking(history: LaunchHistory(), running: [safari.id], runningOrder: .any)
+        #expect(LaunchaSearch.results(for: "sfr", in: [extensionApp, safari], ranking: neutral, now: now)
+            .map(\.candidate.name) == ["Safari", "1Password for Safari"])
+    }
+
     @Test func wrongLayoutQuery() {
         // "sa": Safari starts with it; Slack has the letters apart.
         #expect(names("ыф", [safari, slack, github], LaunchHistory()) == ["Safari", "Slack"])

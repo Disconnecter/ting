@@ -60,6 +60,17 @@ import Testing
         #expect(try decode(#"{"launcha":{"calculator":true}}"#).launcha.converter)
         let noConverter = try decode(#"{"launcha":{"converter":false}}"#)
         #expect(!noConverter.launcha.converter && noConverter.launcha.calculator)
+        // Ranking by app use is off and has no running-app preference in older files.
+        let older = try decode(#"{"launcha":{"calculator":true}}"#).launcha
+        #expect(!older.appSwitching && older.runningApps == .any)
+        let ranked = try decode(#"{"launcha":{"appSwitching":true,"runningApps":"lower"}}"#).launcha
+        #expect(ranked.appSwitching && ranked.runningApps == .lower)
+        #expect(try decode(#"{"launcha":{"runningApps":"sideways"}}"#).launcha.runningApps == .any)
+        var settings = LaunchaSettings()
+        settings.appSwitching = true
+        settings.runningApps = .higher
+        let data = try JSONEncoder().encode(settings)
+        #expect(try JSONDecoder().decode(LaunchaSettings.self, from: data) == settings)
         #expect(try ConfigCodec.decode(ConfigCodec.encode(noConverter)) == noConverter)
         // A modifier on its own parses, so the validator can report it.
         #expect(try decode(#"{"launcha":{"hotkey":"right-option"}}"#).launcha.hotkey == .modifierTap(.rightOption))

@@ -83,7 +83,10 @@ final class AppModel {
         launchaModel = LaunchaModel(opener: runner,
             historyStore: LaunchaHistoryStore(url: LaunchaHistoryStore.defaultURL(environment: environment)),
             consent: LaunchaConsentStore(url: LaunchaConsentStore.defaultURL(environment: environment)),
-            lowkeySites: { lowkey.refresh(); return lowkey.sites })
+            usageStore: LaunchaHistoryStore(url: LaunchaHistoryStore.usageURL(environment: environment)),
+            lowkeySites: { lowkey.refresh(); return lowkey.sites },
+            // Tests (no windows) never read the person's running apps.
+            runningAppIDs: presentsWindows ? { LaunchaModel.runningAppIDs() } : { [] })
         launcha = LaunchaController(model: launchaModel, presentsWindow: presentsWindows)
         launcha.onBeginShortcutRecording = { [weak self] owner in self?.beginHotkeyRecording(owner) }
         launcha.onEndShortcutRecording = { [weak self] owner in self?.endHotkeyRecording(owner) }

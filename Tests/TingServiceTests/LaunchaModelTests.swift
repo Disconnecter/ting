@@ -86,7 +86,7 @@ final class LaunchaModelTests: XCTestCase {
 
     private var policies: [ProtectedFolderPolicy] = []
 
-    private func makeModel(files: [URL] = [], spotlightDelay: Duration = .zero) throws -> Fixture {
+    private func makeModel(files: [URL] = [], spotlightDelay: Duration = .zero, running: Set<String> = []) throws -> Fixture {
         let apps = root.appendingPathComponent("Applications")
         try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
         let opener = FakeOpener()
@@ -95,7 +95,8 @@ final class LaunchaModelTests: XCTestCase {
         let historyURL = root.appendingPathComponent("history.json")
         let consentURL = root.appendingPathComponent("consent.json")
         let model = LaunchaModel(opener: opener, historyStore: LaunchaHistoryStore(url: historyURL),
-                                 consent: LaunchaConsentStore(url: consentURL), home: home, makeServices: { [weak self] policy in
+                                 consent: LaunchaConsentStore(url: consentURL), home: home,
+                                 runningAppIDs: { running }, makeServices: { [weak self] policy in
             self?.policies.append(policy)
             let desktop = home.appendingPathComponent("Desktop")
             return LaunchaModel.Services(
@@ -305,6 +306,43 @@ final class LaunchaModelTests: XCTestCase {
         let unwritable = LaunchaConsentStore(url: blocked.appendingPathComponent("consent.json"))
         XCTAssertFalse(unwritable.set(.allowed))
         XCTAssertEqual(unwritable.policy, .needsConsent, "The choice changes only when it was saved")
+    }
+
+    func testAppUseRanksOnlyWhileOnAndIsDeletedWhenOff() async throws {
+        let apps = root.appendingPathComponent("Applications")
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        _ = try app("Safari", id: "com.apple.Safari", in: apps)
+        _ = try app("1Password for Safari", id: "com.1password.safari", in: apps)
+        let fixture = try makeModel(running: ["app:com.apple.safari"])
+        let model = fixture.model
+        let usage = root.appendingPathComponent("app-usage.json")
+        model.open()
+        try await wait("index") { model.hasIndex && model.rows.count == 2 }
+
+        // Off: nothing is recorded and running apps do not move.
+        model.noteActivation(bundleID: "com.1password.safari")
+        model.query = "sfr"
+        XCTAssertEqual(model.rows.map(\.name), ["Safari", "1Password for Safari"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: usage.path))
+
+        model.appSwitching = true
+        model.noteActivation(bundleID: "com.1password.safari")
+        try await wait("usage") { model.rows.first?.name == "1Password for Safari" }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: usage.path))
+
+        // The running Safari goes first, above more use.
+        model.runningApps = .higher
+        XCTAssertEqual(model.rows.map(\.name), ["Safari", "1Password for Safari"])
+        model.runningApps = .lower
+        XCTAssertEqual(model.rows.map(\.name), ["1Password for Safari", "Safari"])
+
+        model.appSwitching = false
+        try await wait("deleted") { !FileManager.default.fileExists(atPath: usage.path) }
+        XCTAssertEqual(model.rows.map(\.name), ["Safari", "1Password for Safari"])
+        // A late activation never brings the record back.
+        model.noteActivation(bundleID: "com.1password.safari")
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: usage.path))
     }
 
     func testMicroAppsAreListedAndStartTheFlow() async throws {

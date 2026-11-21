@@ -40,7 +40,7 @@ public enum SettingsCatalog {
         .init(id: "sound", page: .general, title: "Sound and volume", keywords: "ting audio mute play"),
         .init(id: "updates", page: .general, title: "Updates and version", keywords: "automatic check homebrew sparkle"),
         .init(id: "activation", page: .activation, title: "Leader keys and menu delay", keywords: "activation second alternate unknown shake close shortcut hotkey"),
-        .init(id: "launcha", page: .activation, title: "launcha", keywords: "hotkey double tap interval calculator converter units dates protected folders desktop documents downloads search access"),
+        .init(id: "launcha", page: .activation, title: "launcha", keywords: "hotkey double tap interval calculator converter units dates protected folders desktop documents downloads search access rank ranking frequent usage switch switching running open apps fuzzy"),
         .init(id: "bindings", page: .bindings, title: "Bindings and app shortcuts", keywords: "sequence group application key url open direct hotkey conflict"),
         .init(id: "clipbawd", page: .clipbawd, title: "Clipboard and hotkey", keywords: "clipbawd enable recording copy paste image video markdown"),
         .init(id: "storage", page: .clipbawd, title: "Clipboard history storage", keywords: "persistent persistence disk memory count size megabytes mib mb days age retention clear limit"),

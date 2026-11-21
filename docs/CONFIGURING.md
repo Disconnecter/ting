@@ -68,8 +68,11 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `sound` (a system sound name from `/System/Library/Sounds` without extension,
   default `Purr`; an unknown name plays `Purr`), `soundVolume` (0–1, default 0.5),
   `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true,
-  "converter": true}`; `calculator` shows the value of a query such as `2*(3+4)` first in
-  launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`),
+  "converter": true, "appSwitching": false, "runningApps": "any"}`; `calculator` shows the value of a query such as `2*(3+4)` first in
+  launcha, `converter` that of `5 yd to m`, `255 to hex` or `now + 2 days`; `appSwitching` also ranks
+  apps by how often you bring them to the front outside launcha, counted at most once per app every
+  30 minutes; `runningApps` (`higher`, `lower` or `any`, used only with `appSwitching`) lists running
+  apps first or last among equally good matches),
   `clipbawd` (`{"hotkey": null, "enabled": true, "fetchLinks": false, "maxItems": 100,
   "persistent": false, "maxMegabytes": 50, "maxDays": 30,
   "excludedApps": [], "ignoredPrefixes": []}`; `enabled: false` turns clipbawd off: Ting never reads the clipboard,
