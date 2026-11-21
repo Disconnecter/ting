@@ -322,11 +322,12 @@ public enum LaunchaSearch {
     /// Candidates that match `query`, ranked. A query without letters or digits lists every
     /// candidate. Duplicate ids keep the first candidate. Order:
     /// 1. the query as typed (exact … substring), then scattered letters, then typos;
-    /// 2. among scattered letters and typos: the higher alignment score;
-    /// 3. more successful launches in the last 7 days (at `now`);
-    /// 4. later last launch (never launched is last);
-    /// 5. better `MatchQuality`;
-    /// 6. name (localized, case-insensitive), then id.
+    /// 2. more successful launches in the last 7 days (at `now`);
+    /// 3. later last launch (never launched is last);
+    /// 4. better `MatchQuality`;
+    /// 5. among scattered letters and typos: the higher alignment score;
+    /// 6. the shorter name ("Safari" before "1Password for Safari" for "sfr");
+    /// 7. name (localized, case-insensitive), then id.
     /// So a used app never beats an app whose name contains the query only because the user
     /// typed loosely. When nothing matches, a 3-letter query is tried again with one typo
     /// ("1pv" → 1Password); otherwise such typos would add noise to every short query.
@@ -374,7 +375,6 @@ public enum LaunchaSearch {
 
     static func ranksBefore(_ lhs: LaunchaMatch, _ rhs: LaunchaMatch) -> Bool {
         if lhs.tier != rhs.tier { return lhs.tier < rhs.tier }
-        if lhs.tier > 0, lhs.score != rhs.score { return lhs.score > rhs.score }
         if lhs.recentCount != rhs.recentCount { return lhs.recentCount > rhs.recentCount }
         if lhs.lastLaunch != rhs.lastLaunch {
             guard let left = lhs.lastLaunch else { return false }
@@ -383,6 +383,10 @@ public enum LaunchaSearch {
         }
         if lhs.quality != rhs.quality {
             return (lhs.quality?.rawValue ?? Int.max) < (rhs.quality?.rawValue ?? Int.max)
+        }
+        if lhs.tier > 0, lhs.score != rhs.score { return lhs.score > rhs.score }
+        if lhs.quality != nil, lhs.candidate.name.count != rhs.candidate.name.count {
+            return lhs.candidate.name.count < rhs.candidate.name.count
         }
         let order = lhs.candidate.name.localizedCaseInsensitiveCompare(rhs.candidate.name)
         if order != .orderedSame { return order == .orderedAscending }

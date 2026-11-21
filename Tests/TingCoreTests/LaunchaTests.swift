@@ -256,9 +256,17 @@ import Testing
         var used = LaunchHistory()
         for offset in 1...5 { used.record(.opened, id: telegram.id, at: now - Double(offset) * day) }
         #expect(names("term", [telegram, terminal], used) == ["Terminal", "Telegram"])
-        // Among loose matches the better alignment wins over usage.
-        #expect(names("sfri", [LaunchaCandidate.app(bundleID: "com.apple.SystemProfiler", name: "System Information"), safari],
-                      LaunchHistory()) == ["Safari", "System Information"])
+        // Without history the better alignment wins among loose matches, then the shorter name.
+        let info = LaunchaCandidate.app(bundleID: "com.apple.SystemProfiler", name: "System Information")
+        #expect(names("sfri", [info, safari], LaunchHistory()) == ["Safari", "System Information"])
+        #expect(names("sfr", [extensionApp, safari], LaunchHistory()) == ["Safari", "1Password for Safari"])
+        // Usage ranks loose matches too.
+        var infoUsed = LaunchHistory()
+        infoUsed.record(.opened, id: info.id, at: now - day)
+        #expect(names("sfri", [safari, info], infoUsed) == ["System Information", "Safari"])
+        var extensionUsed = LaunchHistory()
+        extensionUsed.record(.opened, id: extensionApp.id, at: now - day)
+        #expect(names("sfr", [safari, extensionApp], extensionUsed) == ["1Password for Safari", "Safari"])
     }
     @Test func wrongLayoutQuery() {
         // "sa": Safari starts with it; Slack has the letters apart.
