@@ -161,6 +161,43 @@ final class ClipbawdServiceTests: XCTestCase {
         XCTAssertGreaterThan(info.width, 0)
     }
 
+    func testPreviewForCopiedPNGPreservesFileCopyAndFallsBackAfterRemoval() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Capture.PNG")
+        let image = NSImage(size: NSSize(width: 12, height: 8), flipped: false) { rect in
+            NSColor.red.setFill()
+            rect.fill()
+            return true
+        }
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: url)
+
+        let item = NSPasteboardItem()
+        item.setString(url.absoluteString, forType: .fileURL)
+        item.setData(png, forType: .png)
+        let history = makeHistory()
+        defer { history.monitor.stop() }
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+        history.monitor.poll()
+        let entry = try XCTUnwrap(history.entries.first)
+        guard case .files(let files) = entry.content else { return XCTFail("Expected a file entry") }
+
+        let images = ClipImageCache()
+        let preview = await images.filePreview(files, maxPixels: 6)
+        XCTAssertEqual(preview?.size, NSSize(width: 6, height: 4))
+        ClipboardWriter.write(entry, to: pasteboard)
+        XCTAssertEqual(pasteboard.string(forType: .fileURL), url.absoluteString)
+        XCTAssertNil(pasteboard.data(forType: .png))
+
+        try FileManager.default.removeItem(at: url)
+        let missingPreview = await images.filePreview(files, maxPixels: 6)
+        XCTAssertNil(missingPreview)
+    }
+
     func testDisablingForgetsAndExcludingRemoves() {
         let history = makeHistory()
         defer { history.monitor.stop() }
