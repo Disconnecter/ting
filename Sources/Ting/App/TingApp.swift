@@ -53,5 +53,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 enum SettingsOpener {
     private static let controller = SettingsWindowController(model: AppModel.shared)
+
+    /// ⌘, as in every Mac app. Ting is not the active app while a launcher panel has the
+    /// keys, so its menu never sees the shortcut; the panels check for it themselves.
+    /// Matched by the Latin layout, so it also works with Ukrainian or Russian input.
+    nonisolated static func isShortcut(latin: String?, flags: NSEvent.ModifierFlags) -> Bool {
+        latin == "," && flags.intersection([.command, .shift, .option, .control]) == .command
+    }
+
     static func open() { controller.show() }
 }

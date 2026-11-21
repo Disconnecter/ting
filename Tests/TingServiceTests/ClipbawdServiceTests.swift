@@ -227,7 +227,7 @@ final class ClipbawdPanelTests: XCTestCase {
     /// clipbawd's own ⌘ keys first, then BobukPanel's `EditCommand` routing.
     func testKeyRoutes() {
         func command(_ keyCode: UInt16, _ latin: String?, _ flags: NSEvent.ModifierFlags) -> ClipbawdPanel.Command? {
-            ClipbawdPanel.command(EditCommand.classify(keyCode: keyCode, latin: latin, flags: flags), keyCode: keyCode, flags: flags)
+            ClipbawdPanel.command(EditCommand.classify(keyCode: keyCode, latin: latin, flags: flags), keyCode: keyCode, latin: latin, flags: flags)
         }
         XCTAssertEqual(command(VirtualKey.returnKey, nil, .command), .copy)
         XCTAssertEqual(command(VirtualKey.keypadEnter, nil, .command), .copy)
@@ -241,6 +241,8 @@ final class ClipbawdPanelTests: XCTestCase {
         XCTAssertNil(command(40, "k", [.command, .shift]))
         XCTAssertEqual(EditCommand.classify(keyCode: 40, latin: "k", flags: [.command, .shift]), .other)
         XCTAssertNil(command(12, "q", .command))
+        XCTAssertEqual(command(43, ",", .command), .settings)
+        XCTAssertNil(command(43, ",", [.command, .shift]))
         XCTAssertNil(command(VirtualKey.returnKey, nil, [.command, .shift]))
         XCTAssertNil(command(0, "a", []))
     }
@@ -250,19 +252,24 @@ final class ClipbawdPanelTests: XCTestCase {
         let panel = ClipbawdPanel()
         var copies = 0
         var deletes = 0
+        var settings = 0
         panel.onCopy = { copies += 1 }
         panel.onDelete = { deletes += 1 }
-        func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+        panel.onOpenSettings = { settings += 1 }
+        func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags, repeat isARepeat: Bool = false) throws -> NSEvent {
             try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
                                            windowNumber: panel.windowNumber, context: nil, characters: text,
-                                           charactersIgnoringModifiers: text, isARepeat: false, keyCode: code))
+                                           charactersIgnoringModifiers: text, isARepeat: isARepeat, keyCode: code))
         }
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(VirtualKey.returnKey, "\r", .command)))
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(VirtualKey.delete, "\u{7F}", [.command, .shift])))
         XCTAssertFalse(panel.performKeyEquivalent(with: try key(VirtualKey.delete, "\u{7F}", .command)))
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: "q")!, "q", .command)))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: ",")!, ",", .command)))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: ",")!, ",", .command, repeat: true)))
         XCTAssertEqual(copies, 1)
         XCTAssertEqual(deletes, 1)
+        XCTAssertEqual(settings, 1)
     }
 
     private func controller() -> (ClipbawdController, ClipbawdHistory, NSPasteboard) {

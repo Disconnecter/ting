@@ -17,6 +17,8 @@ final class ClipbawdPanel: BobukPanel {
     var onCopy: (() -> Void)?
     /// ⇧⌘⌫: remove the selected item.
     var onDelete: (() -> Void)?
+    /// ⌘,: open Settings.
+    var onOpenSettings: (() -> Void)?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 600), kind: .launcher)
@@ -41,23 +43,28 @@ final class ClipbawdPanel: BobukPanel {
         case copy
         /// ⇧⌘⌫: remove the selected item.
         case delete
+        /// ⌘,: open Settings.
+        case settings
     }
 
     /// nil leaves the key to BobukPanel (text commands, ⌘⌫ in the field, ⌘W, swallowing the rest).
-    static func command(_ command: EditCommand, keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Command? {
+    static func command(_ command: EditCommand, keyCode: UInt16, latin: String?, flags: NSEvent.ModifierFlags) -> Command? {
         if command == .commandReturn { return .copy }
         if flags.intersection([.command, .shift, .option, .control]) == [.command, .shift],
            keyCode == VirtualKey.delete { return .delete }
+        if SettingsOpener.isShortcut(latin: latin, flags: flags) { return .settings }
         return nil
     }
 
     private func handleCommand(_ event: NSEvent, _ command: EditCommand) -> Bool {
-        guard let shortcut = Self.command(command, keyCode: event.keyCode, flags: event.modifierFlags) else { return false }
+        guard let shortcut = Self.command(command, keyCode: event.keyCode, latin: KeyEquivalent.latin(of: event), flags: event.modifierFlags) else { return false }
         // While an input method composes, the key is swallowed and does nothing.
         guard !KeyEquivalent.isComposing(in: self) else { return true }
         switch shortcut {
         case .copy: onCopy?()
         case .delete: onDelete?()
+        case .settings:
+            if !event.isARepeat { onOpenSettings?() }
         }
         return true
     }
@@ -129,6 +136,8 @@ final class ClipbawdController: NSObject {
     var onToast: ((String) -> Void)?
     /// "Never Keep from <app>" was chosen.
     var onExclude: ((ClipSource) -> Void)?
+    /// ⌘, in the panel.
+    var onOpenSettings: (() -> Void)?
 
     var isOpen: Bool { state.isOpen }
 
@@ -222,6 +231,7 @@ final class ClipbawdController: NSObject {
         panel.onMove = { [weak self] delta in self?.state.move(by: delta) }
         panel.onCopy = { [weak self] in self?.choose(paste: false) }
         panel.onDelete = { [weak self] in self?.removeSelected() }
+        panel.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
         let view = ClipbawdView(state: state,
                                   onChoose: { [weak self] id, paste in self?.choose(id: id, paste: paste) },
                                   onDismiss: { [weak self] in self?.close() },

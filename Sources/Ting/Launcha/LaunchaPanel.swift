@@ -19,6 +19,8 @@ final class LaunchaPanel: BobukPanel {
     /// List navigation must keep working when Tab moves focus away from the search field.
     var onMove: ((Int) -> Void)?
     var onEditShortcut: (() -> Void)?
+    /// ⌘,: open Settings.
+    var onOpenSettings: (() -> Void)?
     /// Returns true only while the inline recorder owns the panel's key events.
     var onRecordShortcut: ((NSEvent) -> Bool)?
 
@@ -57,12 +59,15 @@ final class LaunchaPanel: BobukPanel {
         case editShortcut
         /// ⌘↩: show the selected result in Finder.
         case reveal
+        /// ⌘,: open Settings.
+        case settings
     }
 
     /// The launcha shortcut of a ⌘ key, matched by the Latin layout; nil leaves the key to
     /// BobukPanel (text commands, ⌘W, swallowing the rest).
     static func command(_ command: EditCommand, latin: String?, flags: NSEvent.ModifierFlags) -> Command? {
         if latin == "k", flags.intersection([.command, .shift, .option, .control]) == [.command, .shift] { return .editShortcut }
+        if SettingsOpener.isShortcut(latin: latin, flags: flags) { return .settings }
         return command == .commandReturn ? .reveal : nil
     }
 
@@ -77,6 +82,8 @@ final class LaunchaPanel: BobukPanel {
         switch shortcut {
         case .editShortcut: onEditShortcut?()
         case .reveal: onReveal?()
+        case .settings:
+            if !event.isARepeat { onOpenSettings?() }
         }
         return true
     }
@@ -110,6 +117,8 @@ final class LaunchaController: NSObject {
     var onBeginShortcutRecording: ((HotkeyRecordingOwner) -> Void)?
     var onEndShortcutRecording: ((HotkeyRecordingOwner) -> Void)?
     var onSaveShortcut: ((LaunchaRow, Hotkey?) throws -> Void)?
+    /// ⌘, in the panel.
+    var onOpenSettings: (() -> Void)?
 
     var isOpen: Bool { model.isOpen }
 
@@ -231,6 +240,7 @@ final class LaunchaController: NSObject {
         panel.onReveal = { [weak self] in self?.activate(reveal: true) }
         panel.onMove = { [weak self] delta in self?.model.moveSelection(by: delta) }
         panel.onEditShortcut = { [weak self] in self?.editShortcut() }
+        panel.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
         observers.append(NotificationCenter.default.addObserver(
             forName: .launchaEditAppShortcut, object: nil, queue: .main) { [weak self] notification in
                 MainActor.assumeIsolated {

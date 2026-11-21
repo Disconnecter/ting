@@ -146,8 +146,14 @@ final class LaunchaPanelKeyRouteTests: XCTestCase {
     func testAppCommandsAreSwallowedAndCommandWCloses() {
         XCTAssertEqual(route(12, "q", .command), .swallow)
         XCTAssertEqual(route(13, "w", .command), .close)
-        XCTAssertEqual(route(43, ",", .command), .swallow)
         XCTAssertEqual(route(4, "h", .command), .swallow)
+    }
+
+    func testCommandCommaOpensSettings() {
+        XCTAssertEqual(route(43, ",", .command), .launcha(.settings))
+        // Only plain ⌘,: other modifiers stay swallowed.
+        XCTAssertEqual(route(43, ",", [.command, .shift]), .swallow)
+        XCTAssertEqual(route(43, ",", [.command, .option]), .swallow)
     }
 
     /// The real panel: key equivalents reach launcha's callbacks or are swallowed. The panel is
@@ -157,21 +163,26 @@ final class LaunchaPanelKeyRouteTests: XCTestCase {
         let panel = LaunchaPanel()
         var reveals = 0
         var edits = 0
+        var settings = 0
         var dismissals: [BobukPanel.DismissReason] = []
         panel.onReveal = { reveals += 1 }
         panel.onEditShortcut = { edits += 1 }
+        panel.onOpenSettings = { settings += 1 }
         panel.onDismiss = { dismissals.append($0) }
-        func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+        func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags, repeat isARepeat: Bool = false) throws -> NSEvent {
             try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
                                            windowNumber: panel.windowNumber, context: nil, characters: text,
-                                           charactersIgnoringModifiers: text, isARepeat: false, keyCode: code))
+                                           charactersIgnoringModifiers: text, isARepeat: isARepeat, keyCode: code))
         }
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(VirtualKey.returnKey, "\r", .command)))
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: "k")!, "k", [.command, .shift])))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: ",")!, ",", .command)))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: ",")!, ",", .command, repeat: true)))
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: "q")!, "q", .command)))
         XCTAssertFalse(panel.performKeyEquivalent(with: try key(VirtualKey.left, "", .command)), "the field moves to the line start")
         XCTAssertEqual(reveals, 1)
         XCTAssertEqual(edits, 1)
+        XCTAssertEqual(settings, 1)
         XCTAssertEqual(dismissals, [])
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: "w")!, "w", .command)))
         XCTAssertEqual(dismissals, [.commandW])
