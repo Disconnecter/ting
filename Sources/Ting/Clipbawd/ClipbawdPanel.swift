@@ -1,6 +1,7 @@
 // The clipbawd window: a non-activating panel like launcha, so the app in front keeps its
 // place and ↩ pastes into it. Search on top, the history on the left, the preview on the right.
 import AppKit
+import ImageIO
 import SwiftUI
 import TingCore
 import BobukUI
@@ -16,6 +17,8 @@ final class ClipbawdPanel: BobukPanel {
     var onCopy: (() -> Void)?
     /// ⇧⌘⌫: remove the selected item.
     var onDelete: (() -> Void)?
+    /// ⌘,: open Settings.
+    var onOpenSettings: (() -> Void)?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 600), kind: .launcher)
@@ -40,23 +43,28 @@ final class ClipbawdPanel: BobukPanel {
         case copy
         /// ⇧⌘⌫: remove the selected item.
         case delete
+        /// ⌘,: open Settings.
+        case settings
     }
 
     /// nil leaves the key to BobukPanel (text commands, ⌘⌫ in the field, ⌘W, swallowing the rest).
-    static func command(_ command: EditCommand, keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Command? {
+    static func command(_ command: EditCommand, keyCode: UInt16, latin: String?, flags: NSEvent.ModifierFlags) -> Command? {
         if command == .commandReturn { return .copy }
         if flags.intersection([.command, .shift, .option, .control]) == [.command, .shift],
            keyCode == VirtualKey.delete { return .delete }
+        if SettingsOpener.isShortcut(latin: latin, flags: flags) { return .settings }
         return nil
     }
 
     private func handleCommand(_ event: NSEvent, _ command: EditCommand) -> Bool {
-        guard let shortcut = Self.command(command, keyCode: event.keyCode, flags: event.modifierFlags) else { return false }
+        guard let shortcut = Self.command(command, keyCode: event.keyCode, latin: KeyEquivalent.latin(of: event), flags: event.modifierFlags) else { return false }
         // While an input method composes, the key is swallowed and does nothing.
         guard !KeyEquivalent.isComposing(in: self) else { return true }
         switch shortcut {
         case .copy: onCopy?()
         case .delete: onDelete?()
+        case .settings:
+            if !event.isARepeat { onOpenSettings?() }
         }
         return true
     }
@@ -128,6 +136,8 @@ final class ClipbawdController: NSObject {
     var onToast: ((String) -> Void)?
     /// "Never Keep from <app>" was chosen.
     var onExclude: ((ClipSource) -> Void)?
+    /// ⌘, in the panel.
+    var onOpenSettings: (() -> Void)?
 
     var isOpen: Bool { state.isOpen }
 
@@ -221,6 +231,7 @@ final class ClipbawdController: NSObject {
         panel.onMove = { [weak self] delta in self?.state.move(by: delta) }
         panel.onCopy = { [weak self] in self?.choose(paste: false) }
         panel.onDelete = { [weak self] in self?.removeSelected() }
+        panel.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
         let view = ClipbawdView(state: state,
                                   onChoose: { [weak self] id, paste in self?.choose(id: id, paste: paste) },
                                   onDismiss: { [weak self] in self?.close() },
@@ -252,13 +263,33 @@ final class ClipImageCache {
         if let image = cache.object(forKey: cacheKey) { return image }
         let cgImage = await Task.detached(priority: .userInitiated) { Self.thumbnail(data, maxPixels: maxPixels) }.value
         guard let cgImage else { return nil }
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        let image = Self.displayImage(cgImage)
         cache.setObject(image, forKey: cacheKey)
         return image
     }
 
+    func filePreview(_ files: [ClipFile], maxPixels: Int) async -> NSImage? {
+        guard files.count == 1, let file = files.first, !file.isDirectory else { return nil }
+        let url = URL(fileURLWithPath: file.path)
+        guard ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()) else { return nil }
+        let cgImage = await Task.detached(priority: .userInitiated) { () -> CGImage? in
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            return Self.thumbnail(source, maxPixels: maxPixels)
+        }.value
+        return cgImage.map(Self.displayImage)
+    }
+
+    private static func displayImage(_ cgImage: CGImage) -> NSImage {
+        NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
     nonisolated static func thumbnail(_ data: Data, maxPixels: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return thumbnail(source, maxPixels: maxPixels)
+    }
+
+    private nonisolated static func thumbnail(_ source: CGImageSource, maxPixels: Int) -> CGImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,

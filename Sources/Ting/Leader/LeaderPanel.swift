@@ -11,6 +11,8 @@ final class LeaderPanel: BobukPanel {
     var onKeyDown: ((NSEvent) -> Void)?
     /// Key releases, a second source for the leader release next to Carbon.
     var onKeyUp: ((NSEvent) -> Void)?
+    /// ⌘,: open Settings.
+    var onOpenSettings: (() -> Void)?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 460, height: 640), kind: .launcher)
@@ -26,10 +28,14 @@ final class LeaderPanel: BobukPanel {
     }
 
     /// AppKit also offers plain keys and arrows here before `sendEvent`: they must reach
-    /// `onKeyDown`, so only ⌘ shortcuts are handled here (BobukPanel swallows them, so ⌘Q
-    /// does not quit Ting while the menu is up).
+    /// `onKeyDown`, so only ⌘ shortcuts are handled here (⌘, opens Settings; BobukPanel
+    /// swallows the rest, so ⌘Q does not quit Ting while the menu is up).
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, event.modifierFlags.contains(.command) else { return false }
+        if SettingsOpener.isShortcut(latin: KeyEquivalent.latin(of: event), flags: event.modifierFlags) {
+            if !event.isARepeat { onOpenSettings?() }
+            return true
+        }
         return super.performKeyEquivalent(with: event)
     }
 }
@@ -57,6 +63,8 @@ final class LeaderController: NSObject {
     var onRun: ((Item) -> Void)?
     /// A root double tap of the leader: the menu is closed, open launcha.
     var onDoubleTap: (() -> Void)?
+    /// ⌘, in the menu.
+    var onOpenSettings: (() -> Void)?
 
     private var machine = LeaderMachine(items: [])
     private var doubleTap = LeaderDoubleTap()
@@ -277,6 +285,7 @@ final class LeaderController: NSObject {
             self.close()
         }
         panel.onKeyDown = { [weak self] event in self?.handleKeyDown(event) }
+        panel.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
         panel.onKeyUp = { [weak self] event in
             guard let self else { return }
             for (source, code) in self.leaderKeyCodes where code == event.keyCode { self.leaderReleased(source) }

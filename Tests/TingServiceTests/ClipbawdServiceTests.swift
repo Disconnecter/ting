@@ -161,6 +161,43 @@ final class ClipbawdServiceTests: XCTestCase {
         XCTAssertGreaterThan(info.width, 0)
     }
 
+    func testPreviewForCopiedPNGPreservesFileCopyAndFallsBackAfterRemoval() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Capture.PNG")
+        let image = NSImage(size: NSSize(width: 12, height: 8), flipped: false) { rect in
+            NSColor.red.setFill()
+            rect.fill()
+            return true
+        }
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: url)
+
+        let item = NSPasteboardItem()
+        item.setString(url.absoluteString, forType: .fileURL)
+        item.setData(png, forType: .png)
+        let history = makeHistory()
+        defer { history.monitor.stop() }
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+        history.monitor.poll()
+        let entry = try XCTUnwrap(history.entries.first)
+        guard case .files(let files) = entry.content else { return XCTFail("Expected a file entry") }
+
+        let images = ClipImageCache()
+        let preview = await images.filePreview(files, maxPixels: 6)
+        XCTAssertEqual(preview?.size, NSSize(width: 6, height: 4))
+        ClipboardWriter.write(entry, to: pasteboard)
+        XCTAssertEqual(pasteboard.string(forType: .fileURL), url.absoluteString)
+        XCTAssertNil(pasteboard.data(forType: .png))
+
+        try FileManager.default.removeItem(at: url)
+        let missingPreview = await images.filePreview(files, maxPixels: 6)
+        XCTAssertNil(missingPreview)
+    }
+
     func testDisablingForgetsAndExcludingRemoves() {
         let history = makeHistory()
         defer { history.monitor.stop() }
@@ -190,7 +227,7 @@ final class ClipbawdPanelTests: XCTestCase {
     /// clipbawd's own ⌘ keys first, then BobukPanel's `EditCommand` routing.
     func testKeyRoutes() {
         func command(_ keyCode: UInt16, _ latin: String?, _ flags: NSEvent.ModifierFlags) -> ClipbawdPanel.Command? {
-            ClipbawdPanel.command(EditCommand.classify(keyCode: keyCode, latin: latin, flags: flags), keyCode: keyCode, flags: flags)
+            ClipbawdPanel.command(EditCommand.classify(keyCode: keyCode, latin: latin, flags: flags), keyCode: keyCode, latin: latin, flags: flags)
         }
         XCTAssertEqual(command(VirtualKey.returnKey, nil, .command), .copy)
         XCTAssertEqual(command(VirtualKey.keypadEnter, nil, .command), .copy)
@@ -204,6 +241,8 @@ final class ClipbawdPanelTests: XCTestCase {
         XCTAssertNil(command(40, "k", [.command, .shift]))
         XCTAssertEqual(EditCommand.classify(keyCode: 40, latin: "k", flags: [.command, .shift]), .other)
         XCTAssertNil(command(12, "q", .command))
+        XCTAssertEqual(command(43, ",", .command), .settings)
+        XCTAssertNil(command(43, ",", [.command, .shift]))
         XCTAssertNil(command(VirtualKey.returnKey, nil, [.command, .shift]))
         XCTAssertNil(command(0, "a", []))
     }
@@ -213,19 +252,24 @@ final class ClipbawdPanelTests: XCTestCase {
         let panel = ClipbawdPanel()
         var copies = 0
         var deletes = 0
+        var settings = 0
         panel.onCopy = { copies += 1 }
         panel.onDelete = { deletes += 1 }
-        func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+        panel.onOpenSettings = { settings += 1 }
+        func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags, repeat isARepeat: Bool = false) throws -> NSEvent {
             try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
                                            windowNumber: panel.windowNumber, context: nil, characters: text,
-                                           charactersIgnoringModifiers: text, isARepeat: false, keyCode: code))
+                                           charactersIgnoringModifiers: text, isARepeat: isARepeat, keyCode: code))
         }
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(VirtualKey.returnKey, "\r", .command)))
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(VirtualKey.delete, "\u{7F}", [.command, .shift])))
         XCTAssertFalse(panel.performKeyEquivalent(with: try key(VirtualKey.delete, "\u{7F}", .command)))
         XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: "q")!, "q", .command)))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: ",")!, ",", .command)))
+        XCTAssertTrue(panel.performKeyEquivalent(with: try key(KeyCodes.code(for: ",")!, ",", .command, repeat: true)))
         XCTAssertEqual(copies, 1)
         XCTAssertEqual(deletes, 1)
+        XCTAssertEqual(settings, 1)
     }
 
     private func controller() -> (ClipbawdController, ClipbawdHistory, NSPasteboard) {
