@@ -248,8 +248,10 @@ import Testing
         #expect(names("1pwd", [extensionApp, safari, password], h) == ["1Password", "1Password for Safari"])
         #expect(names("1pvd", [safari, password], h) == ["1Password"])
         #expect(LaunchaSearch.results(for: "1pvd", in: [password], history: h, now: now).first?.quality == .typo)
-        // Typos only from four letters on.
-        #expect(names("1pv", [password], h).isEmpty)
+        // Three letters get a typo only when nothing else matches.
+        #expect(names("1pv", [safari, password], h) == ["1Password"])
+        #expect(names("saf", [safari, LaunchaCandidate.app(bundleID: "com.spotify.client", name: "Spotify")], h) == ["Safari"])
+        #expect(names("1v", [password], h).isEmpty)
         // A used app with the letters apart never beats a name that contains the query.
         var used = LaunchHistory()
         for offset in 1...5 { used.record(.opened, id: telegram.id, at: now - Double(offset) * day) }

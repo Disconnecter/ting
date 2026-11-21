@@ -328,7 +328,8 @@ public enum LaunchaSearch {
     /// 5. better `MatchQuality`;
     /// 6. name (localized, case-insensitive), then id.
     /// So a used app never beats an app whose name contains the query only because the user
-    /// typed loosely.
+    /// typed loosely. When nothing matches, a 3-letter query is tried again with one typo
+    /// ("1pv" → 1Password); otherwise such typos would add noise to every short query.
     public static func results(for query: String, in candidates: [LaunchaCandidate],
                                history: LaunchHistory, now: Date) -> [LaunchaMatch] {
         rankedMatches(for: query, in: candidates, history: history, now: now, candidate: { $0 }).map(\.match)
@@ -344,20 +345,31 @@ public enum LaunchaSearch {
                                              now: Date, candidate: (Entry) -> LaunchaCandidate)
         -> [(entry: Entry, match: LaunchaMatch)] {
         let prepared = FuzzyQuery(query)
+        var matches = collect(prepared, fallback: false, in: entries, history: history, now: now, candidate: candidate)
+        if matches.isEmpty, prepared.hasFallback {
+            matches = collect(prepared, fallback: true, in: entries, history: history, now: now, candidate: candidate)
+        }
+        return matches.sorted { ranksBefore($0.match, $1.match) }
+    }
+
+    private static func collect<Entry>(_ prepared: FuzzyQuery, fallback: Bool, in entries: [Entry], history: LaunchHistory,
+                                       now: Date, candidate: (Entry) -> LaunchaCandidate)
+        -> [(entry: Entry, match: LaunchaMatch)] {
         let listAll = prepared.isEmpty
         var seen: Set<String> = []
         var matches: [(entry: Entry, match: LaunchaMatch)] = []
         for entry in entries {
             let candidate = candidate(entry)
             guard seen.insert(candidate.id).inserted else { continue }
-            let best = listAll ? nil : prepared.bestMatch(in: [candidate.name] + candidate.searchNames)?.match
+            let best = listAll ? nil
+                : prepared.bestMatch(in: [candidate.name] + candidate.searchNames, fallback: fallback)?.match
             guard listAll || best != nil else { continue }
             let match = LaunchaMatch(candidate: candidate, quality: best?.kind,
                                      recentCount: history.recentCount(id: candidate.id, now: now),
                                      lastLaunch: history.lastLaunch(id: candidate.id), score: best?.score ?? 0)
             matches.append((entry, match))
         }
-        return matches.sorted { ranksBefore($0.match, $1.match) }
+        return matches
     }
 
     static func ranksBefore(_ lhs: LaunchaMatch, _ rhs: LaunchaMatch) -> Bool {
