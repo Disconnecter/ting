@@ -1,3 +1,4 @@
+import BobukCore
 import Foundation
 
 /// The remembered values: by micro-app id, the parameter values of the last started run, as plain text.
@@ -190,15 +191,12 @@ public struct MicroAppForm: Equatable, Sendable {
 
 /// Letters typed in a choice field filter its options.
 public enum MicroAppChoiceFilter {
-    /// The options that contain `query`, ignoring case and diacritics; the ones that start with it
-    /// come first. An empty query gives every option. File order is kept within each group.
+    /// The options that `query` matches fuzzily (`FuzzyMatcher`: case, diacritics, scattered
+    /// letters, typos in longer queries, the wrong keyboard layout). Better matches come first:
+    /// exact, prefix, word start, initials, substring, scattered, typo; file order within equals.
+    /// A query without letters or digits gives every option.
     public static func options(_ choices: [String], matching query: String) -> [String] {
-        let query = query.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return choices }
-        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
-        let starts = choices.filter { $0.range(of: query, options: options.union(.anchored)) != nil }
-        let contains = choices.filter { !starts.contains($0) && $0.range(of: query, options: options) != nil }
-        return starts + contains
+        FuzzyMatcher.filter(choices, matching: query) { [$0] }
     }
 
     /// The marked option after the filter changed: the marked one while it still matches, else the

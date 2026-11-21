@@ -1,5 +1,6 @@
 // Bindings: the "Sequences" table over `BindingTree` and `Config.items`.
 import AppKit
+import BobukCore
 import SwiftUI
 import TingCore
 import UniformTypeIdentifiers
@@ -41,9 +42,10 @@ struct BindingsSettings: View {
         let all = allRows
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return all }
+        // Names and targets match fuzzily, key sequences as typed ("g s"). The tree order stays.
+        let fuzzy = FuzzyQuery(query)
         return all.filter { row in
-            row.item.label.localizedCaseInsensitiveContains(query)
-                || target(of: row.item).localizedCaseInsensitiveContains(query)
+            fuzzy.bestMatch(in: [row.item.label, target(of: row.item)]) != nil
                 || row.sequence.joined(separator: " ").contains(query.lowercased())
         }
     }

@@ -1,3 +1,4 @@
+import BobukCore
 import Foundation
 
 // MARK: - Candidates
@@ -151,109 +152,23 @@ extension MicroAppCatalog {
 
 // MARK: - Name matching
 
-/// How a query matches a name. Smaller is better. Used only as a tie-breaker after usage.
-public enum MatchQuality: Int, Comparable, Sendable, CaseIterable {
-    /// The whole name, ignoring case, diacritics, spaces and punctuation.
-    case exact
-    /// The start of the name.
-    case prefix
-    /// The start of a later word, or each query word starts a name word in order.
-    case wordStart
-    /// The first letters of the name words, in order ("vsc" → "Visual Studio Code").
-    case initials
-    /// Anywhere in the name.
-    case substring
-
-    public static func < (lhs: MatchQuality, rhs: MatchQuality) -> Bool { lhs.rawValue < rhs.rawValue }
-}
+/// How a query matches a name. Smaller is better. BobukKit's `FuzzyMatchKind`:
+/// exact, prefix, wordStart, initials, substring, then scattered letters and typos.
+public typealias MatchQuality = FuzzyMatchKind
 
 public enum NameMatcher {
     /// Best match of `query` against `name`, or nil. Also tries `query` as if it was typed
     /// with the wrong keyboard layout (Russian or Ukrainian ↔ US), see `KeyboardLayoutSwap`.
     /// An empty query (or one without letters or digits) returns nil.
     public static func match(_ query: String, name: String) -> MatchQuality? {
-        let target = MatchName(name)
-        guard !target.words.isEmpty else { return nil }
-        return KeyboardLayoutSwap.variants(of: query)
-            .compactMap { match(words: words(in: $0), target: target) }
-            .min()
+        FuzzyMatcher.match(query, in: name)?.kind
     }
 
     /// Lower case without diacritics: "Café" → "cafe", "Ёлка" → "елка".
-    public static func fold(_ text: String) -> String {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil).lowercased()
-    }
+    public static func fold(_ text: String) -> String { FuzzyMatcher.fold(text) }
 
     /// Folded words of a query: split at every character that is not a letter or a digit.
-    static func words(in query: String) -> [String] {
-        fold(query).split { !$0.isLetter && !$0.isNumber }.map(String.init)
-    }
-
-    private static func match(words query: [String], target: MatchName) -> MatchQuality? {
-        guard !query.isEmpty else { return nil }
-        let compact = query.joined()
-        if target.compact == compact { return .exact }
-        if target.compact.hasPrefix(compact) { return .prefix }
-        if target.tails.dropFirst().contains(where: { $0.hasPrefix(compact) }) { return .wordStart }
-        if query.count > 1, startsWordsInOrder(query, target.words) { return .wordStart }
-        if compact.count > 1, isSubsequence(compact, of: target.initials) { return .initials }
-        if target.compact.contains(compact) { return .substring }
-        return nil
-    }
-
-    private static func startsWordsInOrder(_ query: [String], _ words: [String]) -> Bool {
-        var index = words.startIndex
-        for token in query {
-            guard let found = words[index...].firstIndex(where: { $0.hasPrefix(token) }) else { return false }
-            index = words.index(after: found)
-        }
-        return true
-    }
-
-    private static func isSubsequence(_ text: String, of other: String) -> Bool {
-        var rest = Substring(other)
-        for character in text {
-            guard let found = rest.firstIndex(of: character) else { return false }
-            rest = rest[rest.index(after: found)...]
-        }
-        return true
-    }
-}
-
-/// A name prepared for matching.
-private struct MatchName {
-    /// Folded words. Split at non-letters/digits and at camel case ("FaceTime" → face, time).
-    let words: [String]
-    let compact: String
-    /// words[i...].joined() for every i.
-    let tails: [String]
-    let initials: String
-
-    init(_ name: String) {
-        var raw: [String] = []
-        var current = ""
-        var previous: Character?
-        for character in name {
-            guard character.isLetter || character.isNumber else {
-                if !current.isEmpty { raw.append(current) }
-                current = ""
-                previous = nil
-                continue
-            }
-            if let previous, previous.isLowercase, character.isUppercase, !current.isEmpty {
-                raw.append(current)
-                current = ""
-            }
-            current.append(character)
-            previous = character
-        }
-        if !current.isEmpty { raw.append(current) }
-        let folded = raw.map(NameMatcher.fold).filter { !$0.isEmpty }
-        words = folded
-        compact = folded.joined()
-        tails = folded.indices.map { folded[$0...].joined() }
-        initials = String(folded.compactMap(\.first))
-    }
+    static func words(in query: String) -> [String] { FuzzyMatcher.words(in: query) }
 }
 
 // MARK: - Launch history
@@ -380,22 +295,40 @@ public struct LaunchaMatch: Equatable, Sendable {
     /// Successful launches in the last 7 days.
     public var recentCount: Int
     public var lastLaunch: Date?
+    /// Fuzzy alignment score of the best name; compare only within one query.
+    public var score: Int
 
-    public init(candidate: LaunchaCandidate, quality: MatchQuality?, recentCount: Int, lastLaunch: Date?) {
+    public init(candidate: LaunchaCandidate, quality: MatchQuality?, recentCount: Int, lastLaunch: Date?, score: Int = 0) {
         self.candidate = candidate
         self.quality = quality
         self.recentCount = recentCount
         self.lastLaunch = lastLaunch
+        self.score = score
+    }
+
+    /// 0: the query appears as typed (exact … substring); 1: scattered letters; 2: typos.
+    /// An empty query is tier 0.
+    var tier: Int {
+        switch quality {
+        case nil: return 0
+        case let quality? where quality.isContiguous: return 0
+        case .scattered?: return 1
+        default: return 2
+        }
     }
 }
 
 public enum LaunchaSearch {
     /// Candidates that match `query`, ranked. A query without letters or digits lists every
     /// candidate. Duplicate ids keep the first candidate. Order:
-    /// 1. more successful launches in the last 7 days (at `now`);
-    /// 2. later last launch (never launched is last);
-    /// 3. better `MatchQuality`;
-    /// 4. name (localized, case-insensitive), then id.
+    /// 1. the query as typed (exact … substring), then scattered letters, then typos;
+    /// 2. among scattered letters and typos: the higher alignment score;
+    /// 3. more successful launches in the last 7 days (at `now`);
+    /// 4. later last launch (never launched is last);
+    /// 5. better `MatchQuality`;
+    /// 6. name (localized, case-insensitive), then id.
+    /// So a used app never beats an app whose name contains the query only because the user
+    /// typed loosely.
     public static func results(for query: String, in candidates: [LaunchaCandidate],
                                history: LaunchHistory, now: Date) -> [LaunchaMatch] {
         rankedMatches(for: query, in: candidates, history: history, now: now, candidate: { $0 }).map(\.match)
@@ -410,24 +343,26 @@ public enum LaunchaSearch {
     private static func rankedMatches<Entry>(for query: String, in entries: [Entry], history: LaunchHistory,
                                              now: Date, candidate: (Entry) -> LaunchaCandidate)
         -> [(entry: Entry, match: LaunchaMatch)] {
-        let listAll = KeyboardLayoutSwap.variants(of: query).allSatisfy { NameMatcher.words(in: $0).isEmpty }
+        let prepared = FuzzyQuery(query)
+        let listAll = prepared.isEmpty
         var seen: Set<String> = []
         var matches: [(entry: Entry, match: LaunchaMatch)] = []
         for entry in entries {
             let candidate = candidate(entry)
             guard seen.insert(candidate.id).inserted else { continue }
-            let quality = listAll ? nil : ([candidate.name] + candidate.searchNames)
-                .compactMap { NameMatcher.match(query, name: $0) }.min()
-            guard listAll || quality != nil else { continue }
-            let match = LaunchaMatch(candidate: candidate, quality: quality,
-                                        recentCount: history.recentCount(id: candidate.id, now: now),
-                                        lastLaunch: history.lastLaunch(id: candidate.id))
+            let best = listAll ? nil : prepared.bestMatch(in: [candidate.name] + candidate.searchNames)?.match
+            guard listAll || best != nil else { continue }
+            let match = LaunchaMatch(candidate: candidate, quality: best?.kind,
+                                     recentCount: history.recentCount(id: candidate.id, now: now),
+                                     lastLaunch: history.lastLaunch(id: candidate.id), score: best?.score ?? 0)
             matches.append((entry, match))
         }
         return matches.sorted { ranksBefore($0.match, $1.match) }
     }
 
     static func ranksBefore(_ lhs: LaunchaMatch, _ rhs: LaunchaMatch) -> Bool {
+        if lhs.tier != rhs.tier { return lhs.tier < rhs.tier }
+        if lhs.tier > 0, lhs.score != rhs.score { return lhs.score > rhs.score }
         if lhs.recentCount != rhs.recentCount { return lhs.recentCount > rhs.recentCount }
         if lhs.lastLaunch != rhs.lastLaunch {
             guard let left = lhs.lastLaunch else { return false }

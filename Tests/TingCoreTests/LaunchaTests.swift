@@ -239,8 +239,28 @@ import Testing
         #expect(all.map(\.candidate.name) == ["GitHub", "Safari", "Slack"])
         #expect(all.allSatisfy { $0.quality == nil })
     }
+    @Test func scatteredLettersAndTypos() {
+        let password = LaunchaCandidate.app(bundleID: "com.1password.1password", name: "1Password")
+        let extensionApp = LaunchaCandidate.app(bundleID: "com.1password.safari", name: "1Password for Safari")
+        let terminal = LaunchaCandidate.app(bundleID: "com.apple.Terminal", name: "Terminal")
+        let telegram = LaunchaCandidate.app(bundleID: "ru.keepcoder.Telegram", name: "Telegram")
+        let h = LaunchHistory()
+        #expect(names("1pwd", [extensionApp, safari, password], h) == ["1Password", "1Password for Safari"])
+        #expect(names("1pvd", [safari, password], h) == ["1Password"])
+        #expect(LaunchaSearch.results(for: "1pvd", in: [password], history: h, now: now).first?.quality == .typo)
+        // Typos only from four letters on.
+        #expect(names("1pv", [password], h).isEmpty)
+        // A used app with the letters apart never beats a name that contains the query.
+        var used = LaunchHistory()
+        for offset in 1...5 { used.record(.opened, id: telegram.id, at: now - Double(offset) * day) }
+        #expect(names("term", [telegram, terminal], used) == ["Terminal", "Telegram"])
+        // Among loose matches the better alignment wins over usage.
+        #expect(names("sfri", [LaunchaCandidate.app(bundleID: "com.apple.SystemProfiler", name: "System Information"), safari],
+                      LaunchHistory()) == ["Safari", "System Information"])
+    }
     @Test func wrongLayoutQuery() {
-        #expect(names("ыф", [safari, slack, github], LaunchHistory()) == ["Safari"])
+        // "sa": Safari starts with it; Slack has the letters apart.
+        #expect(names("ыф", [safari, slack, github], LaunchHistory()) == ["Safari", "Slack"])
     }
 }
 

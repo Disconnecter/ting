@@ -1,3 +1,4 @@
+import BobukCore
 import SwiftUI
 import TingCore
 
@@ -27,9 +28,7 @@ final class MicroAppInteractionModel {
     var multiline: Bool { if case .ask(_, _, _, let value, _) = request { return value }; return false }
     var filteredChoices: [MicroAppInteraction.Choice] {
         guard !query.isEmpty else { return choices }
-        return choices.filter {
-            $0.title.localizedCaseInsensitiveContains(query) || ($0.subtitle?.localizedCaseInsensitiveContains(query) ?? false)
-        }
+        return FuzzyMatcher.filter(choices, matching: query) { [$0.title] + ($0.subtitle.map { [$0] } ?? []) }
     }
 
     func move(_ delta: Int) {

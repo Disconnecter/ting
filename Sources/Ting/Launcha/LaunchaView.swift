@@ -202,7 +202,7 @@ private struct ResultList: View {
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        ResultRow(row: row, selected: index == selection, icons: chrome.icons,
+                        ResultRow(row: row, query: model.query, selected: index == selection, icons: chrome.icons,
                                   shortcut: chrome.appHotkeys.first { $0.id == row.id }?.hotkey) {
                             model.select(row.id)
                             onActivate(false)
@@ -232,6 +232,8 @@ private struct ResultList: View {
 
 private struct ResultRow: View {
     let row: LaunchaRow
+    /// Letters of the query that match the name are highlighted.
+    let query: String
     let selected: Bool
     let icons: LaunchaIconCache
     let shortcut: Hotkey?
@@ -253,7 +255,8 @@ private struct ResultRow: View {
                     RowIcon(url: url, icons: icons)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(row.name)
+                    Text(row.isCalculation ? AttributedString(row.name)
+                                           : .highlighting(row.name, query: query, color: .tingAmber))
                         .font(row.isCalculation ? .system(size: 15, weight: .semibold, design: .monospaced)
                                                 : .system(size: 13, weight: .medium))
                         .lineLimit(1).truncationMode(.middle)
