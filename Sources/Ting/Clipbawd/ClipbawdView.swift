@@ -292,13 +292,17 @@ private struct ClipContentPreview: View {
             case .image, .video:
                 if let image { picture(image) } else { Color.clear }
             case .files(let files):
-                VStack(alignment: .leading, spacing: 6) {
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: files.first?.path ?? "/"))
-                        .resizable().frame(width: 64, height: 64)
-                    ScrollView(.vertical) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(Array(files.enumerated()), id: \.offset) { _, file in
-                                Text(file.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                if let image {
+                    picture(image)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: files.first?.path ?? "/"))
+                            .resizable().frame(width: 64, height: 64)
+                        ScrollView(.vertical) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(Array(files.enumerated()), id: \.offset) { _, file in
+                                    Text(file.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                                }
                             }
                         }
                     }
@@ -311,9 +315,15 @@ private struct ClipContentPreview: View {
             }
         }
         .task(id: entry.id * 31 + (entry.link?.imageData?.count ?? 0)) {
-            if let (data, key) = ClipFormat.pictureData(entry) {
-                image = await images.image(data, key: key, maxPixels: 1024)
+            let preview: NSImage?
+            if case .files(let files) = entry.content {
+                preview = await images.filePreview(files, maxPixels: 1024)
+            } else if let (data, key) = ClipFormat.pictureData(entry) {
+                preview = await images.image(data, key: key, maxPixels: 1024)
+            } else {
+                preview = nil
             }
+            if !Task.isCancelled { image = preview }
         }
     }
 

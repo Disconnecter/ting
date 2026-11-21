@@ -1,6 +1,7 @@
 // The clipbawd window: a non-activating panel like launcha, so the app in front keeps its
 // place and ↩ pastes into it. Search on top, the history on the left, the preview on the right.
 import AppKit
+import ImageIO
 import SwiftUI
 import TingCore
 import BobukUI
@@ -252,13 +253,33 @@ final class ClipImageCache {
         if let image = cache.object(forKey: cacheKey) { return image }
         let cgImage = await Task.detached(priority: .userInitiated) { Self.thumbnail(data, maxPixels: maxPixels) }.value
         guard let cgImage else { return nil }
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        let image = Self.displayImage(cgImage)
         cache.setObject(image, forKey: cacheKey)
         return image
     }
 
+    func filePreview(_ files: [ClipFile], maxPixels: Int) async -> NSImage? {
+        guard files.count == 1, let file = files.first, !file.isDirectory else { return nil }
+        let url = URL(fileURLWithPath: file.path)
+        guard ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()) else { return nil }
+        let cgImage = await Task.detached(priority: .userInitiated) { () -> CGImage? in
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            return Self.thumbnail(source, maxPixels: maxPixels)
+        }.value
+        return cgImage.map(Self.displayImage)
+    }
+
+    private static func displayImage(_ cgImage: CGImage) -> NSImage {
+        NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
     nonisolated static func thumbnail(_ data: Data, maxPixels: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return thumbnail(source, maxPixels: maxPixels)
+    }
+
+    private nonisolated static func thumbnail(_ source: CGImageSource, maxPixels: Int) -> CGImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
