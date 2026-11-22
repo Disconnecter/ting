@@ -106,7 +106,7 @@ public enum MicroAppRunRules {
     public static func environment(base: [String: String], path: String, params: [MicroApp.Param],
                                    values: [String: String], extra: [String: String] = [:]) -> [String: String] {
         var env = base.filter { key, _ in
-            !key.hasPrefix("TING_") && key != "LANG" && !key.hasPrefix("LC_")
+            !key.hasPrefix("TING_") && key != "LANG" && key != "LANGUAGE" && !key.hasPrefix("LC_")
         }
         env["PATH"] = path
         for param in params {

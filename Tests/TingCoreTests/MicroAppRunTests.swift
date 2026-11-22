@@ -8,13 +8,23 @@ final class MicroAppRunTests: XCTestCase {
 
     func testEnvironmentSetsPATHAndParamVariables() {
         let base = ["HOME": "/Users/x", "PATH": "/usr/bin", "TING_OLD": "stray", "LANG": "en_US.UTF-8",
-                    "LC_ALL": "C", "LC_CTYPE": "UTF-8", "TERM": "xterm"]
+                    "LANGUAGE": "en_US.UTF-8:ru_GB.UTF-8", "LC_ALL": "C", "LC_CTYPE": "UTF-8", "TERM": "xterm"]
         let env = MicroAppRunRules.environment(
             base: base, path: "/opt/bin:/usr/bin",
             params: [param("domain"), param("record_type", required: false, defaultValue: "A"), param("note")],
             values: ["domain": "example.com", "unknown": "x"])
         XCTAssertEqual(env, ["HOME": "/Users/x", "PATH": "/opt/bin:/usr/bin", "TERM": "xterm",
                              "TING_DOMAIN": "example.com", "TING_RECORD_TYPE": "A", "TING_NOTE": ""])
+    }
+
+    func testExplicitLocaleExtraOverridesDroppedBaseLocale() {
+        let base = ["HOME": "/Users/x", "LANG": "en_US.UTF-8", "LANGUAGE": "en_US.UTF-8:ru_GB.UTF-8", "LC_ALL": "ru_RU.UTF-8"]
+        let env = MicroAppRunRules.environment(
+            base: base, path: "/usr/bin", params: [], values: [:],
+            extra: ["LANG": "en_US.UTF-8"])
+        XCTAssertEqual(env, ["HOME": "/Users/x", "PATH": "/usr/bin", "LANG": "en_US.UTF-8"])
+        XCTAssertNil(env["LANGUAGE"])
+        XCTAssertNil(env["LC_ALL"])
     }
 
     func testAppendCutsAtTheLimit() {
