@@ -23,6 +23,7 @@ final class AppModel {
     @ObservationIgnored private var assignments = HotkeyAssignments(Config())
     private(set) var launchaHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var clipbawdHotkeyStatus: HotkeyService.Status = .inactive
+    private(set) var chattaHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var loginItemError: String?
     /// Every file of the micro-apps folder, good and broken, by file name.
     private(set) var microApps: [MicroAppEntry] = []
@@ -55,6 +56,13 @@ final class AppModel {
     /// The clipboard history of this session.
     @ObservationIgnored let clipbawd: ClipbawdHistory
     @ObservationIgnored let clipbawdPanel: ClipbawdController
+    @ObservationIgnored private(set) lazy var chatta = ChattaController(
+        theme: theme,
+        configURL: store.url,
+        microAppsFolderURL: { [weak self] in self?.microStore.folderURL ?? MicroAppStore.folderURL(configURL: ConfigStore.defaultURL()) },
+        presentsWindow: presentsWindows,
+        openSettings: { [weak self] in self?.openSettingsFromLauncher() }
+    )
     /// Shows the Settings window; tests replace it so they never activate the app.
     @ObservationIgnored var settingsOpener: () -> Void = { SettingsOpener.open() }
     /// True while the gear menu tracks: the launchers stay open but take no keys or hotkeys.
@@ -66,6 +74,7 @@ final class AppModel {
     /// Held-key guard for the launcha hotkey: a repeat while held never toggles twice.
     @ObservationIgnored private var launchaKey = LeaderDoubleTap(isEnabled: false)
     @ObservationIgnored private var clipbawdKey = LeaderDoubleTap(isEnabled: false)
+    @ObservationIgnored private var chattaKey = LeaderDoubleTap(isEnabled: false)
     @ObservationIgnored private lazy var recordingGate = HotkeyRecordingGate { [weak self] in self?.setRecordingHotkey($0) }
     /// Loaded "ting" sounds by name; nil marks a name that cannot be loaded.
     @ObservationIgnored private var sounds: [String: NSSound?] = [:]
@@ -151,7 +160,7 @@ final class AppModel {
     /// The menu-bar item shows its problem mark.
     var needsAttention: Bool {
         configError != nil || hotkeyProblem != nil || launchaHotkeyProblem != nil || clipbawdHotkeyProblem != nil
-            || !microAppIssues.isEmpty
+            || chattaHotkeyProblem != nil || !microAppIssues.isEmpty
             || !launcha.chrome.appShortcutProblems.isEmpty || issues.contains { $0.kind == .appHotkey }
     }
 
@@ -180,6 +189,17 @@ final class AppModel {
         }
     }
 
+    /// Why the chatta hotkey does not work: invalid, the same as another Ting key, or taken.
+    var chattaHotkeyProblem: String? {
+        if let issue = issues.first(where: { $0.kind == .invalidChattaHotkey || $0.kind == .chattaHotkeyConflict }) {
+            return issue.message
+        }
+        switch chattaHotkeyStatus {
+        case .failed(let reason): return reason
+        case .inactive, .active: return nil
+        }
+    }
+
     // MARK: Lifecycle
 
     func start() {
@@ -189,6 +209,7 @@ final class AppModel {
             case .alternateLeader: self?.alternateLeaderStatus = status
             case .launcha: self?.launchaHotkeyStatus = status
             case .clipbawd: self?.clipbawdHotkeyStatus = status
+            case .chatta: self?.chattaHotkeyStatus = status
             case .application: self?.refreshAppShortcutProblems()
             }
         }
@@ -221,6 +242,7 @@ final class AppModel {
             self?.toast.show("clipbawd will never keep copies from \(source.name).")
         }
         launchaModel.onOpenClipbawd = { [weak self] in self?.openClipbawd() }
+        launchaModel.onOpenChatta = { [weak self] in self?.openChatta() }
         microFlow.clipboardSnapshot = { [weak self] in self?.clipbawd.microAppSnapshot() }
         microFlow.onToast = { [weak self] message in self?.toast.show(message) }
         microFlow.onAccessibilityNeeded = { [weak self] in self?.accessibility.show() }
@@ -331,6 +353,11 @@ final class AppModel {
         update { $0.clipbawd.hotkey = hotkey }
     }
 
+    /// nil removes the chatta hotkey.
+    func setChattaHotkey(_ hotkey: Hotkey?) {
+        update { $0.chatta.hotkey = hotkey }
+    }
+
     /// Saves exactly the retained app selected in launcha, never a different bundle-ID match.
     func setAppShortcut(for row: LaunchaRow, hotkey: Hotkey?) throws {
         guard case .app(let url) = row.kind else { throw AppShortcutRules.Problem.invalidTarget }
@@ -393,6 +420,14 @@ final class AppModel {
         leader.close()
         launcha.close()
         clipbawdPanel.open()
+    }
+
+    func openChatta(mode: ChattaMode? = nil) {
+        guard !isPaused, !isRecordingHotkey else { return }
+        leader.close()
+        launcha.close()
+        clipbawdPanel.close()
+        chatta.open(mode: mode)
     }
 
     /// ⌘, in selecta, launcha or clipbawd: close the launchers, then show Settings.
@@ -468,8 +503,10 @@ final class AppModel {
         leader.configure(next)
         launcha.configure(next)
         launchaModel.clipbawdEnabled = next.clipbawd.enabled
+        launchaModel.chattaEnabled = true
         clipbawd.configure(next.clipbawd)
         clipbawdPanel.configure(next)
+        chatta.configure(next.chatta)
         microStore.maxTimeLimit = next.microApps.maxTimeout
         microFlow.configure(next)
         if reloadMicroApps && next.microApps.maxTimeout != previous.microApps.maxTimeout {
@@ -503,6 +540,7 @@ final class AppModel {
         alternateLeaderStatus = hotkeys.status(.alternateLeader)
         launchaHotkeyStatus = hotkeys.status(.launcha)
         clipbawdHotkeyStatus = hotkeys.status(.clipbawd)
+        chattaHotkeyStatus = hotkeys.status(.chatta)
     }
 
     func hotkeyReleased(_ slot: HotkeyService.Slot) {
@@ -511,6 +549,7 @@ final class AppModel {
         case .alternateLeader: leader.leaderReleased(.alternateLeader)
         case .launcha: launchaKey.release()
         case .clipbawd: clipbawdKey.release()
+        case .chatta: chattaKey.release()
         case .application: break
         }
     }
@@ -546,6 +585,13 @@ final class AppModel {
             if leader.isOpen { leader.close() }
             if launcha.isOpen { launcha.close() }
             clipbawdPanel.toggle()
+        case .chatta:
+            guard !isPaused, !isRecordingHotkey,
+                  chattaKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
+            if leader.isOpen { leader.close() }
+            if launcha.isOpen { launcha.close() }
+            clipbawdPanel.close()
+            chatta.toggle()
         }
     }
 
@@ -598,6 +644,7 @@ final class AppModel {
                 switch panel {
                 case .launcha: self?.openLauncha()
                 case .clipbawd: self?.openClipbawd()
+                case .chatta: self?.openChatta()
                 }
             }
             return

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SettingsPage: String, CaseIterable, Identifiable, Sendable {
-    case general, activation, bindings, clipbawd, microApps, advanced
+    case general, activation, bindings, clipbawd, chatta, microApps, advanced
     public var id: String { rawValue }
     public var title: String {
         switch self {
@@ -9,6 +9,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Sendable {
         case .activation: "Keys & Launch"
         case .bindings: "Bindings"
         case .clipbawd: "Clipbawd"
+        case .chatta: "Chatta"
         case .microApps: "Micro-apps"
         case .advanced: "Advanced"
         }
@@ -19,6 +20,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Sendable {
         case .activation: "command"
         case .bindings: "keyboard"
         case .clipbawd: "list.clipboard"
+        case .chatta: "sparkles"
         case .microApps: "square.stack.3d.up"
         case .advanced: "wrench.and.screwdriver"
         }
@@ -46,6 +48,7 @@ public enum SettingsCatalog {
         .init(id: "storage", page: .clipbawd, title: "Clipboard history storage", keywords: "persistent persistence disk memory count size megabytes mib mb days age retention clear limit"),
         .init(id: "privacy", page: .clipbawd, title: "Clipboard privacy and exclusions", keywords: "never keep apps prefixes passwords private windows incognito browser automation permission"),
         .init(id: "links", page: .clipbawd, title: "Link previews", keywords: "clipboard clipbawd fetch titles icons images network"),
+        .init(id: "chatta", page: .chatta, title: "Chatta agent chat", keywords: "chatta ai agent chat acp antigravity codex claude pi kimi gemini opencode model effort hotkey idle timeout sandbox configure"),
         .init(id: "micro-apps", page: .microApps, title: "Micro-apps and permissions", keywords: "folder yaml errors broken reload agent prompt accessibility automation timeout max width text font size panel result"),
         .init(id: "config", page: .advanced, title: "Configuration file", keywords: "json path location finder editor reload ting_config"),
         .init(id: "backup", page: .advanced, title: "Import and export", keywords: "backup configuration json restore"),

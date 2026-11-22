@@ -13,6 +13,7 @@ final class HotkeyService {
         case leader, alternateLeader
         case launcha
         case clipbawd
+        case chatta
         case application(Int)
 
         /// Far above any application index.
@@ -24,12 +25,14 @@ final class HotkeyService {
             case .alternateLeader: self = .alternateLeader
             case .launcha: self = .launcha
             case .clipbawd: self = .clipbawd
+            case .chatta: self = .chatta
             }
         }
 
         var rawValue: UInt32 {
             switch self {
             case .alternateLeader: Self.clipbawdID + 1
+            case .chatta: Self.clipbawdID + 2
             case .leader: 1
             case .launcha: 2
             case .clipbawd: Self.clipbawdID
@@ -44,6 +47,7 @@ final class HotkeyService {
             case 2: self = .launcha
             case Self.clipbawdID: self = .clipbawd
             case Self.clipbawdID + 1: self = .alternateLeader
+            case Self.clipbawdID + 2: self = .chatta
             default: self = .application(Int(rawValue - 3))
             }
         }
@@ -53,6 +57,7 @@ final class HotkeyService {
             case .leader, .alternateLeader: "be a leader"
             case .launcha: "open launcha"
             case .clipbawd: "open clipbawd"
+            case .chatta: "open chatta"
             case .application: "open an application"
             }
         }
@@ -112,6 +117,7 @@ final class HotkeyService {
             case .leader, .alternateLeader: role = "the leader"
             case .launcha: role = "launcha"
             case .clipbawd: role = "clipbawd"
+            case .chatta: role = "chatta"
             case .application: role = "another application"
             }
             return refuse(slot, "\(hotkey.display) is already used for \(role).")

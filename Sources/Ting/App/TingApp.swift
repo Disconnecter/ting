@@ -38,7 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        model.clipbawd.finishStorage { sender.reply(toApplicationShouldTerminate: true) }
+        model.clipbawd.finishStorage { [model] in
+            Task { @MainActor in
+                await model.chatta.shutdown()
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+        }
         return .terminateLater
     }
 

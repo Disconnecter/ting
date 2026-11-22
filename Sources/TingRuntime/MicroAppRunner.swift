@@ -228,6 +228,12 @@ package struct MicroAppRunner: Sendable {
     package var keychain: @Sendable (String) throws -> String = { try MicroAppKeychain.password(service: $0) }
     /// Sends the request of a `url` or `ai` step.
     package var http: @Sendable (MicroAppHTTPRequest) async throws -> MicroAppHTTPResponse = { try await MicroAppHTTP.send($0) }
+    /// Default agent/model/effort for `chatta:` steps (`config.chatta`).
+    package var chattaDefaults = ChattaSettings()
+    /// Headless ACP transport for `chatta:` steps. Tests replace it so no real agent runs.
+    package var chatta: @Sendable (MicroAppChattaRequest, @escaping @Sendable (String) async -> Void) async throws -> String = {
+        try await MicroAppChatta.run($0, onChunk: $1)
+    }
     /// Shows the notification of a `notify` step.
     package var notify: @Sendable (_ title: String, _ message: String) async throws -> Void = { try await MicroAppNotifier.post(title: $0, message: $1) }
     /// Opens the URL or file of an `open` step (with an app name, or `nil`).
@@ -658,6 +664,28 @@ struct MicroAppPipeline: Sendable {
             if budget.seconds > TimeInterval(MicroAppChecker.maxTimeLimit) { built.timeout = budget.seconds }
             let request = built
             try await withDeadline(budget) { try await ask(request, provider: aiStep.provider, output: output) }
+        case .chatta(let chattaStep):
+            let prompt = try render(chattaStep.prompt, input: stepInput)
+            let system = try chattaStep.system.map { try render($0, input: stepInput) }
+            let stepModel = try chattaStep.model.map { try render($0, input: stepInput) }?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let stepEffort = try chattaStep.effort.map { try render($0, input: stepInput) }?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let cwd = try chattaStep.cwd.map { try render($0, input: stepInput) }
+            let resolvedEnv = MicroAppRunRules.environment(base: base, path: path, params: [], values: [:])
+            let request = MicroAppChattaRequest(
+                prompt: prompt,
+                system: system,
+                agent: chattaStep.agent ?? runner.chattaDefaults.agent,
+                model: (stepModel?.isEmpty == false ? stepModel : nil) ?? runner.chattaDefaults.model,
+                effort: (stepEffort?.isEmpty == false ? stepEffort : nil) ?? runner.chattaDefaults.effort,
+                access: chattaStep.access,
+                cwd: cwd,
+                workingDirectory: runner.workingDirectory,
+                timeout: budget.seconds,
+                environment: resolvedEnv
+            )
+            try await withDeadline(budget) { try await runChatta(request, output: output) }
         }
     }
 
@@ -797,6 +825,34 @@ struct MicroAppPipeline: Sendable {
             throw error
         } catch {
             throw Self.networkError(error, request: request)
+        }
+    }
+
+    /// Runs a headless `chatta:` step, streaming chunks to `output` as they arrive.
+    private func runChatta(_ request: MicroAppChattaRequest, output: MicroAppByteChannel) async throws {
+        final class StreamFlag: @unchecked Sendable {
+            private let lock = NSLock()
+            private var received = false
+            func mark() { lock.lock(); received = true; lock.unlock() }
+            var didStream: Bool { lock.lock(); defer { lock.unlock() }; return received }
+        }
+        let flag = StreamFlag()
+        do {
+            let reply = try await runner.chatta(request) { chunk in
+                if !chunk.isEmpty {
+                    flag.mark()
+                    output.write(Data(chunk.utf8))
+                }
+            }
+            if !flag.didStream && !reply.isEmpty {
+                output.write(Data(reply.utf8))
+            }
+        } catch is CancellationError {
+            throw MicroAppStepError(reason: .cancelled)
+        } catch let error as MicroAppStepError {
+            throw error
+        } catch {
+            throw MicroAppStepError.failed("error", error.localizedDescription)
         }
     }
 

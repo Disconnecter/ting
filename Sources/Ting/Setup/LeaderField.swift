@@ -81,6 +81,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
         case .alternateLeader: model?.update { $0.alternateLeader = hotkey }
         case .launcha: model?.setLaunchaHotkey(hotkey)
         case .clipbawd: model?.setClipbawdHotkey(hotkey)
+        case .chatta: model?.setChattaHotkey(hotkey)
         }
     }
 }
@@ -160,17 +161,44 @@ struct ClipbawdHotkeyField: View {
     var body: some View { WindowHotkeyField(target: .clipbawd) }
 }
 
-/// The hotkey of a Ting window (launcha or clipbawd).
+/// Records the Chatta hotkey. It starts unset; Clear removes it.
+struct ChattaHotkeyField: View {
+    var body: some View { WindowHotkeyField(target: .chatta) }
+}
+
+/// The hotkey of a Ting window (launcha, clipbawd or chatta).
 private struct WindowHotkeyField: View {
     let target: LauncherHotkey
     @Environment(AppModel.self) private var model
     @State private var recording = HotkeyRecording()
 
-    private var name: String { target == .clipbawd ? "Clipbawd" : "launcha" }
-    private var hotkey: Hotkey? { target == .clipbawd ? model.config.clipbawd.hotkey : model.config.launcha.hotkey }
-    private var problem: String? { target == .clipbawd ? model.clipbawdHotkeyProblem : model.launchaHotkeyProblem }
+    private var name: String {
+        switch target {
+        case .clipbawd: "Clipbawd"
+        case .chatta: "Chatta"
+        default: "launcha"
+        }
+    }
+    private var hotkey: Hotkey? {
+        switch target {
+        case .clipbawd: model.config.clipbawd.hotkey
+        case .chatta: model.config.chatta.hotkey
+        default: model.config.launcha.hotkey
+        }
+    }
+    private var problem: String? {
+        switch target {
+        case .clipbawd: model.clipbawdHotkeyProblem
+        case .chatta: model.chattaHotkeyProblem
+        default: model.launchaHotkeyProblem
+        }
+    }
     private func set(_ hotkey: Hotkey?) {
-        if target == .clipbawd { model.setClipbawdHotkey(hotkey) } else { model.setLaunchaHotkey(hotkey) }
+        switch target {
+        case .clipbawd: model.setClipbawdHotkey(hotkey)
+        case .chatta: model.setChattaHotkey(hotkey)
+        default: model.setLaunchaHotkey(hotkey)
+        }
     }
 
     var body: some View {

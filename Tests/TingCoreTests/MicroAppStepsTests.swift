@@ -173,7 +173,7 @@ private func template(_ text: String) throws -> MicroAppTemplate {
 
     @Test(arguments: [
         // (steps, line, message fragment); the steps start on line 5.
-        ("  - run: x\n", 5, "a step needs one of: command, python, url, ai, text, json, open, notify"),
+        ("  - run: x\n", 5, "a step needs one of: command, python, url, ai, chatta, text, json, open, notify"),
         ("  - command: x\n    python: y\n", 6, "a step has one kind"),
         ("  - command: x\n    method: GET\n", 6, "unknown key `method` in steps[0] (command)"),
         ("  - text: ${params.nope}\n", 5, "`${params.nope}` is not a declared param"),

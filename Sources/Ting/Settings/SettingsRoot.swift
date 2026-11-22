@@ -106,6 +106,7 @@ struct SettingsRoot: View {
                         case .activation: GeneralSettings(activation: true)
                         case .bindings: BindingsSettings()
                         case .clipbawd: ClipbawdSettingsView(searchTarget: target)
+                        case .chatta: ChattaSettingsView()
                         case .microApps:
                             Form { MicroAppsSection().id("micro-apps") }.tingSettingsForm()
                         case .advanced: AdvancedSettings()
@@ -192,6 +193,7 @@ private extension SettingsPage {
         case .activation: "Leader keys, menu timing and launcha."
         case .bindings: "Choose what each key sequence opens."
         case .clipbawd: "Choose what to keep and when to forget it."
+        case .chatta: "Talk to a local ACP agent or let it configure Ting."
         case .microApps: "Your tools, diagnostics and permissions."
         case .advanced: "Configuration files and backups."
         }
@@ -498,6 +500,8 @@ private struct MicroAppsSection: View {
             }
             HStack {
                 Button("Open Folder in Finder") { folderError = model.openMicroAppsFolder() }
+                Button("Configure with Chatta") { model.openChatta(mode: .configure) }
+                    .help("Open Chatta in your Ting config folder to write or edit micro-apps and bindings.")
                 Button("Copy Agent Prompt") { model.copyAgentPrompt() }
                     .help("Copy a text for a coding agent such as Claude Code, Codex or pi; add your task after it.")
                 Spacer()

@@ -15,6 +15,7 @@ struct LaunchaRow: Identifiable, Equatable {
         case app(URL)
         case file(URL)
         case clipbawd
+        case chatta
         case lowkeySite(URL)
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
         case micro(file: URL, start: LaunchaMicroStart, isWorking: Bool)
@@ -32,7 +33,7 @@ struct LaunchaRow: Identifiable, Equatable {
     var url: URL? {
         switch kind {
         case .app(let url), .file(let url), .lowkeySite(let url), .micro(let url, _, _): url
-        case .clipbawd, .calculation: nil
+        case .clipbawd, .chatta, .calculation: nil
         }
     }
     /// Secondary text: the folder of a file, with `~` for the home folder, or the
@@ -72,6 +73,7 @@ private enum LaunchaEntry {
     case micro(LaunchaMicroCandidate)
     case site(LowkeySite)
     case clipbawd
+    case chatta
 
     var candidate: LaunchaCandidate {
         switch self {
@@ -79,6 +81,8 @@ private enum LaunchaEntry {
         case .micro(let micro): micro.candidate
         case .site(let site): site.candidate
         case .clipbawd: LaunchaCandidate(id: "ting:clipbawd", name: "Clipbawd", target: .url("ting:clipbawd"))
+        case .chatta: LaunchaCandidate(id: "ting:chatta", name: "Chatta", target: .url("ting:chatta"),
+                                       searchNames: ["chat", "agent", "ai"])
         }
     }
 
@@ -98,6 +102,9 @@ private enum LaunchaEntry {
         case .clipbawd:
             kind = .clipbawd
             detail = "Clipboard history"
+        case .chatta:
+            kind = .chatta
+            detail = "AI agent chat"
         }
         let match = candidate
         return LaunchaRow(id: match.id, kind: kind, name: match.name, detail: detail)
@@ -152,8 +159,12 @@ final class LaunchaModel {
     /// Copies the value of a calculation, after the panel closed.
     @ObservationIgnored var onCopyValue: ((String) -> Void)?
     @ObservationIgnored var onOpenClipbawd: (() -> Void)?
+    @ObservationIgnored var onOpenChatta: (() -> Void)?
     var clipbawdEnabled = false {
         didSet { if clipbawdEnabled != oldValue, isOpen { recompute(keepSelection: true) } }
+    }
+    var chattaEnabled = false {
+        didSet { if chattaEnabled != oldValue, isOpen { recompute(keepSelection: true) } }
     }
     /// A query of digits and an operator shows its value first (`launcha.calculator`).
     var calculator = true {
@@ -323,6 +334,9 @@ final class LaunchaModel {
         case .clipbawd:
             if !reveal { onOpenClipbawd?() }
             return nil
+        case .chatta:
+            if !reveal { onOpenChatta?() }
+            return nil
         case .lowkeySite(let url):
             guard !reveal else { return nil }
             outcome = await opener.openLowkeySite(url, name: row.name)
@@ -448,7 +462,9 @@ final class LaunchaModel {
         guard isOpen else { return }
         let previous = keepSelection ? selectedRow?.id : nil
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        var entries: [LaunchaEntry] = clipbawdEnabled ? [.clipbawd] : []
+        var entries: [LaunchaEntry] = []
+        if clipbawdEnabled { entries.append(.clipbawd) }
+        if chattaEnabled { entries.append(.chatta) }
         entries.append(contentsOf: microApps.map(LaunchaEntry.micro))
         entries.append(contentsOf: lowkeySites.map(LaunchaEntry.site))
         entries.append(contentsOf: apps.map(LaunchaEntry.app))

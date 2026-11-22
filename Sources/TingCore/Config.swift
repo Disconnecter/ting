@@ -2,7 +2,7 @@ import Foundation
 
 /// A Ting window a binding can open.
 public enum TingPanel: String, Equatable, Sendable, Codable, CaseIterable {
-    case launcha, clipbawd
+    case launcha, clipbawd, chatta
 }
 
 /// One binding: a key and what it does.
@@ -226,11 +226,75 @@ public struct MicroAppsSettings: Equatable, Sendable, Codable {
     }
 }
 
+/// Chatta settings: AI agent chat window and defaults for `chatta:` micro-app steps.
+/// JSON: {"hotkey": Hotkey string or null, "agent": preset id or null, "model": String or null,
+///        "effort": String or null, "idleTimeoutMinutes": Int (0 = never)}.
+/// Every key is optional when decoding; a missing key takes the default below.
+public struct ChattaSettings: Equatable, Sendable, Codable {
+    /// Default inactivity minutes before closing an idle agent subprocess.
+    public static let defaultIdleTimeoutMinutes = 15
+    /// Allowed range of `idleTimeoutMinutes` (0 disables idle disconnect). Decoding clamps to it.
+    public static let idleTimeoutMinutesRange: ClosedRange<Int> = 0...240
+    /// Allowed reasoning effort levels for ACP agents.
+    public static let effortChoices = ["low", "medium", "high", "xhigh", "max"]
+
+    /// Separate global hotkey for Chatta. nil (default) means no separate hotkey.
+    public var hotkey: Hotkey? = nil
+    /// Preferred ACP agent preset id (e.g. "antigravity", "codex", "claude"). nil auto-detects.
+    public var agent: String? = nil
+    /// Optional default model ID or name substring pre-selected on connect and in `chatta:` steps.
+    public var model: String? = nil
+    /// Optional default reasoning effort ("low", "medium", "high", "xhigh", "max").
+    public var effort: String? = nil
+    /// Minutes of inactivity in `.ready` state before closing the agent subprocess (0 = never).
+    public var idleTimeoutMinutes: Int = defaultIdleTimeoutMinutes
+
+    public var idleTimeout: Duration? {
+        idleTimeoutMinutes > 0 ? .seconds(idleTimeoutMinutes * 60) : nil
+    }
+
+    public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case hotkey, agent, model, effort, idleTimeoutMinutes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = ChattaSettings()
+        hotkey = try container.decodeIfPresent(Hotkey.self, forKey: .hotkey)
+        let rawAgent = try container.decodeIfPresent(String.self, forKey: .agent)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        agent = rawAgent.flatMap { $0.isEmpty ? nil : $0 }
+        let rawModel = try container.decodeIfPresent(String.self, forKey: .model)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        model = rawModel.flatMap { $0.isEmpty ? nil : $0 }
+        let rawEffort = try container.decodeIfPresent(String.self, forKey: .effort)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        effort = rawEffort.flatMap { Self.effortChoices.contains($0) ? $0 : nil }
+        let minutes = try container.decodeIfPresent(Int.self, forKey: .idleTimeoutMinutes) ?? defaults.idleTimeoutMinutes
+        idleTimeoutMinutes = min(max(minutes, Self.idleTimeoutMinutesRange.lowerBound), Self.idleTimeoutMinutesRange.upperBound)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let hotkey {
+            try container.encode(hotkey, forKey: .hotkey)
+        } else {
+            try container.encodeNil(forKey: .hotkey)
+        }
+        try container.encodeIfPresent(agent, forKey: .agent)
+        try container.encodeIfPresent(model, forKey: .model)
+        try container.encodeIfPresent(effort, forKey: .effort)
+        try container.encode(idleTimeoutMinutes, forKey: .idleTimeoutMinutes)
+    }
+}
+
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" and "alternateLeader" (Hotkey strings or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
 /// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipbawd" (`ClipbawdSettings`),
-/// "microApps" (`MicroAppsSettings`), "appHotkeys", "items".
+/// "microApps" (`MicroAppsSettings`), "chatta" (`ChattaSettings`), "appHotkeys", "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
     public static let currentVersion = 1
@@ -269,6 +333,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var clipbawd: ClipbawdSettings = ClipbawdSettings()
     /// Micro-apps settings. Older files without "microApps" get the defaults.
     public var microApps: MicroAppsSettings = MicroAppsSettings()
+    /// Chatta settings. Older files without "chatta" get the defaults.
+    public var chatta: ChattaSettings = ChattaSettings()
     /// Direct global shortcuts assigned from launcha; older files default to none.
     public var appHotkeys: [AppShortcut] = []
     public var items: [Item] = []
@@ -293,7 +359,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, microApps, appHotkeys, items
+        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, microApps, chatta, appHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -317,6 +383,7 @@ public struct Config: Equatable, Sendable, Codable {
         launcha = try container.decodeIfPresent(LaunchaSettings.self, forKey: .launcha) ?? defaults.launcha
         clipbawd = try container.decodeIfPresent(ClipbawdSettings.self, forKey: .clipbawd) ?? defaults.clipbawd
         microApps = try container.decodeIfPresent(MicroAppsSettings.self, forKey: .microApps) ?? defaults.microApps
+        chatta = try container.decodeIfPresent(ChattaSettings.self, forKey: .chatta) ?? defaults.chatta
         appHotkeys = try container.decodeIfPresent([AppShortcut].self, forKey: .appHotkeys) ?? defaults.appHotkeys
         items = try container.decodeIfPresent([Item].self, forKey: .items) ?? defaults.items
     }
@@ -343,6 +410,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(launcha, forKey: .launcha)
         try container.encode(clipbawd, forKey: .clipbawd)
         try container.encode(microApps, forKey: .microApps)
+        try container.encode(chatta, forKey: .chatta)
         try container.encode(appHotkeys, forKey: .appHotkeys)
         try container.encode(items, forKey: .items)
     }
@@ -435,6 +503,10 @@ public struct ConfigIssue: Equatable, Sendable {
         case invalidClipbawdHotkey
         /// The clipbawd hotkey is the same as the leader or the launcha hotkey.
         case clipbawdHotkeyConflict
+        /// The chatta hotkey is not `isValid`.
+        case invalidChattaHotkey
+        /// The chatta hotkey conflicts with another reserved launcher hotkey.
+        case chattaHotkeyConflict
         /// Invalid, reserved or duplicate application hotkey assignment.
         case appHotkey
     }

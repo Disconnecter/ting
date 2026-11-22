@@ -244,7 +244,7 @@ context: [app, finder]
 ## Steps
 
 `steps` is a list. The **kind key** of a step says what it does and holds its main
-value: `command`, `python`, `url`, `ai`, `text`, `json`, `open`, `notify`, `keys`,
+value: `command`, `python`, `url`, `ai`, `chatta`, `text`, `json`, `open`, `notify`, `keys`,
 `paste`, `call`, `ask` or `choose`. Exactly one kind key per step. Every step can also have:
 
 | Key | Value |
@@ -391,6 +391,32 @@ The output is the response body. A status outside 200–299 fails the step.
 | `max_tokens` | A whole number; default 8192 for `anthropic`. An answer cut at this limit fails the step. |
 
 The answer streams into the panel word by word.
+
+### `chatta`
+
+Runs a headless one-shot prompt through a local ACP agent (no API key needed; uses the agent already signed in on this Mac).
+
+```yaml
+  - chatta: |
+      Summarize the following text in three bullet points:
+      ${input}
+    agent: antigravity
+    model: gemini-3.8-flash
+    effort: low
+    system: Be concise.
+```
+
+| Key | Value |
+|---|---|
+| `chatta` | The prompt, with variables (required). |
+| `agent` | Optional ACP preset id: `antigravity`, `codex`, `claude`, `pi`, `kimi`, `gemini` or `opencode`. Defaults to `config.chatta.agent` or the first installed agent. |
+| `model` | Optional model ID or name substring, with variables. Defaults to `config.chatta.model` or the agent's default. |
+| `effort` | Optional reasoning effort (`low`, `medium`, `high`, `xhigh` or `max`), with variables. Defaults to `config.chatta.effort`. |
+| `system` | Optional instruction prepended before the prompt, with variables. |
+| `access` | `text` (default, text-only without file access), `read` (read-only workspace access) or `write` (read/write workspace access). Always runs in a Seatbelt sandbox. |
+| `cwd` | Working directory for `access: read` or `access: write`, with variables (defaults to the run's working folder). Not allowed with `access: text`. |
+
+The answer streams into the panel while it arrives. In `ting-micro run`, `access: write` requires `--allow-effects`.
 
 ### `text`, `json`, `open`, `notify`
 

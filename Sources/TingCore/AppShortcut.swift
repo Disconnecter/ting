@@ -25,7 +25,7 @@ public struct AppShortcut: Equatable, Sendable, Codable, Identifiable {
 
 public enum AppShortcutRules {
     public enum Problem: Error, Equatable, Sendable, CustomStringConvertible {
-        case invalidKey, invalidTarget, leader, launcha, clipbawd
+        case invalidKey, invalidTarget, leader, launcha, clipbawd, chatta
 
         public var description: String {
             switch self {
@@ -34,6 +34,7 @@ public enum AppShortcutRules {
             case .leader: "This key is reserved for the leader. Choose another shortcut."
             case .launcha: "This key is reserved for launcha. Choose another shortcut."
             case .clipbawd: "This key is reserved for clipbawd. Choose another shortcut."
+            case .chatta: "This key is reserved for chatta. Choose another shortcut."
             }
         }
     }
@@ -44,6 +45,7 @@ public enum AppShortcutRules {
         case .leader, .alternateLeader: return .leader
         case .launcha: return .launcha
         case .clipbawd: return .clipbawd
+        case .chatta: return .chatta
         case nil: break
         }
         return nil

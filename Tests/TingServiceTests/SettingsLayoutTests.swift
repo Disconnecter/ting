@@ -71,10 +71,11 @@ final class SettingsLayoutTests: XCTestCase {
         controller.menuNeedsUpdate(menu)
         XCTAssertNotNil(menu.items.first { $0.title == "Settings…" })
         XCTAssertNotNil(menu.items.first { $0.title == "Open launcha" })
+        XCTAssertNotNil(menu.items.first { $0.title == "Open Chatta" })
         XCTAssertNotNil(menu.items.first { $0.title == "Pause Ting" })
         XCTAssertNil(menu.items.first { $0.title == "Open Config File" })
         XCTAssertEqual(menu.items.first { $0.title == "Tools" }?.submenu?.items.map(\.title),
-                       ["Open Config File", "Copy Agent Prompt", "Reload Config and Micro-apps"])
+                       ["Open Config File", "Configure Ting with Chatta", "Copy Agent Prompt", "Reload Config and Micro-apps"])
         XCTAssertNotNil(menu.items.first { $0.title == "Ting" }?.submenu?.items.first { $0.title == "About Ting" })
     }
 }

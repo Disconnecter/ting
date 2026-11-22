@@ -1,0 +1,205 @@
+import AppKit
+import BobukCore
+import BobukUI
+import Foundation
+import XCTest
+import TingCore
+@testable import TingRuntime
+@testable import Ting
+
+@MainActor
+final class ChattaServiceTests: XCTestCase {
+    private func fakeAgentScript(recordingTo logFile: URL) -> String {
+        """
+        while IFS= read -r line; do
+            case "$line" in
+                *initialize*)
+                    printf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}'
+                    ;;
+                *session*new*)
+                    printf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"demo","configOptions":[]}}'
+                    ;;
+                *session*prompt*)
+                    printf '%s\\n' "$line" >> "\(logFile.path)"
+                    printf '%s\\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"demo","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Ack"}}}}'
+                    printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}'
+                    ;;
+            esac
+        done
+        """
+    }
+
+    func testChattaControllerModesPromptInjectionAndWindowBuild() async throws {
+        _ = NSApplication.shared
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ting-chatta-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let promptLog = dir.appendingPathComponent("prompts.log")
+        let script = fakeAgentScript(recordingTo: promptLog)
+        let suite = UserDefaults(suiteName: "io.bobuk.ting.tests.chatta." + UUID().uuidString)!
+        let theme = ThemeStore(defaults: suite, keys: ThemeStore.tingKeys,
+                               defaultAppearance: .dark, defaultPreset: .amber, appliesToApplication: false)
+
+        let controller = ChattaController(
+            theme: theme,
+            configURL: dir.appendingPathComponent("config.json"),
+            microAppsFolderURL: { dir.appendingPathComponent("micro") },
+            presentsWindow: false,
+            setupPromptProvider: { "TING_SETUP_PREFIX: " },
+            installedAgents: { [.codex] },
+            customClientFactory: { _, _, _ in
+                ACPClient(
+                    launch: .init(
+                        executable: URL(fileURLWithPath: "/bin/bash"),
+                        arguments: ["-c", script],
+                        directory: dir,
+                        environment: ["PATH": "/usr/bin:/bin"],
+                        clientName: "ting-test",
+                        isolation: .unrestricted
+                    ),
+                    requestTimeout: .seconds(2)
+                )
+            }
+        )
+        defer { Task { await controller.shutdown() } }
+
+        // Window prepares cleanly without showing on screen.
+        let win = controller.prepareWindow()
+        XCTAssertFalse(win.isVisible)
+        XCTAssertEqual(win.title, "Chatta")
+
+        // Chat mode: auto-connects and sends raw user message without setup prefix.
+        controller.open(mode: .chat)
+        for _ in 0..<200 where controller.session.phase == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.session.phase, .ready)
+        controller.session.draft = "plain hello"
+        controller.session.send()
+        for _ in 0..<200 where controller.session.phase == .replying {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.session.lastReply, "Ack")
+        let chatLog = try String(contentsOf: promptLog, encoding: .utf8)
+        XCTAssertTrue(chatLog.contains("plain hello"))
+        XCTAssertFalse(chatLog.contains("TING_SETUP_PREFIX"))
+
+        // Configure mode: injects setup prompt on the first turn only.
+        try "".write(to: promptLog, atomically: true, encoding: .utf8)
+        controller.setMode(.configure)
+        for _ in 0..<200 where controller.session.phase == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.session.phase, .ready)
+        controller.session.draft = "add github binding"
+        controller.session.send()
+        for _ in 0..<200 where controller.session.phase == .replying {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        controller.session.draft = "second follow up"
+        controller.session.send()
+        for _ in 0..<200 where controller.session.phase == .replying {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let lines = try String(contentsOf: promptLog, encoding: .utf8)
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertTrue(lines[0].contains("TING_SETUP_PREFIX: add github binding"), lines[0])
+        XCTAssertFalse(lines[1].contains("TING_SETUP_PREFIX"), lines[1])
+        XCTAssertTrue(lines[1].contains("second follow up"), lines[1])
+
+        await controller.shutdown()
+    }
+
+    func testLaunchaListsChattaAndOpensIt() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ting-launcha-chatta-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+
+        final class DummyOpener: LaunchaOpening {
+            func openApp(at url: URL, name: String) async -> LaunchOutcome { .opened }
+            func openFile(_ url: URL, name: String) async -> LaunchOutcome { .opened }
+            func reveal(_ url: URL) -> LaunchOutcome { .revealed }
+        }
+        let model = LaunchaModel(
+            opener: DummyOpener(),
+            historyStore: LaunchaHistoryStore(url: dir.appendingPathComponent("history.json")),
+            consent: LaunchaConsentStore(url: dir.appendingPathComponent("consent.json")),
+            usageStore: LaunchaHistoryStore(url: dir.appendingPathComponent("usage.json")),
+            lowkeySites: { [] },
+            runningAppIDs: { [] },
+            makeServices: { _ in
+                LaunchaModel.Services(index: LaunchaAppIndex(roots: []), spotlight: LaunchaSpotlight())
+            }
+        )
+        var opened = false
+        model.chattaEnabled = true
+        model.onOpenChatta = { opened = true }
+        model.open()
+        model.query = "chatta"
+        XCTAssertEqual(model.rows.first?.name, "Chatta")
+        _ = await model.activateSelection()
+        XCTAssertTrue(opened)
+    }
+
+    func testMicroAppChattaStepUsesDefaultsOverridesStreamsAndChecksEffects() async throws {
+        let yaml = """
+        format: ting.microapp/2
+        description: Summarize with Chatta.
+        input: clipboard
+        steps:
+          - chatta: Summarize ${input}
+            system: Short answer.
+        output:
+          to: [panel]
+        """
+        let app = try MicroAppChecker.check(yaml, fileName: "sum.yaml").get()
+
+        final class Capture: @unchecked Sendable {
+            private let lock = NSLock()
+            var request: MicroAppChattaRequest?
+            func set(_ req: MicroAppChattaRequest) { lock.lock(); request = req; lock.unlock() }
+            func get() -> MicroAppChattaRequest? { lock.lock(); defer { lock.unlock() }; return request }
+        }
+        let capture = Capture()
+        var runner = MicroAppRunner()
+        runner.path = { "/usr/bin:/bin" }
+        runner.environment = [:]
+        runner.chattaDefaults.agent = "claude"
+        runner.chattaDefaults.model = "sonnet"
+        runner.chattaDefaults.effort = "low"
+        runner.chatta = { request, onChunk in
+            capture.set(request)
+            await onChunk("One ")
+            await onChunk("two")
+            return "One two"
+        }
+
+        let result = await runner.run(app, stdin: "long article")
+        guard case .success(let out) = result else { return XCTFail("unexpected result: \(result)") }
+        XCTAssertEqual(out.stdout, "One two")
+        let seen = try XCTUnwrap(capture.get())
+        XCTAssertEqual(seen.prompt, "Summarize long article")
+        XCTAssertEqual(seen.system, "Short answer.")
+        XCTAssertEqual(seen.agent, "claude")
+        XCTAssertEqual(seen.model, "sonnet")
+        XCTAssertEqual(seen.effort, "low")
+        XCTAssertEqual(seen.access, .text)
+
+        // CLI validation requires --allow-effects for access: write, but not for access: text or read.
+        let writeYAML = """
+        format: ting.microapp/2
+        description: Edit file.
+        input: none
+        steps:
+          - chatta: Update README
+            access: write
+            cwd: /tmp
+        """
+        let writeApp = try MicroAppChecker.check(writeYAML, fileName: "edit.yaml").get()
+        XCTAssertThrowsError(try MicroAppCLI.validate(.init(file: "edit.yaml"), app: writeApp))
+        XCTAssertNoThrow(try MicroAppCLI.validate(.init(file: "edit.yaml", allowEffects: true), app: writeApp))
+        XCTAssertNoThrow(try MicroAppCLI.validate(.init(file: "sum.yaml"), app: app))
+    }
+}

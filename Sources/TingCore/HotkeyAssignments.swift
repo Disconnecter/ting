@@ -1,6 +1,6 @@
 /// Declaration order is the precedence used when reading a hand-written config.
 public enum LauncherHotkey: CaseIterable, Sendable {
-    case leader, alternateLeader, launcha, clipbawd
+    case leader, alternateLeader, launcha, clipbawd, chatta
 
     public func configured(in config: Config) -> Hotkey? {
         switch self {
@@ -8,6 +8,7 @@ public enum LauncherHotkey: CaseIterable, Sendable {
         case .alternateLeader: config.alternateLeader
         case .launcha: config.launcha.hotkey
         case .clipbawd: config.clipbawd.activeHotkey
+        case .chatta: config.chatta.hotkey
         }
     }
 
@@ -16,6 +17,7 @@ public enum LauncherHotkey: CaseIterable, Sendable {
         case .leader, .alternateLeader: "be a leader"
         case .launcha: "open launcha"
         case .clipbawd: "open clipbawd"
+        case .chatta: "open chatta"
         }
     }
 
@@ -28,6 +30,7 @@ public enum LauncherHotkey: CaseIterable, Sendable {
         case .leader, .alternateLeader: "\(key.display) is already a leader key."
         case .launcha: "\(key.display) already opens launcha."
         case .clipbawd: "\(key.display) already opens clipbawd."
+        case .chatta: "\(key.display) already opens chatta."
         }
     }
 
@@ -37,6 +40,7 @@ public enum LauncherHotkey: CaseIterable, Sendable {
         case .alternateLeader: .invalidAlternateLeader
         case .launcha: conflict ? .launchaHotkeyConflict : .invalidLaunchaHotkey
         case .clipbawd: conflict ? .clipbawdHotkeyConflict : .invalidClipbawdHotkey
+        case .chatta: conflict ? .chattaHotkeyConflict : .invalidChattaHotkey
         }
     }
 }

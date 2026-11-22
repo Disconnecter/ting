@@ -124,7 +124,7 @@ final class MicroAppFlowController: NSObject {
     private let linkOpener: @MainActor (URL) -> Void
     /// Read only after approval, once per run, never into persisted parameter values.
     var clipboardSnapshot: (() -> [String?]?)?
-    private let runner: MicroAppRunner
+    private var runner: MicroAppRunner
     /// The clipboard: stdin of `input: clipboard` and the `clipboard` target.
     private let pasteboard: NSPasteboard
     /// Reads the `context` of a micro-app.
@@ -177,6 +177,7 @@ final class MicroAppFlowController: NSObject {
     }
 
     func configure(_ config: Config) {
+        runner.chattaDefaults = config.chatta
         session.showHeader = config.showPanelHeader
         session.resultCardWidth = CGFloat(config.microApps.resultWidth)
         session.resultTextSize = CGFloat(config.microApps.resultTextSize)

@@ -55,7 +55,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
 - Each item has `key`, an optional `label` (shown in the menu) and exactly one
   action: `items` (a group), `app` (a bundle identifier), `url` (any URL,
   including schemes such as `raycast://`), `micro` (a micro-app id) or `open`
-  (a Ting window: `"launcha"` or `"clipbawd"`).
+  (a Ting window: `"launcha"`, `"clipbawd"` or `"chatta"`).
 - `key`: a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`. Keys
   are Latin even when the person types with another layout.
 - In one group a key is used once.
@@ -87,8 +87,14 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `microApps` (`{"maxTimeout": 300, "resultWidth": 580, "resultTextSize": 13}`; `maxTimeout` is
   60–86400 seconds and caps the `timeout` a micro-app file may ask for, while each file still defaults
   to 60s and may set any smaller or larger value up to that limit; `resultWidth` is 480–1200 points
-  for the result panel card; `resultTextSize` is 11–24 points for result panel body text). The
-  Clipbawd hotkey cannot match either leader or the launcha hotkey. Clipbawd is also searchable by name in launcha while enabled.
+  for the result panel card; `resultTextSize` is 11–24 points for result panel body text),
+  `chatta` (`{"hotkey": null, "agent": null, "model": null, "effort": null, "idleTimeoutMinutes": 15}`;
+  `hotkey` opens the Chatta agent chat window; `agent` picks a built-in ACP preset id
+  (`antigravity`, `codex`, `claude`, `pi`, `kimi`, `gemini`, `opencode`, or `null` to auto-detect);
+  `model` and `effort` (`low`, `medium`, `high`, `xhigh`, `max`) set optional defaults shared by the
+  Chatta window and `chatta:` micro-app steps; `idleTimeoutMinutes` (0–240, 0 disables) stops an idle
+  agent subprocess after inactivity while keeping the transcript visible). The
+  Clipbawd and Chatta hotkeys cannot match either leader or another launcher hotkey. Clipbawd (while enabled) and Chatta are also searchable by name in launcha.
 - Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images, videos and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 
 ### Settings and clipboard storage

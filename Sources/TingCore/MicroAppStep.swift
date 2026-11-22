@@ -3,7 +3,7 @@ import Foundation
 /// One step of a micro-app script. The output of a step is the input (stdin) of the next one.
 public struct MicroAppStep: Equatable, Sendable {
     public enum Kind: String, Equatable, Sendable, CaseIterable {
-        case command, python, url, ai, text, json, open, notify, lowkey, preview, call, keys, paste, choose, ask
+        case command, python, url, ai, chatta, text, json, open, notify, lowkey, preview, call, keys, paste, choose, ask
     }
 
     /// A `key: template` line of `env`, `query`, `headers` or `form`, in file order.
@@ -86,6 +86,35 @@ public struct MicroAppStep: Equatable, Sendable {
         }
     }
 
+    /// Headless one-shot ACP agent step (`chatta:`). Defaults to text-only sandboxed execution.
+    public struct ChattaStep: Equatable, Sendable {
+        public enum Access: String, Equatable, Sendable, CaseIterable {
+            case text, read, write
+        }
+
+        public var prompt: MicroAppTemplate
+        /// Optional ACP preset id (e.g. `antigravity`, `codex`, `claude`). `nil` uses `config.chatta.agent` or auto-detect.
+        public var agent: String?
+        public var model: MicroAppTemplate?
+        public var effort: MicroAppTemplate?
+        public var system: MicroAppTemplate?
+        public var access: Access
+        /// Working directory template when `access` is `.read` or `.write`.
+        public var cwd: MicroAppTemplate?
+
+        public init(prompt: MicroAppTemplate, agent: String? = nil, model: MicroAppTemplate? = nil,
+                    effort: MicroAppTemplate? = nil, system: MicroAppTemplate? = nil,
+                    access: Access = .text, cwd: MicroAppTemplate? = nil) {
+            self.prompt = prompt
+            self.agent = agent
+            self.model = model
+            self.effort = effort
+            self.system = system
+            self.access = access
+            self.cwd = cwd
+        }
+    }
+
     public struct AskStep: Equatable, Sendable {
         public var prompt: MicroAppTemplate
         public var defaultValue: MicroAppTemplate?
@@ -110,6 +139,7 @@ public struct MicroAppStep: Equatable, Sendable {
         case python(String)
         case url(URLRequestStep)
         case ai(AIStep)
+        case chatta(ChattaStep)
         case text(MicroAppTemplate)
         case choose(MicroAppTemplate)
         case ask(AskStep)
@@ -161,6 +191,7 @@ public struct MicroAppStep: Equatable, Sendable {
         case .python: .python
         case .url: .url
         case .ai: .ai
+        case .chatta: .chatta
         case .text: .text
         case .choose: .choose
         case .ask: .ask
@@ -212,6 +243,8 @@ public struct MicroAppStep: Equatable, Sendable {
             }
         case .ai(let a):
             result += [a.prompt, a.model] + [a.key, a.system, a.baseURL, a.temperature, a.maxTokens].compactMap { $0 }
+        case .chatta(let c):
+            result += [c.prompt] + [c.model, c.effort, c.system, c.cwd].compactMap { $0 }
         case .text(let t), .choose(let t):
             result.append(t)
         case .ask(let ask):

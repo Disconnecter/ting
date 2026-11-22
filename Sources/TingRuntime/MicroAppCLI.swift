@@ -135,8 +135,16 @@ package enum MicroAppCLI {
         if app.allSteps.contains(where: { [.ask, .choose, .preview].contains($0.kind) }) {
             throw UsageError("ask, choose and preview steps require Ting's interactive panel; no steps were run")
         }
-        if !options.allowEffects, let step = app.allSteps.first(where: { [.open, .notify, .lowkey].contains($0.kind) }) {
-            throw UsageError("`\(step.kind.rawValue)` requires --allow-effects; no steps were run")
+        if !options.allowEffects {
+            if let step = app.allSteps.first(where: { [.open, .notify, .lowkey].contains($0.kind) }) {
+                throw UsageError("`\(step.kind.rawValue)` requires --allow-effects; no steps were run")
+            }
+            if app.allSteps.contains(where: {
+                if case .chatta(let c) = $0.action, c.access == .write { return true }
+                return false
+            }) {
+                throw UsageError("`chatta` with `access: write` requires --allow-effects; no steps were run")
+            }
         }
     }
 
@@ -189,6 +197,7 @@ package enum MicroAppCLI {
             runner.environment = environment
             runner.path = { path }
             runner.timeLimit = options.timeout
+            runner.chattaDefaults = configuredChattaDefaults()
             // CLI runs in the current folder, like other console programs.
             runner.workingDirectory = FileManager.default.currentDirectoryPath
             // Keys and text would go to this terminal: the console tool only says what Ting would send.
@@ -236,6 +245,14 @@ package enum MicroAppCLI {
         guard let data = FileManager.default.contents(atPath: path),
               let config = try? ConfigCodec.decode(data) else { return MicroAppChecker.maxTimeLimit }
         return config.microApps.maxTimeout
+    }
+
+    /// Reads `chatta` defaults from the default config file, falling back to `ChattaSettings()`.
+    static func configuredChattaDefaults(environment: [String: String] = ProcessInfo.processInfo.environment) -> ChattaSettings {
+        let path = defaultConfigPath(environment: environment)
+        guard let data = FileManager.default.contents(atPath: path),
+              let config = try? ConfigCodec.decode(data) else { return ChattaSettings() }
+        return config.chatta
     }
 
     /// The micro-apps folder of a config file, as Ting finds it.

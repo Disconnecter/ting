@@ -83,7 +83,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
         }
         let launchaIssues: Set<ConfigIssue.Kind> = [.missingLeader, .invalidLeader, .invalidAlternateLeader, .invalidLaunchaHotkey, .launchaHotkeyConflict,
-                                                    .invalidClipbawdHotkey, .clipbawdHotkeyConflict]
+                                                    .invalidClipbawdHotkey, .clipbawdHotkeyConflict,
+                                                    .invalidChattaHotkey, .chattaHotkeyConflict]
         if let error = model.configError ?? model.issues.first(where: { !launchaIssues.contains($0.kind) })?.message {
             problems.addItem(note(error, symbol: "exclamationmark.triangle"))
         }
@@ -117,6 +118,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
             }
         }
+        let chatta = item("Open Chatta", #selector(openChatta))
+        if let hotkey = model.config.chatta.hotkey, model.chattaHotkeyProblem == nil {
+            chatta.title = "Open Chatta (\(hotkey.display))"
+        }
+        if model.isPaused { chatta.action = nil }
+        menu.addItem(chatta)
+        if let problem = model.chattaHotkeyProblem {
+            problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
+        }
 
         menu.addItem(.separator())
         let pause = item("Pause Ting", #selector(togglePause))
@@ -138,6 +148,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         let tools = NSMenu(title: "Tools")
         tools.addItem(item("Open Config File", #selector(openConfig)))
+        tools.addItem(item("Configure Ting with Chatta", #selector(configureWithChatta)))
         tools.addItem(item("Copy Agent Prompt", #selector(copyAgentPrompt)))
         tools.addItem(item("Reload Config and Micro-apps", #selector(reloadConfig)))
         let toolsItem = NSMenuItem(title: "Tools", action: nil, keyEquivalent: "")
@@ -179,6 +190,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
     @objc private func openClipbawd() {
         DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openClipbawd() } }
+    }
+    @objc private func openChatta() {
+        DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openChatta() } }
+    }
+    @objc private func configureWithChatta() {
+        DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openChatta(mode: .configure) } }
     }
     @objc private func togglePause() { model.isPaused.toggle() }
     @objc private func showSettings() { openSettings() }

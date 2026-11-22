@@ -60,6 +60,7 @@ struct BindingsSettings: View {
                     Button("Application…", action: addApplication)
                     Button("URL", action: addURL)
                     Button("Clipbawd") { add(.open("", "Clipboard history", .clipbawd)) }
+                    Button("Chatta") { add(.open("", "Chatta", .chatta)) }
                     Button("launcha") { add(.open("", "Search", .launcha)) }
                     if model.lowkey.isInstalled {
                         Menu("lowkey") {

@@ -1,3 +1,4 @@
+import BobukCore
 import Foundation
 
 /// A micro-app: one shell command or a list of steps, with a name, parameters, an input and an output.
@@ -226,6 +227,7 @@ public enum MicroAppChecker {
         .command: ["env"], .python: ["env"],
         .url: ["method", "query", "headers", "body", "form"],
         .ai: ["provider", "model", "key", "system", "base_url", "temperature", "max_tokens"],
+        .chatta: ["agent", "model", "effort", "system", "access", "cwd"],
         .preview: [], .lowkey: ["action", "label", "file", "field", "value", "as"], .text: [], .json: [], .open: ["app"], .notify: ["title"], .call: [], .keys: [], .paste: [],
         .choose: [], .ask: ["default", "placeholder", "multiline", "required"],
     ]
@@ -1016,6 +1018,8 @@ public enum MicroAppChecker {
                 action = checkURL(value, keys: keys, what: what, ctx: &ctx, usage: &usage).map { .url($0) }
             case .ai:
                 action = checkAI(value, keys: keys, what: what, line: line, ctx: &ctx, usage: &usage).map { .ai($0) }
+            case .chatta:
+                action = checkChatta(value, keys: keys, what: what, ctx: &ctx, usage: &usage).map { .chatta($0) }
             case .call:
                 if let name = string(value, k), let library = library(name, line: value.line) {
                     let argumentLines = keys["params"].map { fieldLines($0.value) } ?? []
@@ -1180,6 +1184,34 @@ public enum MicroAppChecker {
             guard issues.count == before, let prompt, let provider, let model else { return nil }
             return MicroAppStep.AIStep(prompt: prompt, provider: provider, model: model, key: key, system: system, baseURL: baseURL,
                                        temperature: temperature, maxTokens: maxTokens)
+        }
+
+        mutating func checkChatta(_ value: YAMLNode, keys: [String: YAMLEntry], what: String, ctx: inout TemplateContext,
+                                  usage: inout Usage) -> MicroAppStep.ChattaStep? {
+            let before = issues.count
+            let prompt = template(value, "\(what).chatta", oneLine: false, ctx: &ctx, usage: &usage)
+            let agents = ACPAgentPreset.all.map(\.id)
+            let agent = keys["agent"].flatMap { oneOf($0.value, "\(what).agent", agents) }
+            let model = keys["model"].flatMap { template($0.value, "\(what).model", ctx: &ctx, usage: &usage) }
+            let effort = keys["effort"].flatMap { template($0.value, "\(what).effort", ctx: &ctx, usage: &usage) }
+            if let e = keys["effort"], let literal = effort?.literalText,
+               !ChattaSettings.effortChoices.contains(literal.lowercased()) {
+                fail(e.value.line, "`\(what).effort` must be one of: \(ChattaSettings.effortChoices.joined(separator: ", "))")
+            }
+            let system = keys["system"].flatMap { template($0.value, "\(what).system", oneLine: false, ctx: &ctx, usage: &usage) }
+            var access = MicroAppStep.ChattaStep.Access.text
+            if let e = keys["access"],
+               let raw = oneOf(e.value, "\(what).access", MicroAppStep.ChattaStep.Access.allCases.map(\.rawValue)),
+               let parsed = MicroAppStep.ChattaStep.Access(rawValue: raw) {
+                access = parsed
+            }
+            let cwd = keys["cwd"].flatMap { template($0.value, "\(what).cwd", ctx: &ctx, usage: &usage) }
+            if let e = keys["cwd"], access == .text {
+                fail(e.keyLine, "\(what): `cwd` requires `access: read` or `access: write`")
+            }
+            guard issues.count == before, let prompt else { return nil }
+            return MicroAppStep.ChattaStep(prompt: prompt, agent: agent, model: model, effort: effort, system: system,
+                                           access: access, cwd: cwd)
         }
 
         // MARK: Templates
