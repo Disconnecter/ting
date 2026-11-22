@@ -38,13 +38,17 @@ final class AppModel {
     var protectedFoldersAllowed: Bool { launchaModel.protectedFolders == .allowed }
     var launchaConsentError: String? { launchaModel.consentError }
 
+    @ObservationIgnored let theme: ThemeStore
+    @ObservationIgnored private let presentsWindows: Bool
+    @ObservationIgnored private var syncingTheme = false
+    @ObservationIgnored nonisolated(unsafe) private var themeObserver: NSObjectProtocol?
     @ObservationIgnored let store: ConfigStore
     @ObservationIgnored private(set) lazy var microStore = MicroAppStore(configURL: store.url)
     @ObservationIgnored private let hotkeys: HotkeyService
     @ObservationIgnored private var activeAppShortcuts: [AppShortcut] = []
     @ObservationIgnored let leader: LeaderController
     @ObservationIgnored private let runner: ActionRunner
-    @ObservationIgnored private let toast = ToastController(palette: TingPickerStyle.toast, mark: AnyView(TingMark(size: 12)))
+    @ObservationIgnored private let toast: ToastController
     @ObservationIgnored private let launchaModel: LaunchaModel
     @ObservationIgnored let launcha: LaunchaController
     @ObservationIgnored let lowkey: LowkeyIntegration
@@ -68,7 +72,19 @@ final class AppModel {
 
     /// `presentsWindows` false: the launchers keep their state but show no window (tests).
     init(presentsWindows: Bool = true, store: ConfigStore? = nil, hotkeys: HotkeyService? = nil,
-         clipbawd: ClipbawdHistory? = nil) {
+         clipbawd: ClipbawdHistory? = nil, theme: ThemeStore? = nil) {
+        self.presentsWindows = presentsWindows
+        if let theme {
+            self.theme = theme
+        } else if presentsWindows {
+            self.theme = .ting
+        } else {
+            let suite = UserDefaults(suiteName: "io.bobuk.ting.tests.theme." + UUID().uuidString) ?? .standard
+            self.theme = ThemeStore(defaults: suite, keys: ThemeStore.tingKeys,
+                                    defaultAppearance: .dark, defaultPreset: .amber,
+                                    appliesToApplication: false)
+        }
+        self.toast = ToastController(theme: self.theme, mark: AnyView(TingMark(size: 12)))
         self.store = store ?? ConfigStore()
         let environment = store.map { ["TING_CONFIG": $0.url.path] } ?? ProcessInfo.processInfo.environment
         // Tests (no windows) never watch the person's clipboard.
@@ -95,6 +111,26 @@ final class AppModel {
         launcha.onSaveShortcut = { [weak self] row, hotkey in
             guard let self else { throw CancellationError() }
             try self.setAppShortcut(for: row, hotkey: hotkey)
+        }
+        themeObserver = NotificationCenter.default.addObserver(
+            forName: ThemeStore.didChangeNotification, object: self.theme, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncConfigFromTheme() }
+        }
+    }
+
+    deinit {
+        if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) }
+    }
+
+    private func syncConfigFromTheme() {
+        guard !syncingTheme else { return }
+        let nextAppearance = Appearance(theme.appearance)
+        let nextPalette = theme.palette
+        guard config.appearance != nextAppearance || config.theme != nextPalette else { return }
+        update {
+            $0.appearance = nextAppearance
+            $0.theme = nextPalette
         }
     }
 
@@ -437,7 +473,11 @@ final class AppModel {
         microFlow.configure(next)
         // Binding labels name the micro-apps in launcha.
         launchaModel.setMicroApps(microCatalog.launchaCandidates(bindings: next.items), folder: microStore.folderURL)
-        next.appearance.apply()
+        syncingTheme = true
+        theme.appearance = next.appearance.choice
+        theme.palette = next.theme
+        if presentsWindows { theme.apply() }
+        syncingTheme = false
         applyHotkey()
         if next.launchAtLogin != previous.launchAtLogin {
             loginItemError = LoginItem.setReportingError(next.launchAtLogin, openSettingsIfNeeded: false)

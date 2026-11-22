@@ -47,7 +47,7 @@ final class AccessibilityWindowController {
     private lazy var hosted: HostedWindowController = {
         let hosted = HostedWindowController(releasesContentOnClose: false, window: {
             let window = ChromeWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 400),
-                                      style: TingPickerStyle.palette.chromeStyle, resizable: false)
+                                      theme: .ting, resizable: false)
             window.title = "Allow Accessibility"
             window.isMovableByWindowBackground = true
             // Above System Settings, so the icon can be dragged into its list.

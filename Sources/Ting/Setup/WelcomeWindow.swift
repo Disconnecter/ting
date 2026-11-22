@@ -15,7 +15,7 @@ final class WelcomeWindowController {
         weak var weakHosted: HostedWindowController?
         hosted = HostedWindowController(window: {
             let window = ChromeWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 300),
-                                      style: TingPickerStyle.palette.chromeStyle, resizable: false)
+                                      theme: model.theme, resizable: false)
             window.title = "Welcome to Ting"
             window.isMovableByWindowBackground = true
             return window

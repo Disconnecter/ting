@@ -234,6 +234,7 @@ final class LaunchaController: NSObject {
 
     private func makePanel() -> LaunchaPanel {
         let panel = LaunchaPanel()
+        panel.bindTheme(.ting)
         // Focus loss, Esc and ⌘W close the open launcher (not while a menu tracks over it).
         panel.onDismiss = { [weak self] _ in
             guard let self, self.isOpen else { return }
@@ -267,7 +268,8 @@ final class LaunchaController: NSObject {
         let view = LaunchaView(model: model, chrome: chrome,
                                onActivate: { [weak self] reveal in self?.activate(reveal: reveal) },
                                onDismiss: { [weak self] in self?.close() },
-                               onEditShortcut: { [weak self] row in self?.editShortcut(for: row) })
+                               onEditShortcut: { [weak self] row in self?.editShortcut(for: row) },
+                               onOpenSettings: { [weak self] in self?.onOpenSettings?() })
         let hosting = NSHostingView(rootView: view)
         hosting.sizingOptions = []
         panel.contentView = hosting

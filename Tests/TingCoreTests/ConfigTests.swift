@@ -13,6 +13,7 @@ import Testing
         #expect(c.showDelay == 0)
         #expect(c.unknownKey == .shake)
         #expect(c.appearance == .dark)
+        #expect(c.theme == ThemePaletteConfig(preset: .amber))
         #expect(!c.launchAtLogin)
         #expect(c.showMenuBarIcon)
         #expect(c.showPanelHeader)
@@ -83,6 +84,20 @@ import Testing
         let hidden = try decode(#"{"showPanelHeader":false}"#)
         #expect(!hidden.showPanelHeader)
         #expect(try ConfigCodec.decode(ConfigCodec.encode(hidden)) == hidden)
+    }
+    @Test func themeCompatibility() throws {
+        // Older files without "theme" default to Amber, and "system" appearance is accepted.
+        let old = try decode(#"{"version":1,"appearance":"light"}"#)
+        #expect(old.appearance == .light)
+        #expect(old.theme == ThemePaletteConfig(preset: .amber))
+
+        var custom = Config()
+        custom.appearance = .system
+        custom.theme.applyPreset(ThemePreset.named("kanagawa")!)
+        custom.theme.setAccent("#ff5500", dark: true)
+        let roundTripped = try ConfigCodec.decode(ConfigCodec.encode(custom))
+        #expect(roundTripped.appearance == .system)
+        #expect(roundTripped.theme == custom.theme)
     }
     @Test func soundCompatibility() throws {
         // A file without "sound" and "soundVolume" plays the default sound at half volume.

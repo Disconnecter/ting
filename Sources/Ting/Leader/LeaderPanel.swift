@@ -279,6 +279,7 @@ final class LeaderController: NSObject {
 
     private func makePanel() -> LeaderPanel {
         let panel = LeaderPanel()
+        panel.bindTheme(.ting)
         // Focus loss closes the open menu; Esc and other keys arrive through `onKeyDown`.
         panel.onDismiss = { [weak self] _ in
             guard let self, self.machine.isOpen else { return }
@@ -292,7 +293,8 @@ final class LeaderController: NSObject {
         }
         let view = LeaderMenuView(session: session,
                                   onSelect: { [weak self] key in self?.select(key) },
-                                  onDismiss: { [weak self] in self?.close() })
+                                  onDismiss: { [weak self] in self?.close() },
+                                  onOpenSettings: { [weak self] in self?.onOpenSettings?() })
         let hosting = NSHostingView(rootView: view)
         hosting.sizingOptions = [.intrinsicContentSize]
         panel.contentView = hosting

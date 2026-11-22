@@ -11,6 +11,7 @@ struct LaunchaView: View {
     let onActivate: (_ reveal: Bool) -> Void
     let onDismiss: () -> Void
     var onEditShortcut: (LaunchaRow) -> Void = { _ in }
+    var onOpenSettings: (() -> Void)? = nil
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -18,7 +19,8 @@ struct LaunchaView: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
-            LaunchaCard(model: model, chrome: chrome, onActivate: onActivate, onDismiss: onDismiss, onEditShortcut: onEditShortcut)
+            LaunchaCard(model: model, chrome: chrome, onActivate: onActivate, onDismiss: onDismiss,
+                        onEditShortcut: onEditShortcut, onOpenSettings: onOpenSettings)
                 .padding(.top, 8)
         }
     }
@@ -30,6 +32,7 @@ private struct LaunchaCard: View {
     let onActivate: (_ reveal: Bool) -> Void
     let onDismiss: () -> Void
     let onEditShortcut: (LaunchaRow) -> Void
+    let onOpenSettings: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -58,13 +61,12 @@ private struct LaunchaCard: View {
             }
             notices
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 10)
-            HStack(spacing: 14) {
-                ShortcutFooter([.init("↩", "open"), .init("⌘↩", "reveal"),
-                                .init("⌘⇧K", "shortcut"), .init("esc", "pull up")], palette: TingPickerStyle.palette)
-                LauncherMenuButton().frame(width: 18, height: 18)
-            }
-            .foregroundStyle(Color.tingMuted)
-            .padding(.top, 10)
+            ShortcutFooter([.init("↩", "open"), .init("⌘↩", "reveal"),
+                            .init("⌘⇧K", "shortcut"), .init("esc", "pull up")],
+                           palette: TingPickerStyle.palette,
+                           settingsHelp: "Settings · ⌘,",
+                           onSettings: onOpenSettings)
+                .padding(.top, 10)
             }
         }
         .foregroundStyle(Color.tingInk)

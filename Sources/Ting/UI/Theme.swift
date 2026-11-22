@@ -1,77 +1,90 @@
-// Ting visual language: graphite panels, amber accents and solid amber "Soundsystem" keycaps.
+// Ting visual language powered by BobukKit's ThemeStore: curated presets + custom panel/accent
+// colors, defaulting to graphite panels and amber "Soundsystem" keycaps.
 import AppKit
 import SwiftUI
 import TingCore
 import BobukUI
 import BobukSystem
 
-/// App-owned colors; BobukKit owns shared picker geometry and rendering.
-enum TingPickerStyle {
-    static var palette: PickerPalette {
-        PickerPalette(surface: TingColors.soundPanel, text: BobukColors.ink, secondary: BobukColors.muted,
-                      accent: BobukColors.amber, border: BobukColors.stroke.withAlphaComponent(0.6),
-                      badgeInk: TingColors.soundKeyInk)
-    }
+@MainActor extension ThemeStore {
+    static let tingKeys = StorageKeys(appearance: "tingAppearance", palette: "tingThemePalette")
 
-    /// The toast keeps Ting's graphite capsule with a full-strength outline.
-    static var toast: PickerPalette {
-        var palette = palette
-        palette.surface = BobukColors.panel
-        palette.border = BobukColors.stroke
-        return palette
-    }
+    /// Shared live theme store for Ting, mirrored from `config.json` (default: Dark + Amber).
+    static let ting = ThemeStore(keys: tingKeys, defaultAppearance: .dark, defaultPreset: .amber)
 }
 
-/// Ting's own "Soundsystem" colors; the graphite and amber shared with the other apps are `BobukColors`.
-enum TingColors {
-    static let soundPanel = NSColor.dynamic(light: 0xEEEDE6, dark: 0x181C1F)
-    static let soundKey = NSColor.dynamic(light: 0xD99A2B, dark: 0xE7BB74)
-    static let soundKeyInk = NSColor.dynamic(light: 0x2A1C05, dark: 0x1D1609)
+/// App-owned colors; BobukKit owns shared picker geometry and rendering.
+@MainActor enum TingPickerStyle {
+    static var palette: PickerPalette { ThemeStore.ting.pickerPalette }
+    static var toast: PickerPalette { ThemeStore.ting.pickerPalette }
+}
+
+/// Live themed surface and keycap colors backed by `ThemeStore.ting`.
+@MainActor enum TingColors {
+    static var soundPanel: NSColor { ThemeStore.ting.tokens.panelNSColor }
+    static var soundKey: NSColor { ThemeStore.ting.tokens.accentNSColor }
+    static var soundKeyInk: NSColor { ThemeStore.ting.tokens.keyInkNSColor }
 }
 
 extension Appearance {
-    var title: String { self == .light ? "Light" : "Dark" }
+    var choice: AppearanceChoice {
+        switch self {
+        case .system: .system
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    init(_ choice: AppearanceChoice) {
+        switch choice {
+        case .system: self = .system
+        case .light: self = .light
+        case .dark: self = .dark
+        }
+    }
+
+    var title: String { choice.title }
 
     /// Ting sets the whole app appearance, so Settings and the leader menu match.
-    @MainActor func apply() {
-        NSApp.appearance = NSAppearance(named: self == .light ? .aqua : .darkAqua)
-    }
+    @MainActor func apply() { choice.apply() }
 }
 
 extension Color {
-    static var tingPanel: Color { Color(nsColor: BobukColors.panel) }
-    static var tingInk: Color { Color(nsColor: BobukColors.ink) }
-    static var tingMuted: Color { Color(nsColor: BobukColors.muted) }
-    static var tingAmber: Color { Color(nsColor: BobukColors.amber) }
-    static var tingStroke: Color { Color(nsColor: BobukColors.stroke) }
+    @MainActor static var tingPanel: Color { ThemeStore.ting.tokens.panelColor }
+    @MainActor static var tingInk: Color { ThemeStore.ting.tokens.inkColor }
+    @MainActor static var tingMuted: Color { ThemeStore.ting.tokens.mutedColor }
+    @MainActor static var tingAmber: Color { ThemeStore.ting.tokens.accentColor }
+    @MainActor static var tingStroke: Color { ThemeStore.ting.tokens.lineColor }
+    @MainActor static var tingElevated: Color { ThemeStore.ting.tokens.elevatedColor }
 
-    static var soundPanel: Color { Color(nsColor: TingColors.soundPanel) }
-    static var soundKey: Color { Color(nsColor: TingColors.soundKey) }
-    static var soundKeyInk: Color { Color(nsColor: TingColors.soundKeyInk) }
+    @MainActor static var soundPanel: Color { ThemeStore.ting.tokens.panelColor }
+    @MainActor static var soundKey: Color { ThemeStore.ting.tokens.accentColor }
+    @MainActor static var soundKeyInk: Color { ThemeStore.ting.tokens.keyInkColor }
 }
 
 extension ButtonStyle where Self == QuietButtonStyle {
-    /// BobukKit's quiet button in Ting's colors; `prominent` fills it with the soundsystem key.
-    static func tingQuiet(prominent: Bool = false) -> QuietButtonStyle {
-        QuietButtonStyle(palette: TingPickerStyle.palette, prominent: prominent, prominentFill: TingColors.soundKey)
+    /// BobukKit's quiet button in Ting's active theme; `prominent` fills it with the accent.
+    @MainActor static func tingQuiet(prominent: Bool = false) -> QuietButtonStyle {
+        QuietButtonStyle(palette: TingPickerStyle.palette, prominent: prominent)
     }
 }
 
 /// Ting mark: a struck dot with two sound arcs.
 struct TingMark: View {
-    var color: Color = .tingAmber
+    var color: Color? = nil
     var size: CGFloat = 16
 
     var body: some View {
+        let tint = color ?? .tingAmber
         Canvas { context, canvas in
             let s = canvas.width / 16
             let dot = CGRect(x: 1 * s, y: 6 * s, width: 4 * s, height: 4 * s)
-            context.fill(Path(ellipseIn: dot), with: .color(color))
+            context.fill(Path(ellipseIn: dot), with: .color(tint))
             for (index, radius) in [5.5, 9.5].enumerated() {
                 var arc = Path()
                 arc.addArc(center: CGPoint(x: 3 * s, y: 8 * s), radius: radius * s,
                            startAngle: .degrees(-50), endAngle: .degrees(50), clockwise: false)
-                context.stroke(arc, with: .color(color.opacity(index == 0 ? 1 : 0.55)),
+                context.stroke(arc, with: .color(tint.opacity(index == 0 ? 1 : 0.55)),
                                style: StrokeStyle(lineWidth: 1.8 * s, lineCap: .round))
             }
         }

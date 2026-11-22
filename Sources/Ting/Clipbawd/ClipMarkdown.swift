@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Syntax coloring only: source stays visible, links/images are never loaded or rendered.
-enum ClipMarkdown {
+@MainActor enum ClipMarkdown {
     static func highlight(_ text: String) -> AttributedString {
         var result = AttributedString(text)
         let patterns = [

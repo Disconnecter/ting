@@ -35,7 +35,7 @@ public struct SettingsSearchItem: Identifiable, Equatable, Sendable {
 
 public enum SettingsCatalog {
     public static let items: [SettingsSearchItem] = [
-        .init(id: "appearance", page: .general, title: "Appearance and panel title", keywords: "light dark theme header selecta"),
+        .init(id: "appearance", page: .general, title: "Appearance and theme", keywords: "system light dark theme preset palette color accent panel header selecta"),
         .init(id: "system", page: .general, title: "Login and menu bar", keywords: "launch startup icon system"),
         .init(id: "sound", page: .general, title: "Sound and volume", keywords: "ting audio mute play"),
         .init(id: "updates", page: .general, title: "Updates and version", keywords: "automatic check homebrew sparkle"),

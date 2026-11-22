@@ -1,4 +1,5 @@
 // The entry point: command-line modes first, then the menu-bar app.
+import BobukUI
 import BobukUpdates
 import Foundation
 import TingCore
@@ -8,7 +9,7 @@ enum TingMain {
     static func main() {
         // Only the progress window of a Homebrew update, from the copy in its run folder; never returns.
         MainActor.assumeIsolated {
-            HomebrewLaunch.runViewerIfRequested(app: .ting, palette: TingPickerStyle.palette)
+            HomebrewLaunch.runViewerIfRequested(app: .ting, theme: .ting)
         }
         // The update helper restarts Ting with its own arguments: they are not a command line.
         let arguments = HomebrewLaunch.isUpdateLaunch() ? [] : Array(CommandLine.arguments.dropFirst())

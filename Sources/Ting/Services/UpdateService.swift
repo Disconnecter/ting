@@ -4,6 +4,7 @@
 // public key in `SUPublicEDKey` and by Apple's code signature checks. Sparkle is not a kit
 // dependency: this file holds Ting's adapter.
 import AppKit
+import BobukUI
 import BobukUpdates
 import Sparkle
 import TingCore
@@ -29,6 +30,6 @@ extension AppUpdateIdentity {
 
 extension UpdateService {
     /// The updater of the running copy: Homebrew, Sparkle or nothing (development builds).
-    static let shared = UpdateService.detect(app: .ting, palette: TingPickerStyle.palette,
+    static let shared = UpdateService.detect(app: .ting, theme: .ting,
                                              makeSparkle: { SparkleUpdater() })
 }

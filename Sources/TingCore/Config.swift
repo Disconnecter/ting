@@ -100,7 +100,7 @@ public enum UnknownKeyBehavior: String, Codable, Sendable, CaseIterable {
 }
 
 public enum Appearance: String, Codable, Sendable, CaseIterable {
-    case dark, light
+    case system, light, dark
 }
 
 /// Where launcha ranks apps that are already running, when `LaunchaSettings.appSwitching` is on.
@@ -200,6 +200,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var unknownKey: UnknownKeyBehavior = .shake
     /// Dark by default.
     public var appearance: Appearance = .dark
+    /// Theme preset and custom light/dark panel and accent colors (Amber by default).
+    public var theme: ThemePaletteConfig = ThemePaletteConfig(preset: .amber)
     public var launchAtLogin: Bool = false
     public var showMenuBarIcon: Bool = true
     /// Show the title row above selecta and launcha panels.
@@ -237,7 +239,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, alternateLeader, showDelay, unknownKey, appearance, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, appHotkeys, items
+        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, appHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -250,6 +252,7 @@ public struct Config: Equatable, Sendable, Codable {
         showDelay = min(max(delay, 0), 2)
         unknownKey = try container.decodeIfPresent(UnknownKeyBehavior.self, forKey: .unknownKey) ?? defaults.unknownKey
         appearance = try container.decodeIfPresent(Appearance.self, forKey: .appearance) ?? defaults.appearance
+        theme = try container.decodeIfPresent(ThemePaletteConfig.self, forKey: .theme) ?? defaults.theme
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
         showMenuBarIcon = try container.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? defaults.showMenuBarIcon
         showPanelHeader = try container.decodeIfPresent(Bool.self, forKey: .showPanelHeader) ?? defaults.showPanelHeader
@@ -275,6 +278,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(showDelay, forKey: .showDelay)
         try container.encode(unknownKey, forKey: .unknownKey)
         try container.encode(appearance, forKey: .appearance)
+        try container.encode(theme, forKey: .theme)
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
         try container.encode(showMenuBarIcon, forKey: .showMenuBarIcon)
         try container.encode(showPanelHeader, forKey: .showPanelHeader)

@@ -34,10 +34,11 @@ struct SettingsRoot: View {
                 .background(Color.tingPanel)
         }
         .foregroundStyle(Color.tingInk)
+        .tint(Color.tingAmber)
         .frame(minWidth: SettingsWindow.minimumContentSize.width, idealWidth: 1040,
                minHeight: SettingsWindow.minimumContentSize.height, idealHeight: 720)
         // The window draws the accent line, the strip with the close button and the separator.
-        .background(Color(nsColor: TingPickerStyle.palette.surface))
+        .background(Color.tingPanel)
     }
 
     private var detail: some View {
@@ -215,11 +216,7 @@ private struct GeneralSettings: View {
         Form {
             if !activation {
             Section {
-            Picker("Appearance", selection: model.binding(\.appearance)) {
-                Text(Appearance.light.title).tag(Appearance.light)
-                Text(Appearance.dark.title).tag(Appearance.dark)
-            }
-            .pickerStyle(.segmented)
+                ThemeSettingsFormRows(theme: model.theme)
                 SettingsToggle("Show panel title", detail: "Keep the title row above selecta, launcha and Clipbawd. The leader symbol and input always stay visible.",
                                isOn: model.binding(\.showPanelHeader))
             } header: { SettingsSectionTitle("Appearance") }

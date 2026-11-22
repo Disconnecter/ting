@@ -56,14 +56,22 @@ import BobukUI
         let chrome = LaunchaChrome()
         chrome.leader = "f13"
         let previous = NSApp.appearance
-        defer { NSApp.appearance = previous }
-        for dark in [false, true] {
-            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let theme = dark ? "dark" : "light"
-            try render(LeaderMenuView(session: session, onSelect: { _ in XCTFail("Unexpected action") }, onDismiss: {}),
-                       name: "ting-selecta-\(theme)", width: 340)
-            try render(LaunchaView(model: model, chrome: chrome, onActivate: { _ in XCTFail("Unexpected action") }, onDismiss: {}),
-                       name: "ting-launcha-\(theme)", width: 460)
+        let previousAppearance = ThemeStore.ting.appearance
+        let previousPalette = ThemeStore.ting.palette
+        defer {
+            NSApp.appearance = previous
+            ThemeStore.ting.appearance = previousAppearance
+            ThemeStore.ting.palette = previousPalette
+        }
+        for (presetID, dark) in [("amber", false), ("amber", true), ("catppuccin", true), ("kanagawa", false)] {
+            if let preset = ThemePreset.named(presetID) { ThemeStore.ting.applyPreset(preset) }
+            ThemeStore.ting.appearance = dark ? .dark : .light
+            NSApp.appearance = ThemeStore.ting.chromeAppearance
+            let suffix = presetID == "amber" ? (dark ? "dark" : "light") : "\(presetID)-\(dark ? "dark" : "light")"
+            try render(LeaderMenuView(session: session, onSelect: { _ in XCTFail("Unexpected action") }, onDismiss: {}, onOpenSettings: {}),
+                       name: "ting-selecta-\(suffix)", width: 340)
+            try render(LaunchaView(model: model, chrome: chrome, onActivate: { _ in XCTFail("Unexpected action") }, onDismiss: {}, onOpenSettings: {}),
+                       name: "ting-launcha-\(suffix)", width: 460)
         }
     }
 }

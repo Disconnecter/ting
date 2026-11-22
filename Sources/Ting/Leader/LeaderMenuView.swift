@@ -9,6 +9,7 @@ struct LeaderMenuView: View {
     let session: LeaderSession
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
+    var onOpenSettings: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -16,7 +17,7 @@ struct LeaderMenuView: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
-            SoundList(session: session, onSelect: onSelect)
+            SoundList(session: session, onSelect: onSelect, onOpenSettings: onOpenSettings)
                 .modifier(Shake(token: session.shakeToken))
         }
     }
@@ -25,6 +26,7 @@ struct LeaderMenuView: View {
 private struct SoundList: View {
     let session: LeaderSession
     let onSelect: (String) -> Void
+    let onOpenSettings: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -56,13 +58,12 @@ private struct SoundList: View {
             }
             .padding(.horizontal, -8)
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 10)
-            HStack(spacing: 10) {
-                ShortcutFooter([.init("↑↓", "select"), .init("↩", "open"),
-                                .init("←", "back"), .init("esc", "close")], palette: TingPickerStyle.palette)
-                LauncherMenuButton().frame(width: 18, height: 18)
-            }
-            .foregroundStyle(Color.tingMuted)
-            .padding(.top, 10)
+            ShortcutFooter([.init("↑↓", "select"), .init("↩", "open"),
+                            .init("←", "back"), .init("esc", "close")],
+                           palette: TingPickerStyle.palette,
+                           settingsHelp: "Settings · ⌘,",
+                           onSettings: onOpenSettings)
+                .padding(.top, 10)
         }
         .foregroundStyle(Color.tingInk)
         .padding(.horizontal, 20)

@@ -539,6 +539,7 @@ final class MicroAppFlowController: NSObject {
 
     private func makePanel() -> MicroAppFlowPanel {
         let panel = MicroAppFlowPanel()
+        panel.bindTheme(.ting)
         panel.onDismiss = { [weak self] reason in self?.dismiss(reason) }
         panel.onKey = { [weak self] key in self?.handle(key) }
         let view = MicroAppFlowView(session: session,

@@ -223,6 +223,7 @@ final class ClipbawdController: NSObject {
 
     private func makePanel() -> ClipbawdPanel {
         let panel = ClipbawdPanel()
+        panel.bindTheme(.ting)
         // Focus loss, Esc and ⌘W close the open panel (not while a menu tracks over it).
         panel.onDismiss = { [weak self] _ in
             guard let self, self.isOpen else { return }
@@ -235,7 +236,8 @@ final class ClipbawdController: NSObject {
         let view = ClipbawdView(state: state,
                                   onChoose: { [weak self] id, paste in self?.choose(id: id, paste: paste) },
                                   onDismiss: { [weak self] in self?.close() },
-                                  onExclude: { [weak self] source in self?.exclude(source) })
+                                  onExclude: { [weak self] source in self?.exclude(source) },
+                                  onOpenSettings: { [weak self] in self?.onOpenSettings?() })
         let hosting = NSHostingView(rootView: view)
         hosting.sizingOptions = []
         panel.contentView = hosting

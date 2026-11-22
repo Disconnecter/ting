@@ -10,13 +10,15 @@ struct ClipbawdView: View {
     let onChoose: (_ id: Int?, _ paste: Bool) -> Void
     let onDismiss: () -> Void
     let onExclude: (ClipSource) -> Void
+    var onOpenSettings: (() -> Void)? = nil
 
     var body: some View {
         ZStack(alignment: .top) {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
-            ClipbawdCard(state: state, onChoose: onChoose, onDismiss: onDismiss, onExclude: onExclude)
+            ClipbawdCard(state: state, onChoose: onChoose, onDismiss: onDismiss,
+                         onExclude: onExclude, onOpenSettings: onOpenSettings)
                 .padding(.top, 8)
         }
     }
@@ -27,6 +29,7 @@ private struct ClipbawdCard: View {
     let onChoose: (_ id: Int?, _ paste: Bool) -> Void
     let onDismiss: () -> Void
     let onExclude: (ClipSource) -> Void
+    let onOpenSettings: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -46,12 +49,17 @@ private struct ClipbawdCard: View {
             searchBox
             content.padding(.top, 12)
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 12)
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 ShortcutFooter([.init("↩", "paste"), .init("⌘↩", "copy"),
-                                .init("⇧⌘⌫", "remove"), .init("esc", "close")], palette: TingPickerStyle.palette)
+                                .init("⇧⌘⌫", "remove"), .init("esc", "close")],
+                               palette: TingPickerStyle.palette)
                 MonoLabel("this session only", size: 9, weight: .regular, tracking: 1)
+                    .foregroundStyle(Color.tingMuted)
+                if let onOpenSettings {
+                    GlyphButton(.settings, label: "Settings", help: "Settings · ⌘,", palette: TingPickerStyle.palette,
+                                width: 22, height: 22, glyphSize: 13, action: onOpenSettings)
+                }
             }
-            .foregroundStyle(Color.tingMuted)
             .padding(.top, 10)
         }
         .foregroundStyle(Color.tingInk)

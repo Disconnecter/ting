@@ -14,9 +14,9 @@ enum SettingsWindow {
     static let minimumContentSize = NSSize(width: 900, height: 600)
 
     /// A Settings window whose body is `contentSize`. The content is added by the caller.
-    static func make(contentSize: NSSize = NSSize(width: 1040, height: 720)) -> ChromeWindow {
+    static func make(contentSize: NSSize = NSSize(width: 1040, height: 720), theme: ThemeStore? = nil) -> ChromeWindow {
         let window = ChromeWindow(contentRect: NSRect(origin: .zero, size: ChromeMetrics.windowSize(forBody: contentSize)),
-                                  style: TingPickerStyle.palette.chromeStyle, resizable: true)
+                                  theme: theme ?? .ting, resizable: true)
         window.title = title
         window.identifier = identifier
         window.contentMinSize = ChromeMetrics.windowSize(forBody: minimumContentSize)
@@ -33,7 +33,7 @@ final class SettingsWindowController {
     init(model: AppModel, remembersFrame: Bool = true) {
         hosted = HostedWindowController(frameName: remembersFrame ? SettingsWindow.frameName : nil,
                                         releasesContentOnClose: true,
-                                        window: { SettingsWindow.make() },
+                                        window: { SettingsWindow.make(theme: model.theme) },
                                         rootView: { SettingsRoot().environment(model) })
     }
 
