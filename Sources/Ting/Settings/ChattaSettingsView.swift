@@ -1,18 +1,22 @@
 // Settings › Chatta: hotkey, default ACP agent/model/effort and idle subprocess timeout.
 import BobukCore
+import BobukUI
 import SwiftUI
 import TingCore
 
 struct ChattaSettingsView: View {
     @Environment(AppModel.self) private var model
+    @State private var statuses: [ACPAgentStatus] = []
 
-    private var installedIDs: Set<String> {
-        Set(ACPAgentPreset.detectInstalled().map(\.id))
+    private var resolvedStatuses: [ACPAgentStatus] {
+        statuses.isEmpty ? ACPAgentPreset.detectAll() : statuses
     }
 
     var body: some View {
         let settings = model.config.chatta
-        let installed = installedIDs
+        let allStatuses = resolvedStatuses
+        let byID = Dictionary(uniqueKeysWithValues: allStatuses.map { ($0.id, $0) })
+        let missingAdapters = allStatuses.filter(\.needsACPAdapter)
         Form {
             Section {
                 LabeledContent("Hotkey") { ChattaHotkeyField() }
@@ -24,12 +28,21 @@ struct ChattaSettingsView: View {
                         Text("Auto (first installed)").tag("")
                         Divider()
                         ForEach(ACPAgentPreset.all) { preset in
-                            let label = installed.contains(preset.id) ? preset.name : "\(preset.name) (not installed)"
+                            let label: String = switch byID[preset.id]?.availability {
+                            case .ready: preset.name
+                            case .needsACPAdapter: "\(preset.name) (needs ACP adapter)"
+                            case .notInstalled, nil: "\(preset.name) (not installed)"
+                            }
                             Text(label).tag(preset.id)
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 220)
+                    .frame(width: 240)
+                }
+                ForEach(missingAdapters) { status in
+                    ACPAdapterInstallRow(preset: status.preset) {
+                        statuses = ACPAgentPreset.detectAll()
+                    }
                 }
                 LabeledContent("Default model") {
                     TextField("Agent default", text: Binding(
@@ -77,5 +90,8 @@ struct ChattaSettingsView: View {
             } header: { SettingsSectionTitle("Session") }
         }
         .tingSettingsForm()
+        .onAppear {
+            statuses = ACPAgentPreset.detectAll()
+        }
     }
 }

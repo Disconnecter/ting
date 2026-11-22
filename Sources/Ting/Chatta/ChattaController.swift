@@ -158,6 +158,9 @@ final class ChattaController: NSObject, NSWindowDelegate {
     func agentSelectionChanged() {
         guard !isSwitchingProgrammatically else { return }
         injectedSetupPrompt = false
+        if customClientFactory == nil, case .needsACPAdapter = selectedAgent.detectAvailability() {
+            return
+        }
         if (isVisible || customClientFactory != nil) && session.phase == .disconnected {
             session.connect()
         }
