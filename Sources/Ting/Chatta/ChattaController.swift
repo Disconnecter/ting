@@ -174,6 +174,10 @@ final class ChattaController: NSObject, NSWindowDelegate {
         ensureWindow()
     }
 
+    private static let frameAutosaveName = "io.bobuk.ting.chatta"
+    private static let defaultBodySize = NSSize(width: 520, height: 600)
+    private static let minimumBodySize = NSSize(width: 400, height: 420)
+
     private func ensureWindow() -> ChromeWindow {
         if let window { return window }
         let newChatButton = StripButton(glyph: .plus, label: "New chat · ⌘N") { [weak self] _ in
@@ -182,7 +186,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
         let settingsButton = StripButton(glyph: .settings, label: "Settings · ⌘,") { [weak self] _ in
             self?.openSettings()
         }
-        let size = ChromeMetrics.windowSize(forBody: NSSize(width: 520, height: 600))
+        let size = ChromeMetrics.windowSize(forBody: Self.defaultBodySize)
         let win = ChromeWindow(
             contentRect: NSRect(origin: .zero, size: size),
             theme: theme,
@@ -191,14 +195,25 @@ final class ChattaController: NSObject, NSWindowDelegate {
             showsTitle: true
         )
         win.title = "Chatta"
-        win.minSize = ChromeMetrics.windowSize(forBody: NSSize(width: 400, height: 420))
+        win.contentMinSize = ChromeMetrics.windowSize(forBody: Self.minimumBodySize)
         win.isReleasedWhenClosed = false
-        win.setFrameAutosaveName("io.bobuk.ting.chatta")
         win.delegate = self
-        win.setContent(ChattaView(controller: self, theme: theme, onSettings: openSettings))
-        if !win.setFrameUsingName("io.bobuk.ting.chatta") {
+        let hosting = win.setContent(ChattaView(controller: self, theme: theme, onSettings: openSettings))
+        // Keep SwiftUI layout updates (mode/agent switches, error banners, transcript growth)
+        // from pushing Auto Layout size constraints into the NSWindow frame.
+        hosting.sizingOptions = []
+        if !win.setFrameUsingName(Self.frameAutosaveName) {
             win.center()
+        } else if let screen = win.screen ?? NSScreen.main {
+            let visible = screen.visibleFrame
+            if win.frame.height > visible.height + 1 || win.frame.width > visible.width + 1 {
+                win.setContentSize(size)
+                win.center()
+            } else {
+                win.setFrame(win.constrainFrameRect(win.frame, to: screen), display: false)
+            }
         }
+        win.setFrameAutosaveName(Self.frameAutosaveName)
         window = win
         return win
     }

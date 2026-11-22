@@ -2,6 +2,7 @@ import AppKit
 import BobukCore
 import BobukUI
 import Foundation
+import SwiftUI
 import XCTest
 import TingCore
 @testable import TingRuntime
@@ -63,10 +64,15 @@ final class ChattaServiceTests: XCTestCase {
         )
         defer { Task { await controller.shutdown() } }
 
-        // Window prepares cleanly without showing on screen.
+        // Window prepares cleanly without showing on screen, and SwiftUI updates never resize it.
         let win = controller.prepareWindow()
         XCTAssertFalse(win.isVisible)
         XCTAssertEqual(win.title, "Chatta")
+        let hosting = try XCTUnwrap(win.body.subviews.first as? NSHostingView<ChattaView>)
+        XCTAssertEqual(hosting.sizingOptions, [])
+        let initialSize = win.frame.size
+        win.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(win.frame.size, initialSize)
 
         // Chat mode: auto-connects and sends raw user message without setup prefix.
         controller.open(mode: .chat)
@@ -74,6 +80,19 @@ final class ChattaServiceTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(controller.session.phase, .ready)
+        win.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(win.frame.size, initialSize)
+
+        // Switching agents and reconnecting keeps the window size unchanged.
+        controller.session.disconnect()
+        controller.selectedAgent = .gemini
+        controller.agentSelectionChanged()
+        for _ in 0..<200 where controller.session.phase == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.session.phase, .ready)
+        win.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(win.frame.size, initialSize)
         controller.session.draft = "plain hello"
         controller.session.send()
         for _ in 0..<200 where controller.session.phase == .replying {

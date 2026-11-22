@@ -70,6 +70,7 @@ struct ChattaView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(tokens.panelColor)
         .themedSurface(theme)
         .onChange(of: controller.selectedAgent) { _, _ in
