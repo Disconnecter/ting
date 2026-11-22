@@ -191,12 +191,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func openClipbawd() {
         DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openClipbawd() } }
     }
-    @objc private func openChatta() {
-        DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openChatta() } }
-    }
-    @objc private func configureWithChatta() {
-        DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openChatta(mode: .configure) } }
-    }
+    @objc private func openChatta() { model.openChatta() }
+    @objc private func configureWithChatta() { model.openChatta(mode: .configure) }
     @objc private func togglePause() { model.isPaused.toggle() }
     @objc private func showSettings() { openSettings() }
     @objc private func openConfig() { model.openConfigFile() }

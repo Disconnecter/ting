@@ -185,6 +185,14 @@ final class ChattaController: NSObject, NSWindowDelegate {
             win.makeKeyAndOrderFront(nil)
             win.orderFrontRegardless()
             session.requestComposerFocus()
+            DispatchQueue.main.async { [weak self, weak win] in
+                guard let self, let win, win.isVisible else { return }
+                if !NSApp.isActive || !win.isKeyWindow {
+                    AppActivation.activate()
+                    win.makeKeyAndOrderFront(nil)
+                }
+                self.session.requestComposerFocus()
+            }
         }
         if autoConnect && session.phase == .disconnected {
             session.connect()
