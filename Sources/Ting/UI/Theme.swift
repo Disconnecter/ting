@@ -56,6 +56,10 @@ extension Color {
     @MainActor static var tingAmber: Color { ThemeStore.ting.tokens.accentColor }
     @MainActor static var tingStroke: Color { ThemeStore.ting.tokens.lineColor }
     @MainActor static var tingElevated: Color { ThemeStore.ting.tokens.elevatedColor }
+    @MainActor static var tingSelection: Color { ThemeStore.ting.tokens.selectionColor }
+    @MainActor static var tingLink: Color { ThemeStore.ting.tokens.linkColor }
+    @MainActor static var tingSuccess: Color { ThemeStore.ting.tokens.successColor }
+    @MainActor static var tingDanger: Color { ThemeStore.ting.tokens.dangerColor }
 
     @MainActor static var soundPanel: Color { ThemeStore.ting.tokens.panelColor }
     @MainActor static var soundKey: Color { ThemeStore.ting.tokens.accentColor }
