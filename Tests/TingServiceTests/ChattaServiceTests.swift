@@ -221,4 +221,35 @@ final class ChattaServiceTests: XCTestCase {
         XCTAssertNoThrow(try MicroAppCLI.validate(.init(file: "edit.yaml", allowEffects: true), app: writeApp))
         XCTAssertNoThrow(try MicroAppCLI.validate(.init(file: "sum.yaml"), app: app))
     }
+
+    func testChattaSettingsGearOpensChattaSettingsPage() throws {
+        _ = NSApplication.shared
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ting-chatta-settings-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+
+        let model = AppModel(presentsWindows: false,
+                             store: ConfigStore(url: dir.appendingPathComponent("config.json")))
+        var openedPages: [SettingsPage] = []
+        model.settingsPageOpener = { openedPages.append($0) }
+
+        let win = model.chatta.prepareWindow()
+        let gearButton = try XCTUnwrap(win.strip.trailing.last)
+        gearButton.onPress?([])
+        XCTAssertEqual(openedPages, [.chatta])
+
+        let settings = SettingsWindowController(model: model, remembersFrame: false)
+        settings.show(page: .chatta, activate: false)
+        XCTAssertEqual(settings.navigation.page, .chatta)
+        let firstRequestID = settings.navigation.requestID
+
+        settings.show(page: .bindings, activate: false)
+        XCTAssertEqual(settings.navigation.page, .bindings)
+        XCTAssertGreaterThan(settings.navigation.requestID, firstRequestID)
+
+        settings.close()
+        settings.show(activate: false)
+        XCTAssertEqual(settings.navigation.page, .general)
+        settings.close()
+    }
 }

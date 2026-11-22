@@ -61,10 +61,11 @@ final class AppModel {
         configURL: store.url,
         microAppsFolderURL: { [weak self] in self?.microStore.folderURL ?? MicroAppStore.folderURL(configURL: ConfigStore.defaultURL()) },
         presentsWindow: presentsWindows,
-        openSettings: { [weak self] in self?.openSettingsFromLauncher() }
+        openSettings: { [weak self] in self?.openSettingsFromLauncher(page: .chatta) }
     )
     /// Shows the Settings window; tests replace it so they never activate the app.
     @ObservationIgnored var settingsOpener: () -> Void = { SettingsOpener.open() }
+    @ObservationIgnored var settingsPageOpener: (SettingsPage) -> Void = { SettingsOpener.open(page: $0) }
     /// True while the gear menu tracks: the launchers stay open but take no keys or hotkeys.
     @ObservationIgnored private(set) var isMenuTracking = false
     /// The one open micro-app flow: approval, working state and result.
@@ -430,12 +431,16 @@ final class AppModel {
         chatta.open(mode: mode)
     }
 
-    /// ⌘, in selecta, launcha or clipbawd: close the launchers, then show Settings.
-    func openSettingsFromLauncher() {
+    /// ⌘, or Settings gear in selecta, launcha, clipbawd or chatta: close the launchers, then show Settings.
+    func openSettingsFromLauncher(page: SettingsPage? = nil) {
         leader.close()
         launcha.close()
         clipbawdPanel.close()
-        settingsOpener()
+        if let page {
+            settingsPageOpener(page)
+        } else {
+            settingsOpener()
+        }
     }
 
     /// Call only after the user read what this allows and which macOS prompts may follow.

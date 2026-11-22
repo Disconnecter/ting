@@ -67,5 +67,5 @@ enum SettingsOpener {
         latin == "," && flags.intersection([.command, .shift, .option, .control]) == .command
     }
 
-    static func open() { controller.show() }
+    static func open(page: SettingsPage? = nil) { controller.show(page: page) }
 }

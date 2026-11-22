@@ -13,9 +13,11 @@ struct SettingsRoot: View {
     @State private var page: SettingsPage? = .general
     @State private var query = ""
     @State private var target: String?
+    private let navigation: SettingsNavigation?
 
-    init(page: SettingsPage = .general, query: String = "", target: String? = nil) {
-        _page = State(initialValue: page)
+    init(page: SettingsPage = .general, query: String = "", target: String? = nil, navigation: SettingsNavigation? = nil) {
+        self.navigation = navigation
+        _page = State(initialValue: navigation?.page ?? page)
         _query = State(initialValue: query)
         _target = State(initialValue: target)
     }
@@ -24,6 +26,7 @@ struct SettingsRoot: View {
         HStack(spacing: 0) {
             SettingsSidebar(page: page ?? .general, query: $query) { selected in
                 page = selected
+                navigation?.page = selected
                 query = ""
                 target = nil
             }
@@ -39,6 +42,13 @@ struct SettingsRoot: View {
                minHeight: SettingsWindow.minimumContentSize.height, idealHeight: 720)
         // The window draws the accent line, the strip with the close button and the separator.
         .background(Color.tingPanel)
+        .onChange(of: navigation?.requestID) { _, _ in
+            if let requested = navigation?.page {
+                page = requested
+                query = ""
+                target = nil
+            }
+        }
     }
 
     private var detail: some View {

@@ -83,7 +83,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
             AgentPromptSource.formatDocument(bundle: .main)
                 .map { URL(fileURLWithPath: $0).deletingLastPathComponent() }
         }
-        self.openSettings = openSettings ?? { SettingsOpener.open() }
+        self.openSettings = openSettings ?? { SettingsOpener.open(page: .chatta) }
         self.customClientFactory = customClientFactory
         let detected = installedAgents?() ?? ACPAgentPreset.detectInstalled().map(\.preset)
         self.selectedAgent = ChattaPrompt.resolveAgent(configuredID: nil, installed: detected)

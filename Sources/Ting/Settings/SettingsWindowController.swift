@@ -2,8 +2,21 @@
 // line and the strip with its close button (also ⌘W); the content fills the window's body.
 import AppKit
 import BobukUI
+import Observation
 import SwiftUI
 import TingCore
+
+@MainActor
+@Observable
+final class SettingsNavigation {
+    var page: SettingsPage = .general
+    var requestID = 0
+
+    func select(_ page: SettingsPage) {
+        self.page = page
+        requestID += 1
+    }
+}
 
 @MainActor
 enum SettingsWindow {
@@ -29,17 +42,26 @@ enum SettingsWindow {
 @MainActor
 final class SettingsWindowController {
     private let hosted: HostedWindowController
+    let navigation = SettingsNavigation()
 
     init(model: AppModel, remembersFrame: Bool = true) {
+        let nav = navigation
         hosted = HostedWindowController(frameName: remembersFrame ? SettingsWindow.frameName : nil,
                                         releasesContentOnClose: true,
                                         window: { SettingsWindow.make(theme: model.theme) },
-                                        rootView: { SettingsRoot().environment(model) })
+                                        rootView: { SettingsRoot(navigation: nav).environment(model) })
     }
 
     var window: NSWindow? { hosted.window }
 
-    func show(activate: Bool = true) { hosted.show(activate: activate) }
+    func show(page: SettingsPage? = nil, activate: Bool = true) {
+        if let page {
+            navigation.select(page)
+        } else if !hosted.isOpen {
+            navigation.page = .general
+        }
+        hosted.show(activate: activate)
+    }
 
     func close() { hosted.close() }
 }
