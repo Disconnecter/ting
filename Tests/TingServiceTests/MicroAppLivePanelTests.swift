@@ -77,4 +77,68 @@ final class MicroAppLivePanelTests: XCTestCase {
         XCTAssertNil(flow.session.progress)
         XCTAssertEqual(pasteboard.string(forType: .string), "start\none\ntwo")
     }
+
+    func testConfiguredResultWidthAndTextSizeApplyToResultPanel() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ting-result-size-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let text = """
+        format: ting.microapp/2
+        name: Summary
+        description: Prints a summary.
+        input: none
+        command: echo "Readable summary"
+        output:
+          to: [panel]
+          as: text
+
+        """
+        let catalog = MicroAppCatalog.load([("summary.yaml", text)])
+        let entry = try XCTUnwrap(catalog.entries.first)
+        let approvals = MicroAppApprovalStore(url: directory.appendingPathComponent("approvals.json"))
+        try approvals.approve(id: "summary", hash: entry.contentHash)
+
+        var runner = MicroAppRunner()
+        runner.path = { "/usr/bin:/bin:/usr/sbin:/sbin" }
+        runner.environment = [:]
+        runner.workingDirectory = directory.path
+        let flow = MicroAppFlowController(approvals: approvals,
+                                          values: MicroAppValueStore(url: directory.appendingPathComponent("values.json")),
+                                          runner: runner, presentsWindow: false)
+        addTeardownBlock { @MainActor in flow.close() }
+        var config = Config()
+        config.microApps.resultWidth = 820
+        config.microApps.resultTextSize = 17
+        flow.configure(config)
+        flow.setCatalog(catalog)
+        flow.start(id: "summary")
+
+        let end = Date().addingTimeInterval(5)
+        while Date() < end {
+            if case .result = flow.session.state { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard case .result(let content) = flow.session.state else { return XCTFail("expected result state") }
+        XCTAssertEqual(content.text, "Readable summary")
+        XCTAssertEqual(flow.session.effectiveCardWidth, 820)
+        XCTAssertEqual(flow.session.resultTextSize, 17)
+        let panel = try XCTUnwrap(flow.flowPanel)
+        XCTAssertEqual(panel.frame.width, 880, accuracy: 0.5)
+
+        panel.contentView?.layoutSubtreeIfNeeded()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        panel.contentView?.layoutSubtreeIfNeeded()
+        var foundFontSize: CGFloat?
+        func walk(_ view: NSView) {
+            if let textView = view as? NSTextView, !textView.isEditable, textView.string.contains("Readable summary"),
+               let storage = textView.textStorage, storage.length > 0,
+               let font = storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont {
+                foundFontSize = font.pointSize
+            }
+            view.subviews.forEach(walk)
+        }
+        if let contentView = panel.contentView { walk(contentView) }
+        XCTAssertEqual(foundFontSize, 17)
+    }
 }

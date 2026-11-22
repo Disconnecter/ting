@@ -251,7 +251,7 @@ final class AppModel {
         switch store.load() {
         case .success(let loaded):
             configError = nil
-            apply(loaded)
+            apply(loaded, reloadMicroApps: false)
         case .failure(let error):
             configError = error.message
         }
@@ -459,7 +459,7 @@ final class AppModel {
 
     // MARK: Private
 
-    private func apply(_ next: Config) {
+    private func apply(_ next: Config, reloadMicroApps: Bool = true) {
         let previous = config
         config = next
         assignments = HotkeyAssignments(next)
@@ -470,9 +470,14 @@ final class AppModel {
         launchaModel.clipbawdEnabled = next.clipbawd.enabled
         clipbawd.configure(next.clipbawd)
         clipbawdPanel.configure(next)
+        microStore.maxTimeLimit = next.microApps.maxTimeout
         microFlow.configure(next)
-        // Binding labels name the micro-apps in launcha.
-        launchaModel.setMicroApps(microCatalog.launchaCandidates(bindings: next.items), folder: microStore.folderURL)
+        if reloadMicroApps && next.microApps.maxTimeout != previous.microApps.maxTimeout {
+            applyMicroApps(microStore.load())
+        } else {
+            // Binding labels name the micro-apps in launcha.
+            launchaModel.setMicroApps(microCatalog.launchaCandidates(bindings: next.items), folder: microStore.folderURL)
+        }
         syncingTheme = true
         theme.appearance = next.appearance.choice
         theme.palette = next.theme

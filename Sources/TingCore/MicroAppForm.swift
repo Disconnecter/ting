@@ -237,3 +237,45 @@ public enum MicroAppFormLayout {
         content > maxFormHeight(panelHeight: panelHeight)
     }
 }
+
+/// Width and typography rules of the micro-app flow panel.
+public enum MicroAppPanelLayout {
+    /// Default card width for dialogs (approval, forms, non-preview prompts) and default result panels.
+    public static let defaultCardWidth: Double = Double(MicroAppsSettings.defaultResultWidth)
+    /// Horizontal space around the card inside the window, for its shadow.
+    public static let panelHorizontalMargin: Double = 60
+    /// Horizontal screen margin kept outside the panel.
+    public static let screenHorizontalMargin: Double = 40
+    /// Horizontal padding inside the card around `SelectableText` (card padding + text inset + line padding).
+    public static let textHorizontalInset: Double = 40 + 12 + 10
+
+    /// Window width for a card of `cardWidth` points, clamped to `visibleWidth` when a screen width is given.
+    public static func panelWidth(cardWidth: Double, visibleWidth: Double? = nil) -> Double {
+        let desired = cardWidth + panelHorizontalMargin
+        guard let visibleWidth else { return desired }
+        let cap = max(320, visibleWidth - screenHorizontalMargin)
+        return min(desired, cap)
+    }
+
+    /// Card width that fits inside `panelWidth(cardWidth:visibleWidth:)`.
+    public static func effectiveCardWidth(cardWidth: Double, visibleWidth: Double? = nil) -> Double {
+        max(260, panelWidth(cardWidth: cardWidth, visibleWidth: visibleWidth) - panelHorizontalMargin)
+    }
+
+    /// Text container width inside a card of `cardWidth` points.
+    public static func textWidth(cardWidth: Double) -> Double {
+        max(120, cardWidth - textHorizontalInset)
+    }
+
+    /// Monospaced font size paired with `bodySize`.
+    public static func monoSize(forBodySize bodySize: Double) -> Double {
+        max(10, bodySize - 1)
+    }
+
+    /// Heading font sizes (H1…H6) scaled from `bodySize`. At the 13pt default: 20, 17, 15, 14, 13, 13.
+    public static func headingSize(level: Int, bodySize: Double) -> Double {
+        let offsets: [Double] = [7, 4, 2, 1, 0, 0]
+        let clamped = min(max(level, 1), 6) - 1
+        return bodySize + offsets[clamped]
+    }
+}

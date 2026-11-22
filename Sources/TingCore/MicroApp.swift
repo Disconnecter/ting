@@ -217,7 +217,7 @@ public enum MicroAppChecker {
     /// The keys of a library file (`libs/NAME.yaml`).
     public static let libraryKeys = ["format", "description", "tools", "timeout", "params", "context", "input", "steps", "output"]
     public static let requiredTopKeys = ["format", "description", "input"]
-    /// The longest `timeout` a file can ask for, in seconds.
+    /// The default longest `timeout` a file can ask for, in seconds.
     public static let maxTimeLimit = 300
     /// Keys every step can have, besides its kind key.
     public static let stepCommonKeys = ["id", "stdin", "timeout", "stream", "params"]
@@ -238,26 +238,30 @@ public enum MicroAppChecker {
     /// `fileName` is the file name or path; its last component is used in issues and gives the id
     /// when the file has none.
     public static func check(_ text: String, fileName: String,
-                             libraries: MicroAppLibraries = MicroAppLibraries()) -> Result<MicroApp, MicroAppFailure> {
-        check(text, file: (fileName as NSString).lastPathComponent, mode: .app, libraries: libraries, stack: [])
+                             libraries: MicroAppLibraries = MicroAppLibraries(),
+                             maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) -> Result<MicroApp, MicroAppFailure> {
+        check(text, file: (fileName as NSString).lastPathComponent, mode: .app, libraries: libraries, stack: [],
+              maxTimeLimit: maxTimeLimit)
     }
 
     /// Checks a library file on its own. `fileName` is shown in messages, such as
     /// `libs/translate.yaml`; the library name is the file name without `.yaml`.
     public static func checkLibrary(_ text: String, fileName: String,
-                                    libraries: MicroAppLibraries = MicroAppLibraries()) -> Result<MicroAppLibrary, MicroAppFailure> {
+                                    libraries: MicroAppLibraries = MicroAppLibraries(),
+                                    maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) -> Result<MicroAppLibrary, MicroAppFailure> {
         let name = ((fileName as NSString).lastPathComponent as NSString).deletingPathExtension
         let source = MicroAppLibrarySource(name: name, file: fileName, text: text)
-        return checkLibrary(source, libraries: libraries, stack: [])
+        return checkLibrary(source, libraries: libraries, stack: [], maxTimeLimit: maxTimeLimit)
     }
 
     static func checkLibrary(_ source: MicroAppLibrarySource, libraries: MicroAppLibraries,
-                             stack: [String]) -> Result<MicroAppLibrary, MicroAppFailure> {
+                             stack: [String], maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) -> Result<MicroAppLibrary, MicroAppFailure> {
         guard MicroAppLibraries.isName(source.name) else {
             let issue = MicroAppIssue(file: source.file, line: 1, message: "the library name `\(source.name)` must be kebab-case (a-z and 0-9 words joined by `-`)")
             return .failure(MicroAppFailure(issues: [issue]))
         }
-        switch check(source.text, file: source.file, mode: .library(source.name), libraries: libraries, stack: stack + [source.name]) {
+        switch check(source.text, file: source.file, mode: .library(source.name), libraries: libraries,
+                     stack: stack + [source.name], maxTimeLimit: maxTimeLimit) {
         case .failure(let failure):
             return .failure(failure)
         case .success(let app):
@@ -275,12 +279,13 @@ public enum MicroAppChecker {
     }
 
     private static func check(_ text: String, file: String, mode: Mode, libraries: MicroAppLibraries,
-                              stack: [String]) -> Result<MicroApp, MicroAppFailure> {
+                              stack: [String], maxTimeLimit: Int) -> Result<MicroApp, MicroAppFailure> {
         var run = Run(file: file)
         run.text = text
         run.mode = mode
         run.libraries = libraries
         run.stack = stack
+        run.maxTimeLimit = max(1, maxTimeLimit)
         let root: YAMLNode
         do {
             root = try YAMLSubset.parse(text)
@@ -338,6 +343,8 @@ public enum MicroAppChecker {
         var inherited: (line: Int, file: String)?
         /// The sources of the file's `context` list, known before its steps are checked.
         var declaredContext: [MicroAppContextSource] = []
+        /// Maximum allowed `timeout` in seconds.
+        var maxTimeLimit = MicroAppChecker.maxTimeLimit
 
         init(file: String) { self.file = file }
 
@@ -370,7 +377,7 @@ public enum MicroAppChecker {
                 fail(line, "no library `\(name)`: add the file `\(MicroAppLibraries.file(for: name))` next to the micro-apps")
                 return nil
             }
-            switch MicroAppChecker.checkLibrary(source, libraries: libraries, stack: stack) {
+            switch MicroAppChecker.checkLibrary(source, libraries: libraries, stack: stack, maxTimeLimit: maxTimeLimit) {
             case .failure(let failure):
                 let first = failure.issues.first.map { "\($0.file):\($0.line): \($0.message)" } ?? "problems"
                 let more = failure.issues.count > 1 ? " (+\(failure.issues.count - 1) more)" : ""
@@ -501,7 +508,7 @@ public enum MicroAppChecker {
             var timeLimit = MicroAppRunRules.timeLimit
             var timeOK = true
             if let e = top["timeout"] {
-                if let seconds = seconds(e.value, "timeout", max: MicroAppChecker.maxTimeLimit) { timeLimit = seconds } else { timeOK = false }
+                if let seconds = seconds(e.value, "timeout", max: maxTimeLimit) { timeLimit = seconds } else { timeOK = false }
             }
             let params = top["params"].map { checkParams($0.value) } ?? []
             if let e = top["context"] { declaredContext = checkContext(e.value) }

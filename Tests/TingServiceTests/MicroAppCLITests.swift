@@ -42,11 +42,13 @@ final class MicroAppCLITests: XCTestCase {
         Bundle(for: MicroAppCLITests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("ting-micro")
     }
 
-    private func run(_ arguments: [String], input: String = "") async throws -> ChildProcessOutcome {
+    private func run(_ arguments: [String], input: String = "", extraEnv: [String: String] = [:]) async throws -> ChildProcessOutcome {
         let executable = Self.tingMicro.path
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: executable))
+        var env = ["PATH": "/usr/bin:/bin", "CLI_TEST_VALUE": "secret"]
+        for (k, v) in extraEnv { env[k] = v }
         return await ChildProcess.run(.init(executable: executable, arguments: arguments,
-                                            environment: ["PATH": "/usr/bin:/bin", "CLI_TEST_VALUE": "secret"],
+                                            environment: env,
                                             workingDirectory: "/tmp", stdin: Data(input.utf8), timeLimit: 10))
     }
 
@@ -174,5 +176,44 @@ extension MicroAppCLITests {
         XCTAssertEqual(String(decoding: result.stdout, as: UTF8.self), "Notes/\n")
         XCTAssertEqual(String(decoding: result.stderr, as: UTF8.self),
                        "ting-micro: keys cmd+a: not sent; only Ting sends to an app\nting-micro: paste 5 characters: not sent; only Ting sends to an app\n")
+    }
+
+    func testConfigurableMaxTimeoutFromConfigInCheckRunAndCheckConfig() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ting-maxtimeout-" + UUID().uuidString)
+        let config = directory.appendingPathComponent("config.json")
+        let microDir = URL(fileURLWithPath: config.path + ".micro", isDirectory: true)
+        try FileManager.default.createDirectory(at: microDir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+
+        let yaml = """
+        format: ting.microapp/2
+        description: Long deploy.
+        timeout: 900
+        input: none
+        command: echo deployed
+        """
+        let script = microDir.appendingPathComponent("deploy.yaml")
+        try yaml.write(to: script, atomically: true, encoding: .utf8)
+
+        // Without config override, default 300s cap rejects timeout: 900 and --timeout 600.
+        let missingConfig = directory.appendingPathComponent("none.json").path
+        let rejected = try await run(["check", script.path], extraEnv: ["TING_CONFIG": missingConfig])
+        XCTAssertEqual(rejected.end, .exited(1))
+        XCTAssertTrue(String(decoding: rejected.stdout, as: UTF8.self).contains("1 to 300"))
+
+        // With microApps.maxTimeout: 1800 in config.json, check, run and check-config all accept it.
+        try #"{"version": 1, "leader": "home", "microApps": {"maxTimeout": 1800}, "items": [{"key": "d", "label": "Deploy", "micro": "deploy"}]}"#
+            .write(to: config, atomically: true, encoding: .utf8)
+
+        let checked = try await run(["check", script.path], extraEnv: ["TING_CONFIG": config.path])
+        XCTAssertEqual(checked.end, .exited(0), String(decoding: checked.stdout, as: UTF8.self))
+
+        let ran = try await run(["run", script.path, "--timeout", "600"], extraEnv: ["TING_CONFIG": config.path])
+        XCTAssertEqual(ran.end, .exited(0), String(decoding: ran.stderr, as: UTF8.self))
+        XCTAssertEqual(String(decoding: ran.stdout, as: UTF8.self), "deployed\n")
+
+        let checkedConfig = try await run(["check-config", config.path], extraEnv: ["TING_CONFIG": config.path])
+        XCTAssertEqual(checkedConfig.end, .exited(0), String(decoding: checkedConfig.stdout, as: UTF8.self))
+        XCTAssertEqual(String(decoding: checkedConfig.stdout, as: UTF8.self), config.path + ": ok\n")
     }
 }

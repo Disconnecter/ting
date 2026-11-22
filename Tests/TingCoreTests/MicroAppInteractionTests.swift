@@ -56,4 +56,48 @@ final class MicroAppInteractionTests: XCTestCase {
             }
         }
     }
+
+    func testFilterChoicesRanksTitleMatchesAboveSubtitleMatches() {
+        let choices = [
+            MicroAppInteraction.Choice(id: 0, title: "missy:remote",
+                                       subtitle: "Ghostty · Put base on a machine over SSH, or update it",
+                                       value: "remote"),
+            MicroAppInteraction.Choice(id: 1, title: "missy:update",
+                                       subtitle: "Fast-forward base and each installed layer",
+                                       value: "update"),
+            MicroAppInteraction.Choice(id: 2, title: "alpha:other",
+                                       subtitle: "Match up tasks",
+                                       value: "other"),
+        ]
+
+        // Word-start match in title beats word-start match in subtitle, even when subtitle appeared first.
+        XCTAssertEqual(MicroAppInteraction.filterChoices(choices, matching: "upd").map(\.value), ["update", "remote"])
+
+        // Fuzzy title match ("m u" -> "missy:update") beats subtitle word-start ("Match up").
+        XCTAssertEqual(MicroAppInteraction.filterChoices(choices, matching: "m u").map(\.value).first, "update")
+
+        // Subtitle-only matches still work when no title matches.
+        XCTAssertEqual(MicroAppInteraction.filterChoices(choices, matching: "Ghostty").map(\.value), ["remote"])
+
+        // Empty or punctuation-only query preserves original order.
+        XCTAssertEqual(MicroAppInteraction.filterChoices(choices, matching: "").map(\.value), ["remote", "update", "other"])
+        XCTAssertEqual(MicroAppInteraction.filterChoices(choices, matching: "   ").map(\.value), ["remote", "update", "other"])
+    }
+
+    func testFilterChoicesSubtitleMatchBeatsTypoOnlyTitleMatch() {
+        let choices = [
+            MicroAppInteraction.Choice(id: 0, title: "bosh", subtitle: "Quick view", value: "bosh"),
+            MicroAppInteraction.Choice(id: 1, title: "shell", subtitle: "Run bash script", value: "shell"),
+        ]
+        // "bash" is a real word in subtitle ("shell") vs a 1-typo match in title ("bosh").
+        XCTAssertEqual(MicroAppInteraction.filterChoices(choices, matching: "bash").map(\.value), ["shell", "bosh"])
+    }
+
+    func testFilterChoicesSupportsThreeLetterTypoFallback() {
+        let choices = [
+            MicroAppInteraction.Choice(id: 0, title: "deploy", subtitle: "Ship release", value: "deploy"),
+            MicroAppInteraction.Choice(id: 1, title: "status", subtitle: "Check health", value: "status"),
+        ]
+        XCTAssertEqual(MicroAppInteraction.filterChoices(choices, matching: "dpx").map(\.value), ["deploy"])
+    }
 }

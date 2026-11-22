@@ -221,4 +221,20 @@ private let interleaved = MicroApp(
         #expect(MicroAppFormLayout.formHeight(content: 2400, panelHeight: 680) == 530)
         #expect(MicroAppFormLayout.scrolls(content: 2400, panelHeight: 680))
     }
+
+    @Test func resultPanelLayoutScalesAndClampsToScreen() {
+        #expect(MicroAppPanelLayout.panelWidth(cardWidth: 580) == 640)
+        #expect(MicroAppPanelLayout.panelWidth(cardWidth: 900, visibleWidth: 1440) == 960)
+        #expect(MicroAppPanelLayout.effectiveCardWidth(cardWidth: 900, visibleWidth: 1440) == 900)
+        // Clamps when the configured card exceeds the screen width.
+        #expect(MicroAppPanelLayout.panelWidth(cardWidth: 1200, visibleWidth: 1000) == 960)
+        #expect(MicroAppPanelLayout.effectiveCardWidth(cardWidth: 1200, visibleWidth: 1000) == 900)
+        #expect(MicroAppPanelLayout.textWidth(cardWidth: 580) == 518)
+        #expect(MicroAppPanelLayout.textWidth(cardWidth: 800) == 738)
+        #expect(MicroAppPanelLayout.monoSize(forBodySize: 13) == 12)
+        #expect(MicroAppPanelLayout.monoSize(forBodySize: 18) == 17)
+        #expect(MicroAppPanelLayout.monoSize(forBodySize: 11) == 10)
+        #expect((1...6).map { MicroAppPanelLayout.headingSize(level: $0, bodySize: 13) } == [20, 17, 15, 14, 13, 13])
+        #expect((1...6).map { MicroAppPanelLayout.headingSize(level: $0, bodySize: 18) } == [25, 22, 20, 19, 18, 18])
+    }
 }

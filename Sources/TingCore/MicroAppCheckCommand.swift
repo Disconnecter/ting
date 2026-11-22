@@ -44,7 +44,8 @@ public enum MicroAppCheckCommand {
     /// `libraries` gives the libraries for a file path: `libs/` next to that file. A file inside a
     /// folder named `libs` is checked as a library.
     public static func run(_ arguments: [String], read: (String) throws -> Data,
-                           libraries: (String) -> MicroAppLibraries = { _ in MicroAppLibraries() }) -> Outcome {
+                           libraries: (String) -> MicroAppLibraries = { _ in MicroAppLibraries() },
+                           maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) -> Outcome {
         var files = arguments
         if files.first == option { files.removeFirst() }
         guard !files.isEmpty else {
@@ -68,12 +69,12 @@ public enum MicroAppCheckCommand {
                 continue
             }
             if isLibraryPath(path) {
-                let issues = checkLibrary(data, path: path, libraries: libraries(path))
+                let issues = checkLibrary(data, path: path, libraries: libraries(path), maxTimeLimit: maxTimeLimit)
                 libraryProblems = libraryProblems || !issues.isEmpty
                 libraryLines += issues.isEmpty ? ["\(path): ok"] : issues.map { "\(path):\($0.line): \(MicroAppCatalog.logMessage($0.message))" }
                 continue
             }
-            checked.append((path, check(data, path: path, libraries: libraries(path))))
+            checked.append((path, check(data, path: path, libraries: libraries(path), maxTimeLimit: maxTimeLimit)))
         }
         if !errors.isEmpty {
             return Outcome(output: [], errors: errors + [usage], exitCode: exitUsage)
@@ -103,22 +104,24 @@ public enum MicroAppCheckCommand {
         return isLibraryPath(path) ? directory : directory.appendingPathComponent(MicroAppLibraries.folderName, isDirectory: true)
     }
 
-    private static func checkLibrary(_ data: Data, path: String, libraries: MicroAppLibraries) -> [MicroAppIssue] {
+    private static func checkLibrary(_ data: Data, path: String, libraries: MicroAppLibraries, maxTimeLimit: Int) -> [MicroAppIssue] {
         if data.count > MicroAppChecker.maxFileSize { return [MicroAppIssue(file: path, line: 1, message: MicroAppChecker.tooLargeMessage)] }
         guard let text = String(data: data, encoding: .utf8) else { return [MicroAppIssue(file: path, line: 1, message: MicroAppChecker.notUTF8Message)] }
         let name = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
         let source = MicroAppLibrarySource(name: name, file: MicroAppLibraries.file(for: name), text: text)
-        if case .failure(let failure) = MicroAppChecker.checkLibrary(source, libraries: libraries, stack: []) { return failure.issues }
+        if case .failure(let failure) = MicroAppChecker.checkLibrary(source, libraries: libraries, stack: [], maxTimeLimit: maxTimeLimit) {
+            return failure.issues
+        }
         return []
     }
 
     /// The same checks as the micro-apps folder: size, UTF-8, then the checker.
-    private static func check(_ data: Data, path: String, libraries: MicroAppLibraries) -> Result<MicroApp, MicroAppFailure> {
+    private static func check(_ data: Data, path: String, libraries: MicroAppLibraries, maxTimeLimit: Int) -> Result<MicroApp, MicroAppFailure> {
         func failure(_ message: String) -> Result<MicroApp, MicroAppFailure> {
             .failure(MicroAppFailure(issues: [MicroAppIssue(file: (path as NSString).lastPathComponent, line: 1, message: message)]))
         }
         if data.count > MicroAppChecker.maxFileSize { return failure(MicroAppChecker.tooLargeMessage) }
         guard let text = String(data: data, encoding: .utf8) else { return failure(MicroAppChecker.notUTF8Message) }
-        return MicroAppChecker.check(text, fileName: path, libraries: libraries)
+        return MicroAppChecker.check(text, fileName: path, libraries: libraries, maxTimeLimit: maxTimeLimit)
     }
 }

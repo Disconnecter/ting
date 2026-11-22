@@ -60,19 +60,23 @@ public struct MicroAppCatalog: Equatable, Sendable {
 
     /// Checks every file and applies the id rules: when two working files have the same id, the
     /// first by file name works and the later ones are broken with a "duplicate id" issue.
-    public static func load(_ files: [(name: String, text: String)], libraries: MicroAppLibraries = MicroAppLibraries()) -> MicroAppCatalog {
+    public static func load(_ files: [(name: String, text: String)], libraries: MicroAppLibraries = MicroAppLibraries(),
+                            maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) -> MicroAppCatalog {
         var catalog = build(hashed: files.map { file in
             let name = (file.name as NSString).lastPathComponent
-            return (name, MicroAppChecker.check(file.text, fileName: name, libraries: libraries), MicroAppApprovals.hash(Data(file.text.utf8)))
+            return (name, MicroAppChecker.check(file.text, fileName: name, libraries: libraries, maxTimeLimit: maxTimeLimit),
+                    MicroAppApprovals.hash(Data(file.text.utf8)))
         })
-        catalog.libraryIssues = checkLibraries(libraries)
+        catalog.libraryIssues = checkLibraries(libraries, maxTimeLimit: maxTimeLimit)
         return catalog
     }
 
     /// The problems of every library file, checked on its own, by file and line.
-    public static func checkLibraries(_ libraries: MicroAppLibraries) -> [MicroAppIssue] {
+    public static func checkLibraries(_ libraries: MicroAppLibraries,
+                                      maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) -> [MicroAppIssue] {
         libraries.sources.values.sorted { $0.file < $1.file }.flatMap { source -> [MicroAppIssue] in
-            if case .failure(let failure) = MicroAppChecker.checkLibrary(source, libraries: libraries, stack: []) { return failure.issues }
+            if case .failure(let failure) = MicroAppChecker.checkLibrary(source, libraries: libraries, stack: [],
+                                                                         maxTimeLimit: maxTimeLimit) { return failure.issues }
             return []
         }
     }

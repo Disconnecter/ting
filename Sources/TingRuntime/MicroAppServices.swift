@@ -27,7 +27,7 @@ enum MicroAppHTTP {
         for header in request.headers { urlRequest.setValue(header.value, forHTTPHeaderField: header.name) }
         urlRequest.httpBody = request.body
         // The step's time limit stops the request; this only ends a connection that hangs.
-        urlRequest.timeoutInterval = TimeInterval(MicroAppChecker.maxTimeLimit)
+        urlRequest.timeoutInterval = max(TimeInterval(MicroAppChecker.maxTimeLimit), request.timeout ?? 0)
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil

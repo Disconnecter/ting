@@ -29,6 +29,10 @@ import Testing
         #expect(c.launcha.doubleTapWindow == 0.3)
         #expect(c.launcha.calculator)
         #expect(c.launcha.converter)
+        #expect(c.microApps == MicroAppsSettings())
+        #expect(c.microApps.maxTimeout == 300)
+        #expect(c.microApps.resultWidth == 580)
+        #expect(c.microApps.resultTextSize == 13)
     }
     @Test func pauseLeaderAlias() throws {
         let c = try decode(#"{"leader":"pause"}"#)
@@ -40,6 +44,7 @@ import Testing
         // A 0.2.x file without "launcha" gets the defaults and keeps everything else.
         let old = try decode(#"{"version":1,"leader":"f13","showDelay":0.5,"showPanelHeader":false,"items":[{"key":"s","label":"Safari","app":"com.apple.Safari"}]}"#)
         #expect(old.launcha == LaunchaSettings())
+        #expect(old.microApps == MicroAppsSettings())
         #expect(old.leader == Hotkey(string: "f13"))
         #expect(!old.showPanelHeader)
         #expect(old.items == [.app("s", "Safari", "com.apple.Safari")])
@@ -134,7 +139,9 @@ import Testing
         #"{"items":[{"key":"tab","app":"x"}]}"#,
         #"{"leader":"unknown"}"#, #"{"showDelay":"fast"}"#, #"{"showPanelHeader":"yes"}"#,
         #"{"sound":1}"#, #"{"soundVolume":"loud"}"#,
-        #"{"launcha":"yes"}"#, #"{"launcha":{"hotkey":"nope"}}"#, #"{"launcha":{"doubleTap":"yes"}}"#])
+        #"{"launcha":"yes"}"#, #"{"launcha":{"hotkey":"nope"}}"#, #"{"launcha":{"doubleTap":"yes"}}"#,
+        #"{"microApps":"yes"}"#, #"{"microApps":{"maxTimeout":"long"}}"#,
+        #"{"microApps":{"resultWidth":"wide"}}"#, #"{"microApps":{"resultTextSize":"big"}}"#])
     func invalidFormat(_ json: String) {
         #expect(throws: (any Error).self) {
             do { _ = try decode(json) }
@@ -149,6 +156,24 @@ import Testing
     }
     @Test(arguments: [-5.0, 0.0, 0.5, 2.0, 9.0]) func delayClamping(_ delay: Double) throws {
         #expect(try decode("{\"showDelay\":\(delay)}").showDelay == min(2, max(0, delay)))
+    }
+    @Test func microAppsSettingsRoundTripAndClamping() throws {
+        #expect(try decode(#"{"microApps":{}}"#).microApps == MicroAppsSettings())
+        let custom = try decode(#"{"microApps":{"maxTimeout":1800,"resultWidth":840,"resultTextSize":16,"future":true}}"#)
+        #expect(custom.microApps.maxTimeout == 1800)
+        #expect(custom.microApps.resultWidth == 840)
+        #expect(custom.microApps.resultTextSize == 16)
+        #expect(try ConfigCodec.decode(ConfigCodec.encode(custom)) == custom)
+
+        let low = try decode(#"{"microApps":{"maxTimeout":5,"resultWidth":100,"resultTextSize":4}}"#).microApps
+        #expect(low.maxTimeout == MicroAppsSettings.maxTimeoutRange.lowerBound)
+        #expect(low.resultWidth == MicroAppsSettings.resultWidthRange.lowerBound)
+        #expect(low.resultTextSize == MicroAppsSettings.resultTextSizeRange.lowerBound)
+
+        let high = try decode(#"{"microApps":{"maxTimeout":999999,"resultWidth":9999,"resultTextSize":99}}"#).microApps
+        #expect(high.maxTimeout == MicroAppsSettings.maxTimeoutRange.upperBound)
+        #expect(high.resultWidth == MicroAppsSettings.resultWidthRange.upperBound)
+        #expect(high.resultTextSize == MicroAppsSettings.resultTextSizeRange.upperBound)
     }
     @Test func encodingAndRoundTrips() throws {
         var full = Config()

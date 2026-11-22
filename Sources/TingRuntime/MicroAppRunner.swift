@@ -627,12 +627,14 @@ struct MicroAppPipeline: Sendable {
             }
             output.write(stepInput)
         case .url(let urlStep):
-            let request: MicroAppHTTPRequest
+            var built: MicroAppHTTPRequest
             do {
-                request = try MicroAppHTTPRequest.build(urlStep) { try resolve($0, input: stepInput) }
+                built = try MicroAppHTTPRequest.build(urlStep) { try resolve($0, input: stepInput) }
             } catch let error as MicroAppHTTPRequest.BuildError {
                 throw MicroAppStepError.failed("error", error.description)
             }
+            if budget.seconds > TimeInterval(MicroAppChecker.maxTimeLimit) { built.timeout = budget.seconds }
+            let request = built
             try await withDeadline(budget) { try await send(request, output: output) }
         case .call:
             // `runStep` runs a call before it gets here.
@@ -647,12 +649,14 @@ struct MicroAppPipeline: Sendable {
             }
             output.write(stepInput)
         case .ai(let aiStep):
-            let request: MicroAppHTTPRequest
+            var built: MicroAppHTTPRequest
             do {
-                request = try MicroAppHTTPRequest.build(aiStep) { try resolve($0, input: stepInput) }
+                built = try MicroAppHTTPRequest.build(aiStep) { try resolve($0, input: stepInput) }
             } catch let error as MicroAppHTTPRequest.BuildError {
                 throw MicroAppStepError.failed("error", error.description)
             }
+            if budget.seconds > TimeInterval(MicroAppChecker.maxTimeLimit) { built.timeout = budget.seconds }
+            let request = built
             try await withDeadline(budget) { try await ask(request, provider: aiStep.provider, output: output) }
         }
     }

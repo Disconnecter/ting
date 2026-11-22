@@ -356,16 +356,20 @@ public struct MicroAppHTTPRequest: Equatable, Sendable {
     /// In order; a later header with the same name replaces an earlier one when sent.
     public var headers: [(name: String, value: String)]
     public var body: Data?
+    /// Per-request connection/idle timeout override; `nil` uses `MicroAppChecker.maxTimeLimit`.
+    public var timeout: TimeInterval?
 
-    public init(method: String, url: String, headers: [(name: String, value: String)] = [], body: Data? = nil) {
+    public init(method: String, url: String, headers: [(name: String, value: String)] = [], body: Data? = nil,
+                timeout: TimeInterval? = nil) {
         self.method = method
         self.url = url
         self.headers = headers
         self.body = body
+        self.timeout = timeout
     }
 
     public static func == (lhs: MicroAppHTTPRequest, rhs: MicroAppHTTPRequest) -> Bool {
-        lhs.method == rhs.method && lhs.url == rhs.url && lhs.body == rhs.body
+        lhs.method == rhs.method && lhs.url == rhs.url && lhs.body == rhs.body && lhs.timeout == rhs.timeout
             && lhs.headers.map(\.name) == rhs.headers.map(\.name) && lhs.headers.map(\.value) == rhs.headers.map(\.value)
     }
 

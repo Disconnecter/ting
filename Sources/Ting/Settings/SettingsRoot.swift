@@ -524,6 +524,31 @@ private struct MicroAppsSection: View {
             Text("One micro-app per .yaml file. Ting creates the folder when you open it, loads it again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
                 .font(.caption).foregroundStyle(.secondary)
         } header: { SettingsSectionTitle("Micro-apps") }
+        Section {
+            let settings = model.config.microApps
+            LabeledContent("Result panel width") {
+                Stepper(value: model.binding(\.microApps.resultWidth), in: MicroAppsSettings.resultWidthRange, step: 20) {
+                    Text("\(settings.resultWidth) pt").monospacedDigit()
+                }
+            }
+            LabeledContent("Result text size") {
+                Stepper(value: model.binding(\.microApps.resultTextSize), in: MicroAppsSettings.resultTextSizeRange) {
+                    Text("\(settings.resultTextSize) pt").monospacedDigit()
+                }
+            }
+            LabeledContent("Maximum run timeout") {
+                TextField("", value: Binding(get: { settings.maxTimeout }, set: { value in
+                    let range = MicroAppsSettings.maxTimeoutRange
+                    model.update { $0.microApps.maxTimeout = min(max(value, range.lowerBound), range.upperBound) }
+                }), format: .number.grouping(.never))
+                    .labelsHidden()
+                    .frame(width: 80)
+                    .accessibilityLabel("Maximum micro-app run timeout in seconds")
+                Text("seconds")
+            }
+            Text("Individual micro-apps still default to 60 seconds and can set a smaller or larger `timeout` up to this maximum.")
+                .font(.caption).foregroundStyle(.secondary)
+        } header: { SettingsSectionTitle("Result panel and limits") }
     }
 }
 

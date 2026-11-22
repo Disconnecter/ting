@@ -55,7 +55,7 @@ description: Look up a domain.   # required, one line
 tools: [dig, whois]              # optional; programs the code needs on PATH
 hidden: false                    # optional; true: not listed in launcha
 remember: true                   # optional; false: do not offer the last values
-timeout: 60                      # optional; seconds for the whole run, 1 to 300
+timeout: 60                      # optional; seconds for the whole run, 1 to microApps.maxTimeout (default 300)
 
 params:                          # optional; asked in this order
   - name: domain                 # a-z, 0-9, _ → ${params.domain}, $TING_DOMAIN
@@ -114,8 +114,9 @@ output:                          # optional; without it nothing is shown or copi
 - Every step runs as the user, with full rights, no sandbox, in the home folder,
   with the environment of the user's login shell (`PATH`, `OPENAI_API_KEY` and
   every other exported variable). Ting reads that environment at start and on
-  each change in the micro-apps folder. `LANG` and `LC_*` are not passed on:
-  shell code that handles non-ASCII text sets `LC_ALL=en_US.UTF-8` itself.
+  each change in the micro-apps folder. `LANG`, `LANGUAGE` and `LC_*` are not
+  passed on: shell code that handles non-ASCII text sets `LC_ALL=en_US.UTF-8`
+  itself.
 - Programs of `tools`, and `python3` for a `python` step, must be on that PATH,
   else nothing runs. `python3` needs the Xcode Command Line Tools. Use only tools
   that ship with macOS 14, or list the others in `tools`.

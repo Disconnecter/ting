@@ -174,11 +174,63 @@ public struct LaunchaSettings: Equatable, Sendable, Codable {
     }
 }
 
+/// Micro-apps settings: maximum allowed run timeout and result panel layout.
+/// JSON: {"maxTimeout": seconds, "resultWidth": points, "resultTextSize": points}.
+/// Every key is optional when decoding; a missing key takes the default below.
+public struct MicroAppsSettings: Equatable, Sendable, Codable {
+    /// Default maximum `timeout` a micro-app file may ask for, in seconds.
+    public static let defaultMaxTimeout = MicroAppChecker.maxTimeLimit
+    /// Allowed range of `maxTimeout`. Decoding clamps to it.
+    public static let maxTimeoutRange: ClosedRange<Int> = 60...86_400
+
+    /// Default width of the micro-app result card, in points.
+    public static let defaultResultWidth = 580
+    /// Allowed range of `resultWidth`. Decoding clamps to it.
+    public static let resultWidthRange: ClosedRange<Int> = 480...1200
+
+    /// Default body text size of the micro-app result panel, in points.
+    public static let defaultResultTextSize = 13
+    /// Allowed range of `resultTextSize`. Decoding clamps to it.
+    public static let resultTextSizeRange: ClosedRange<Int> = 11...24
+
+    /// Longest `timeout` a micro-app file may ask for, in seconds. A micro-app still defaults to
+    /// 60s and may set any whole number of seconds from 1 up to this limit.
+    public var maxTimeout: Int = defaultMaxTimeout
+    /// Width of the micro-app result card, in points.
+    public var resultWidth: Int = defaultResultWidth
+    /// Body text size in the micro-app result panel, in points.
+    public var resultTextSize: Int = defaultResultTextSize
+
+    public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case maxTimeout, resultWidth, resultTextSize
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = MicroAppsSettings()
+        let timeout = try container.decodeIfPresent(Int.self, forKey: .maxTimeout) ?? defaults.maxTimeout
+        maxTimeout = min(max(timeout, Self.maxTimeoutRange.lowerBound), Self.maxTimeoutRange.upperBound)
+        let width = try container.decodeIfPresent(Int.self, forKey: .resultWidth) ?? defaults.resultWidth
+        resultWidth = min(max(width, Self.resultWidthRange.lowerBound), Self.resultWidthRange.upperBound)
+        let textSize = try container.decodeIfPresent(Int.self, forKey: .resultTextSize) ?? defaults.resultTextSize
+        resultTextSize = min(max(textSize, Self.resultTextSizeRange.lowerBound), Self.resultTextSizeRange.upperBound)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(maxTimeout, forKey: .maxTimeout)
+        try container.encode(resultWidth, forKey: .resultWidth)
+        try container.encode(resultTextSize, forKey: .resultTextSize)
+    }
+}
+
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" and "alternateLeader" (Hotkey strings or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
 /// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipbawd" (`ClipbawdSettings`),
-/// "appHotkeys", "items".
+/// "microApps" (`MicroAppsSettings`), "appHotkeys", "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
     public static let currentVersion = 1
@@ -215,6 +267,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var launcha: LaunchaSettings = LaunchaSettings()
     /// clipbawd settings. Older files without "clipbawd" get the defaults.
     public var clipbawd: ClipbawdSettings = ClipbawdSettings()
+    /// Micro-apps settings. Older files without "microApps" get the defaults.
+    public var microApps: MicroAppsSettings = MicroAppsSettings()
     /// Direct global shortcuts assigned from launcha; older files default to none.
     public var appHotkeys: [AppShortcut] = []
     public var items: [Item] = []
@@ -239,7 +293,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, appHotkeys, items
+        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, microApps, appHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -262,6 +316,7 @@ public struct Config: Equatable, Sendable, Codable {
         soundVolume = min(max(volume, 0), 1)
         launcha = try container.decodeIfPresent(LaunchaSettings.self, forKey: .launcha) ?? defaults.launcha
         clipbawd = try container.decodeIfPresent(ClipbawdSettings.self, forKey: .clipbawd) ?? defaults.clipbawd
+        microApps = try container.decodeIfPresent(MicroAppsSettings.self, forKey: .microApps) ?? defaults.microApps
         appHotkeys = try container.decodeIfPresent([AppShortcut].self, forKey: .appHotkeys) ?? defaults.appHotkeys
         items = try container.decodeIfPresent([Item].self, forKey: .items) ?? defaults.items
     }
@@ -287,6 +342,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(soundVolume, forKey: .soundVolume)
         try container.encode(launcha, forKey: .launcha)
         try container.encode(clipbawd, forKey: .clipbawd)
+        try container.encode(microApps, forKey: .microApps)
         try container.encode(appHotkeys, forKey: .appHotkeys)
         try container.encode(items, forKey: .items)
     }

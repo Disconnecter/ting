@@ -1,3 +1,4 @@
+import BobukCore
 import Foundation
 
 /// A rendered request for user input. No answers are persisted by the runner.
@@ -79,5 +80,49 @@ public enum MicroAppInteraction: Equatable, Sendable {
             }
         }
         return answer
+    }
+
+    /// Filters `choices` by `query`, ranking title matches above subtitle-only matches.
+    ///
+    /// Order: non-typo title match, non-typo subtitle match, typo title match, typo subtitle match;
+    /// within each group: better `FuzzyMatchKind`, higher alignment score, then original order.
+    /// When nothing matches, a 3-letter query is tried again with one typo (`FuzzyQuery.hasFallback`).
+    /// A query without letters or digits keeps every choice in order.
+    public static func filterChoices(_ choices: [Choice], matching query: String) -> [Choice] {
+        let prepared = FuzzyQuery(query)
+        guard !prepared.isEmpty else { return choices }
+        func collect(fallback: Bool) -> [(offset: Int, choice: Choice, rank: Int, match: FuzzyMatch)] {
+            choices.enumerated().compactMap { offset, choice in
+                let title = prepared.match(choice.title, fallback: fallback)
+                let subtitle = choice.subtitle.flatMap { prepared.match($0, fallback: fallback) }
+                let picked: (rank: Int, match: FuzzyMatch)?
+                switch (title, subtitle) {
+                case (let t?, _) where t.kind != .typo:
+                    picked = (0, t)
+                case (_, let s?) where s.kind != .typo:
+                    picked = (1, s)
+                case (let t?, _):
+                    picked = (2, t)
+                case (nil, let s?):
+                    picked = (3, s)
+                case (nil, nil):
+                    picked = nil
+                }
+                guard let picked else { return nil }
+                return (offset, choice, picked.rank, picked.match)
+            }
+        }
+        var found = collect(fallback: false)
+        if found.isEmpty, prepared.hasFallback {
+            found = collect(fallback: true)
+        }
+        return found
+            .sorted { lhs, rhs in
+                if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
+                if lhs.match.kind != rhs.match.kind { return lhs.match.kind < rhs.match.kind }
+                if lhs.match.score != rhs.match.score { return lhs.match.score > rhs.match.score }
+                return lhs.offset < rhs.offset
+            }
+            .map(\.choice)
     }
 }

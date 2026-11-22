@@ -95,6 +95,12 @@ final class MicroAppFlowSession {
     var form: MicroAppFormModel?
     var interaction: MicroAppInteractionModel?
     var showHeader = true
+    /// Configured card width for the result panel (and live output / preview), in points.
+    var resultCardWidth = CGFloat(MicroAppsSettings.defaultResultWidth)
+    /// Card width clamped to the current screen, in points.
+    var effectiveCardWidth = CGFloat(MicroAppsSettings.defaultResultWidth)
+    /// Configured body text size for the result panel (and live output / preview), in points.
+    var resultTextSize = CGFloat(MicroAppsSettings.defaultResultTextSize)
     /// The highest parameter form height in the current panel; beyond it the form scrolls.
     var formMaxHeight = CGFloat(MicroAppFormLayout.maxFormHeight(panelHeight: MicroAppFormLayout.panelCap))
 }
@@ -172,6 +178,13 @@ final class MicroAppFlowController: NSObject {
 
     func configure(_ config: Config) {
         session.showHeader = config.showPanelHeader
+        session.resultCardWidth = CGFloat(config.microApps.resultWidth)
+        session.resultTextSize = CGFloat(config.microApps.resultTextSize)
+        if let panel, isOpen {
+            applyPanelWidth(for: session.state, panel: panel)
+        } else {
+            session.effectiveCardWidth = session.resultCardWidth
+        }
     }
 
     /// Starts the micro-app bound as `id`. A missing or broken micro-app shows its error and starts nothing.
@@ -510,6 +523,31 @@ final class MicroAppFlowController: NSObject {
 
     // MARK: Panel
 
+    private func usesResultWidth(for state: MicroAppFlowSession.State) -> Bool {
+        switch state {
+        case .result, .working: true
+        case .interaction: session.interaction?.isPreview ?? false
+        case .closed, .approval, .form: false
+        }
+    }
+
+    private func desiredCardWidth(for state: MicroAppFlowSession.State) -> Double {
+        usesResultWidth(for: state) ? Double(session.resultCardWidth) : MicroAppPanelLayout.defaultCardWidth
+    }
+
+    private func applyPanelWidth(for state: MicroAppFlowSession.State, panel: MicroAppFlowPanel) {
+        let requested = desiredCardWidth(for: state)
+        let visible = presentsWindow ? (panel.screen?.visibleFrame ?? Screens.underPointer?.visibleFrame) : nil
+        let width = CGFloat(MicroAppPanelLayout.panelWidth(cardWidth: requested, visibleWidth: visible.map { Double($0.width) }))
+        session.effectiveCardWidth = CGFloat(MicroAppPanelLayout.effectiveCardWidth(cardWidth: requested, visibleWidth: visible.map { Double($0.width) }))
+        var frame = panel.frame
+        guard abs(frame.width - width) > 0.5 else { return }
+        let centerX = visible?.midX ?? frame.midX
+        frame.origin.x = centerX - width / 2
+        frame.size.width = width
+        panel.setFrame(frame, display: panel.isVisible)
+    }
+
     private func show(_ state: MicroAppFlowSession.State) {
         let panel = self.panel ?? makePanel()
         panel.multilineInput = false
@@ -519,17 +557,24 @@ final class MicroAppFlowController: NSObject {
             panel.choosing = session.interaction?.isChoice ?? false
         }
         guard presentsWindow else {
+            applyPanelWidth(for: state, panel: panel)
             session.state = state
             return
         }
+        let requested = desiredCardWidth(for: state)
         if !panel.isVisible {
             if let visible = Screens.underPointer?.visibleFrame {
                 // Near the upper third, like launcha.
                 let top = PanelPlacement.top(in: visible, anchor: .upper())
                 let height = max(240, min(CGFloat(MicroAppFormLayout.panelCap), top - visible.minY - 20))
-                let width: CGFloat = 640
+                let width = CGFloat(MicroAppPanelLayout.panelWidth(cardWidth: requested, visibleWidth: Double(visible.width)))
+                session.effectiveCardWidth = CGFloat(MicroAppPanelLayout.effectiveCardWidth(cardWidth: requested, visibleWidth: Double(visible.width)))
                 panel.setFrame(NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: false)
+            } else {
+                applyPanelWidth(for: state, panel: panel)
             }
+        } else {
+            applyPanelWidth(for: state, panel: panel)
         }
         session.formMaxHeight = CGFloat(MicroAppFormLayout.maxFormHeight(panelHeight: Double(panel.frame.height)))
         session.state = state

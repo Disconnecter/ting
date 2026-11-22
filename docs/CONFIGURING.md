@@ -83,7 +83,11 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `maxDays` is 0–3650 (0 means no age limit). The oldest external copies are dropped until all limits hold;
   age cleanup is hourly and on restore/config changes. Limits apply in memory too; reuse does not reset age.
   `excludedApps` lists bundle identifiers whose copies are never kept,
-  `ignoredPrefixes` lists case-sensitive starts of text that is never kept). The
+  `ignoredPrefixes` lists case-sensitive starts of text that is never kept),
+  `microApps` (`{"maxTimeout": 300, "resultWidth": 580, "resultTextSize": 13}`; `maxTimeout` is
+  60–86400 seconds and caps the `timeout` a micro-app file may ask for, while each file still defaults
+  to 60s and may set any smaller or larger value up to that limit; `resultWidth` is 480–1200 points
+  for the result panel card; `resultTextSize` is 11–24 points for result panel body text). The
   Clipbawd hotkey cannot match either leader or the launcha hotkey. Clipbawd is also searchable by name in launcha while enabled.
 - Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images, videos and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 

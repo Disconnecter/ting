@@ -6,8 +6,8 @@ import TingCore
 import BobukUI
 
 enum MicroAppOutputRenderer {
-    static let bodySize: CGFloat = 13
-    static let monoSize: CGFloat = 12
+    static let bodySize: CGFloat = CGFloat(MicroAppsSettings.defaultResultTextSize)
+    static let monoSize: CGFloat = CGFloat(MicroAppPanelLayout.monoSize(forBodySize: Double(MicroAppsSettings.defaultResultTextSize)))
     /// The space between two table columns.
     static let columnGap: CGFloat = 18
 
@@ -15,21 +15,22 @@ enum MicroAppOutputRenderer {
     static var muted: NSColor { .dynamic(light: 0x59666C, dark: 0xA4AFB3) }
     static var codeBackground: NSColor { ink.withAlphaComponent(0.08) }
 
-    static func render(_ content: MicroAppPanelContent) -> NSAttributedString {
-        render(content.text, style: content.isError ? .console : content.style)
+    static func render(_ content: MicroAppPanelContent, bodySize: CGFloat = bodySize) -> NSAttributedString {
+        render(content.text, style: content.isError ? .console : content.style, bodySize: bodySize)
     }
 
-    static func render(_ text: String, style: MicroApp.OutputStyle) -> NSAttributedString {
+    static func render(_ text: String, style: MicroApp.OutputStyle, bodySize: CGFloat = bodySize) -> NSAttributedString {
+        let monoSize = CGFloat(MicroAppPanelLayout.monoSize(forBodySize: Double(bodySize)))
         switch style {
-        case .text: plain(text, font: .systemFont(ofSize: bodySize))
-        case .code: plain(text, font: mono())
-        case .console: console(text)
-        case .markdown: markdown(text)
+        case .text: return plain(text, font: .systemFont(ofSize: bodySize))
+        case .code: return plain(text, font: mono(size: monoSize))
+        case .console: return console(text, monoSize: monoSize)
+        case .markdown: return markdown(text, bodySize: bodySize)
         }
     }
 
-    private static func mono(_ weight: NSFont.Weight = .regular) -> NSFont {
-        .monospacedSystemFont(ofSize: monoSize, weight: weight)
+    private static func mono(_ weight: NSFont.Weight = .regular, size: CGFloat = monoSize) -> NSFont {
+        .monospacedSystemFont(ofSize: size, weight: weight)
     }
 
     private static func plain(_ text: String, font: NSFont) -> NSAttributedString {
@@ -38,7 +39,7 @@ enum MicroAppOutputRenderer {
 
     // MARK: Console
 
-    static func console(_ text: String) -> NSAttributedString {
+    static func console(_ text: String, monoSize: CGFloat = monoSize) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for run in ConsoleText.parse(text) {
             let style = run.style
@@ -50,7 +51,7 @@ enum MicroAppOutputRenderer {
                 foreground = swapped
             }
             if style.dim { foreground = foreground.withAlphaComponent(0.6) }
-            var font = mono(style.bold ? .bold : .regular)
+            var font = mono(style.bold ? .bold : .regular, size: monoSize)
             if style.italic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foreground]
             if let background { attributes[.backgroundColor] = background }
@@ -63,7 +64,8 @@ enum MicroAppOutputRenderer {
 
     // MARK: Markdown
 
-    static func markdown(_ text: String) -> NSAttributedString {
+    static func markdown(_ text: String, bodySize: CGFloat = bodySize) -> NSAttributedString {
+        let monoSize = CGFloat(MicroAppPanelLayout.monoSize(forBodySize: Double(bodySize)))
         let result = NSMutableAttributedString()
         let blocks = MarkdownText.parse(text)
         for (index, block) in blocks.enumerated() {
@@ -71,15 +73,15 @@ enum MicroAppOutputRenderer {
             let piece = NSMutableAttributedString()
             switch block {
             case .heading(let level, let spans):
-                let sizes: [CGFloat] = [20, 17, 15, 14, 13, 13]
-                piece.append(spansString(spans, size: sizes[min(level, 6) - 1], weight: .bold))
+                let size = CGFloat(MicroAppPanelLayout.headingSize(level: level, bodySize: Double(bodySize)))
+                piece.append(spansString(spans, size: size, weight: .bold))
                 piece.addAttribute(.paragraphStyle, value: paragraph(spacing: 6, before: index == 0 ? 0 : 6),
                                    range: NSRange(location: 0, length: piece.length))
             case .paragraph(let spans):
-                piece.append(spansString(spans))
+                piece.append(spansString(spans, size: bodySize))
                 piece.addAttribute(.paragraphStyle, value: paragraph(spacing: 8), range: NSRange(location: 0, length: piece.length))
             case .quote(let spans):
-                piece.append(spansString(spans, color: muted))
+                piece.append(spansString(spans, size: bodySize, color: muted))
                 let style = paragraph(spacing: 8)
                 style.firstLineHeadIndent = 14
                 style.headIndent = 14
@@ -94,7 +96,7 @@ enum MicroAppOutputRenderer {
                     let indent = CGFloat(item.depth) * 18
                     let line = NSMutableAttributedString(string: "\t\(marker)\t",
                                                          attributes: [.font: NSFont.systemFont(ofSize: bodySize), .foregroundColor: muted])
-                    line.append(spansString(item.spans))
+                    line.append(spansString(item.spans, size: bodySize))
                     if itemIndex < items.count - 1 { line.append(NSAttributedString(string: "\n")) }
                     let style = paragraph(spacing: itemIndex == items.count - 1 ? 8 : 2)
                     style.tabStops = [NSTextTab(textAlignment: .right, location: indent + 14),
@@ -107,17 +109,17 @@ enum MicroAppOutputRenderer {
                 if language == "links" {
                     // Spans in code style carry the code font and background, links included.
                     let spans = MarkdownText.codeLinks(code)
-                    piece.append(spansString(spans))
+                    piece.append(spansString(spans, size: bodySize))
                 } else {
-                    piece.append(NSAttributedString(string: code, attributes: [.font: mono(), .foregroundColor: ink,
+                    piece.append(NSAttributedString(string: code, attributes: [.font: mono(size: monoSize), .foregroundColor: ink,
                                                                                 .backgroundColor: codeBackground]))
                 }
                 piece.addAttribute(.paragraphStyle, value: paragraph(spacing: 8), range: NSRange(location: 0, length: piece.length))
             case .table(let table):
-                piece.append(tableString(table))
+                piece.append(tableString(table, bodySize: bodySize))
             case .rule:
                 piece.append(NSAttributedString(string: String(repeating: "─", count: 40),
-                                                attributes: [.font: NSFont.systemFont(ofSize: 9), .foregroundColor: muted,
+                                                attributes: [.font: NSFont.systemFont(ofSize: max(9, bodySize - 4)), .foregroundColor: muted,
                                                              .paragraphStyle: paragraph(spacing: 8)]))
             }
             if !isLast { piece.append(NSAttributedString(string: "\n", attributes: [.font: NSFont.systemFont(ofSize: bodySize)])) }
@@ -166,10 +168,10 @@ enum MicroAppOutputRenderer {
 
     /// A table as aligned columns: one line per row, the cells separated by tabs, and tab stops at the
     /// measured column widths (right and centre aligned columns get right and centre tab stops).
-    static func tableString(_ table: MarkdownTable) -> NSAttributedString {
+    static func tableString(_ table: MarkdownTable, bodySize: CGFloat = bodySize) -> NSAttributedString {
         var rows: [[NSAttributedString]] = []
-        if table.hasHeader { rows.append(table.header.map { spansString($0, weight: .semibold) }) }
-        rows += table.rows.map { $0.map { spansString($0) } }
+        if table.hasHeader { rows.append(table.header.map { spansString($0, size: bodySize, weight: .semibold) }) }
+        rows += table.rows.map { $0.map { spansString($0, size: bodySize) } }
         let columns = table.alignments.count
         var widths = [CGFloat](repeating: 0, count: columns)
         for row in rows {

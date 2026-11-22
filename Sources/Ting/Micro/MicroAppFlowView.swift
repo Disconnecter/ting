@@ -39,15 +39,17 @@ struct MicroAppFlowView: View {
                 }
             case .interaction(let app):
                 if let model = session.interaction {
-                    Card(title: app.shownName, showHeader: session.showHeader,
+                    let cardWidth = model.isPreview ? session.effectiveCardWidth : CGFloat(MicroAppPanelLayout.defaultCardWidth)
+                    Card(title: app.shownName, showHeader: session.showHeader, width: cardWidth,
                          footer: model.isChoice ? ["↑↓ choose", "↩ continue", "esc cancel"] :
                             [model.multiline ? "⌘↩ continue" : "↩ continue", "esc cancel"]) {
-                        MicroAppInteractionBody(model: model, onSubmit: onSubmitAnswer)
+                        MicroAppInteractionBody(model: model, textSize: session.resultTextSize, cardWidth: cardWidth,
+                                                onSubmit: onSubmitAnswer)
                     }
                     .padding(.top, 8)
                 }
             case .working(let app):
-                Card(title: app.shownName, showHeader: session.showHeader,
+                Card(title: app.shownName, showHeader: session.showHeader, width: session.effectiveCardWidth,
                      footer: session.pendingLink == nil ? ["esc stop"] : linkWarningFooter) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 10) {
@@ -64,20 +66,22 @@ struct MicroAppFlowView: View {
                             LinkWarning(url: url, onOpen: onConfirmLink, onCancel: onCancelLink)
                         }
                         if let live = session.progress?.liveOutput, !live.isEmpty {
-                            LiveOutput(text: live, style: app.output.style, onLink: onLink)
+                            LiveOutput(text: live, style: app.output.style, cardWidth: session.effectiveCardWidth,
+                                       textSize: session.resultTextSize, onLink: onLink)
                         }
                     }
                     .padding(.vertical, 8)
                 }
                 .padding(.top, 8)
             case .result(let content):
-                Card(title: content.title, showHeader: session.showHeader,
+                Card(title: content.title, showHeader: session.showHeader, width: session.effectiveCardWidth,
                      footer: session.pendingLink == nil ? ["↩ copy all and close", "⌘C copy", "esc close"] : linkWarningFooter) {
                     VStack(alignment: .leading, spacing: 8) {
                         if let url = session.pendingLink {
                             LinkWarning(url: url, onOpen: onConfirmLink, onCancel: onCancelLink)
                         }
-                        ResultBody(content: content, onLink: onLink)
+                        ResultBody(content: content, cardWidth: session.effectiveCardWidth,
+                                   textSize: session.resultTextSize, onLink: onLink)
                     }
                 }
                 .padding(.top, 8)
@@ -137,6 +141,7 @@ private func formFooter(_ form: MicroAppForm) -> [String] {
 private struct Card<Content: View>: View {
     let title: String
     let showHeader: Bool
+    var width: CGFloat = CGFloat(MicroAppPanelLayout.defaultCardWidth)
     let footer: [String]
     @ViewBuilder let content: Content
 
@@ -164,7 +169,7 @@ private struct Card<Content: View>: View {
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 16)
-        .frame(width: 580)
+        .frame(width: width)
         .background(Color.soundPanel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(alignment: .top) {
             Rectangle().fill(Color.tingAmber).frame(height: 3)
@@ -248,7 +253,13 @@ private struct ApprovalBody: View {
 
 private struct ResultBody: View {
     let content: MicroAppPanelContent
+    let cardWidth: CGFloat
+    let textSize: CGFloat
     let onLink: (URL) -> Void
+
+    private var textWidth: CGFloat {
+        CGFloat(MicroAppPanelLayout.textWidth(cardWidth: Double(cardWidth)))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -265,8 +276,9 @@ private struct ResultBody: View {
                 }
             }
             if !content.text.isEmpty {
-                let rendered = MicroAppOutputRenderer.render(content)
-                SelectableText(text: rendered, plainText: content.plainText, takesFocus: true, onLink: onLink)
+                let rendered = MicroAppOutputRenderer.render(content, bodySize: textSize)
+                SelectableText(text: rendered, plainText: content.plainText, takesFocus: true,
+                               textWidth: textWidth, onLink: onLink)
                     .frame(height: height(rendered))
                     .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
             }
@@ -277,10 +289,10 @@ private struct ResultBody: View {
     private func height(_ rendered: NSAttributedString) -> CGFloat {
         let measured: CGFloat
         if rendered.length <= 20_000 {
-            measured = ceil(rendered.boundingRect(with: NSSize(width: SelectableText.textWidth, height: .greatestFiniteMagnitude),
+            measured = ceil(rendered.boundingRect(with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
                                                   options: [.usesLineFragmentOrigin, .usesFontLeading]).height)
         } else {
-            measured = CGFloat(content.text.split(separator: "\n", omittingEmptySubsequences: false).count) * 17
+            measured = CGFloat(content.text.split(separator: "\n", omittingEmptySubsequences: false).count) * ceil(textSize * 1.35)
         }
         return min(440, max(44, measured + 20))
     }
@@ -290,11 +302,18 @@ private struct ResultBody: View {
 private struct LiveOutput: View {
     let text: String
     let style: MicroApp.OutputStyle
+    let cardWidth: CGFloat
+    let textSize: CGFloat
     let onLink: (URL) -> Void
 
+    private var textWidth: CGFloat {
+        CGFloat(MicroAppPanelLayout.textWidth(cardWidth: Double(cardWidth)))
+    }
+
     var body: some View {
-        let rendered = MicroAppOutputRenderer.render(text, style: style)
-        SelectableText(text: rendered, plainText: text, takesFocus: false, followsEnd: true, onLink: onLink)
+        let rendered = MicroAppOutputRenderer.render(text, style: style, bodySize: textSize)
+        SelectableText(text: rendered, plainText: text, takesFocus: false, followsEnd: true,
+                       textWidth: textWidth, onLink: onLink)
             .frame(height: height(rendered))
             .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
             .accessibilityLabel("output so far")
@@ -304,7 +323,7 @@ private struct LiveOutput: View {
     private func height(_ rendered: NSAttributedString) -> CGFloat {
         let measured: CGFloat
         if rendered.length <= 20_000 {
-            measured = ceil(rendered.boundingRect(with: NSSize(width: SelectableText.textWidth, height: .greatestFiniteMagnitude),
+            measured = ceil(rendered.boundingRect(with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
                                                   options: [.usesLineFragmentOrigin, .usesFontLeading]).height)
         } else {
             measured = 440
@@ -322,18 +341,21 @@ struct SelectableText: NSViewRepresentable {
     let takesFocus: Bool
     /// A new text scrolls to the end, not to the beginning: for output that grows.
     var followsEnd = false
+    /// Width used before the scroll view lays out.
+    var textWidth: CGFloat = SelectableText.defaultTextWidth
     /// A click on a link; `nil` leaves links dead.
     var onLink: ((URL) -> Void)?
 
-    /// The width the text gets inside the card: the card minus its padding, the inset and the line padding.
-    static let textWidth: CGFloat = 580 - 40 - 12 - 10
+    /// The width the text gets inside the default card: the card minus its padding, the inset and the line padding.
+    static let defaultTextWidth: CGFloat = CGFloat(MicroAppPanelLayout.textWidth(cardWidth: MicroAppPanelLayout.defaultCardWidth))
 
     init(text: NSAttributedString, plainText: String, takesFocus: Bool, followsEnd: Bool = false,
-         onLink: ((URL) -> Void)? = nil) {
+         textWidth: CGFloat = SelectableText.defaultTextWidth, onLink: ((URL) -> Void)? = nil) {
         self.text = text
         self.plainText = plainText
         self.takesFocus = takesFocus
         self.followsEnd = followsEnd
+        self.textWidth = textWidth
         self.onLink = onLink
     }
 
@@ -348,7 +370,7 @@ struct SelectableText: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.borderType = .noBorder
-        let view = PlainCopyTextView(frame: NSRect(x: 0, y: 0, width: SelectableText.textWidth, height: 0))
+        let view = PlainCopyTextView(frame: NSRect(x: 0, y: 0, width: textWidth, height: 0))
         view.minSize = .zero
         view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         view.isVerticallyResizable = true

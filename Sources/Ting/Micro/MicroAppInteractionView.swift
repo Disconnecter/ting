@@ -25,10 +25,11 @@ final class MicroAppInteractionModel {
     }
 
     var isChoice: Bool { if case .choose = request { return true }; return false }
+    var isPreview: Bool { if case .preview = request { return true }; return false }
     var multiline: Bool { if case .ask(_, _, _, let value, _) = request { return value }; return false }
     var filteredChoices: [MicroAppInteraction.Choice] {
         guard !query.isEmpty else { return choices }
-        return FuzzyMatcher.filter(choices, matching: query) { [$0.title] + ($0.subtitle.map { [$0] } ?? []) }
+        return MicroAppInteraction.filterChoices(choices, matching: query)
     }
 
     func move(_ delta: Int) {
@@ -51,6 +52,8 @@ final class MicroAppInteractionModel {
 
 struct MicroAppInteractionBody: View {
     @Bindable var model: MicroAppInteractionModel
+    var textSize: CGFloat = CGFloat(MicroAppsSettings.defaultResultTextSize)
+    var cardWidth: CGFloat = CGFloat(MicroAppPanelLayout.defaultCardWidth)
     let onSubmit: () -> Void
     @FocusState private var focused: Bool
 
@@ -58,7 +61,9 @@ struct MicroAppInteractionBody: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(model.request.prompt).font(.headline).fixedSize(horizontal: false, vertical: true)
             if case .preview(let text, let style) = model.request {
-                SelectableText(text: MicroAppOutputRenderer.render(text, style: style), plainText: text, takesFocus: false)
+                SelectableText(text: MicroAppOutputRenderer.render(text, style: style, bodySize: textSize),
+                               plainText: text, takesFocus: false,
+                               textWidth: CGFloat(MicroAppPanelLayout.textWidth(cardWidth: Double(cardWidth))))
                     .frame(height: 300).accessibilityLabel("Preview")
                 Text("Esc cancels the run.").font(.caption)
             } else if model.isChoice {

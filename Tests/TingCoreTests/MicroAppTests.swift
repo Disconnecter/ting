@@ -449,4 +449,84 @@ output:
         """)
         #expect(found.filter { $0.message.contains("TING_A") }.map(\.line) == [5])
     }
+
+    @Test func configurableMaxTimeLimitAllowsLargerAndSmallerScriptTimeouts() throws {
+        let longDeploy = """
+        format: ting.microapp/2
+        description: Deploy over SSH.
+        timeout: 900
+        input: none
+        steps:
+          - command: echo deploy
+            timeout: 600
+        output:
+          to: [panel]
+        """
+        // Default 300s cap rejects 900.
+        if case .failure(let failure) = MicroAppChecker.check(longDeploy, fileName: "deploy.yaml") {
+            #expect(failure.issues.contains { $0.message.contains("1 to 300") })
+        } else {
+            Issue.record("expected default cap to reject timeout: 900")
+        }
+
+        // Raised cap allows 900 and step timeout 600.
+        let allowed = try MicroAppChecker.check(longDeploy, fileName: "deploy.yaml", maxTimeLimit: 1800).get()
+        #expect(allowed.timeLimit == 900)
+        #expect(allowed.steps.first?.timeLimit == 600)
+
+        // A script can still set a shorter timeout than the 60s default (and than maxTimeout).
+        let quick = """
+        format: ting.microapp/2
+        description: Quick check.
+        timeout: 15
+        input: none
+        command: echo fast
+        output:
+          to: [panel]
+        """
+        let fastApp = try MicroAppChecker.check(quick, fileName: "quick.yaml", maxTimeLimit: 1800).get()
+        #expect(fastApp.timeLimit == 15)
+
+        // Exceeding the configured cap is rejected with that cap in the message.
+        if case .failure(let failure) = MicroAppChecker.check(longDeploy, fileName: "deploy.yaml", maxTimeLimit: 600) {
+            #expect(failure.issues.contains { $0.message.contains("1 to 600") })
+        } else {
+            Issue.record("expected custom cap 600 to reject timeout: 900")
+        }
+
+        // Step timeout still cannot exceed the micro-app's own timeout.
+        let badStep = """
+        format: ting.microapp/2
+        description: Step exceeds app timeout.
+        timeout: 120
+        input: none
+        steps:
+          - command: echo deploy
+            timeout: 180
+        """
+        if case .failure(let failure) = MicroAppChecker.check(badStep, fileName: "bad-step.yaml", maxTimeLimit: 1800) {
+            #expect(failure.issues.contains { $0.message.contains("1 to 120") })
+        } else {
+            Issue.record("expected step timeout 180 > app timeout 120 to fail")
+        }
+
+        // Inherited library with timeout > 300 also honors maxTimeLimit.
+        let libText = """
+        format: ting.microlib/1
+        description: Long library.
+        timeout: 900
+        steps:
+          - command: echo lib
+        """
+        let libs = MicroAppLibraries([MicroAppLibrarySource(name: "long", file: "libs/long.yaml", text: libText)])
+        let child = """
+        format: ting.microapp/2
+        inherit: long
+        input: none
+        """
+        let inherited = try MicroAppChecker.check(child, fileName: "child.yaml", libraries: libs, maxTimeLimit: 1800).get()
+        #expect(inherited.timeLimit == 900)
+        #expect(MicroAppCatalog.load([("deploy.yaml", longDeploy)], libraries: libs, maxTimeLimit: 1800).issues.isEmpty)
+        #expect(!MicroAppCatalog.load([("deploy.yaml", longDeploy)], libraries: libs, maxTimeLimit: 300).issues.isEmpty)
+    }
 }

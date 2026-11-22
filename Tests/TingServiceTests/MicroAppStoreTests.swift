@@ -156,4 +156,42 @@ final class MicroAppStoreTests: XCTestCase {
         XCTAssertTrue(step.current.issues.isEmpty)
         XCTAssertEqual(try log(store), "")
     }
+
+    func testMaxTimeLimitControlsCatalogValidationAndAppModelReloadsOnChange() throws {
+        let configURL = try temporaryConfig()
+        let store = MicroAppStore(configURL: configURL, environment: [:])
+        try makeFolder(store)
+        let longApp = """
+        format: ting.microapp/2
+        description: Deploy over SSH.
+        timeout: 900
+        input: none
+        command: echo deploy
+        output:
+          to: [panel]
+
+        """
+        try put(longApp, "deploy.yaml", in: store)
+
+        // Default 300s cap rejects timeout: 900.
+        XCTAssertEqual(store.load().brokenFiles, ["deploy.yaml"])
+
+        // Raising maxTimeLimit allows it to load cleanly.
+        store.maxTimeLimit = 1200
+        let catalog = store.load()
+        XCTAssertTrue(catalog.issues.isEmpty)
+        XCTAssertEqual(catalog.apps.first?.timeLimit, 900)
+
+        // AppModel reloads micro-apps automatically when config.microApps.maxTimeout changes.
+        let model = AppModel(presentsWindows: false, store: ConfigStore(url: configURL))
+        let appMicroDir = MicroAppStore.folderURL(configURL: configURL, environment: ["TING_CONFIG": configURL.path])
+        try FileManager.default.createDirectory(at: appMicroDir, withIntermediateDirectories: true)
+        try Data(longApp.utf8).write(to: appMicroDir.appendingPathComponent("deploy.yaml"))
+        model.reload()
+        XCTAssertFalse(model.microAppIssues.isEmpty)
+
+        model.update { $0.microApps.maxTimeout = 1800 }
+        XCTAssertTrue(model.microAppIssues.isEmpty)
+        XCTAssertEqual(model.microApps.first?.app?.timeLimit, 900)
+    }
 }

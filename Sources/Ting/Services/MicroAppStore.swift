@@ -10,6 +10,8 @@ final class MicroAppStore {
 
     let folderURL: URL
     let logURL: URL
+    /// Maximum allowed `timeout` when checking micro-app files (`Config.microApps.maxTimeout`).
+    var maxTimeLimit: Int = MicroAppChecker.maxTimeLimit
     private(set) var catalog = MicroAppCatalog()
     /// Called on each load of the folder, also the loads that the watch makes.
     var onLoad: (() -> Void)?
@@ -56,7 +58,7 @@ final class MicroAppStore {
         onLoad?()
         let libraries = MicroAppLibraries.read(folder: librariesURL)
         catalog = MicroAppCatalog.build(hashed: readFiles(libraries: libraries))
-        catalog.libraryIssues = MicroAppCatalog.checkLibraries(libraries)
+        catalog.libraryIssues = MicroAppCatalog.checkLibraries(libraries, maxTimeLimit: maxTimeLimit)
         writeLog()
         return catalog
     }
@@ -94,7 +96,7 @@ final class MicroAppStore {
                 // The hash is of exactly the bytes that were checked, so an approval covers what runs.
                 let hash = MicroAppApprovals.hash(data)
                 guard let text = String(data: data, encoding: .utf8) else { return failure(MicroAppChecker.notUTF8Message, hash: hash) }
-                return (name, MicroAppChecker.check(text, fileName: name, libraries: libraries), hash)
+                return (name, MicroAppChecker.check(text, fileName: name, libraries: libraries, maxTimeLimit: maxTimeLimit), hash)
             } catch {
                 return failure("cannot read the file: \(error.localizedDescription)")
             }

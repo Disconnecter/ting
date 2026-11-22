@@ -256,6 +256,28 @@ final class MicroAppStepsRunnerTests: XCTestCase {
         XCTAssertEqual(recorder.all, [#"POST https://api.example.com/v1/a%20b?lang=uk Bearer tok-1 {"text":"a b"}"#])
     }
 
+    func testURLStepPropagatesExtendedTimeoutBeyond300Seconds() async throws {
+        let recorder = Recorder()
+        var r = try runner { request in
+            recorder.add("\(request.timeout ?? -1)")
+            return MicroAppHTTPResponse(status: 200, body: Self.body(["ok"]))
+        }
+        r.timeLimit = nil
+        let text = """
+        format: ting.microapp/2
+        description: Long HTTP call.
+        timeout: 900
+        input: none
+        steps:
+          - url: https://api.example.com/deploy
+        """
+        let app = try MicroAppChecker.check(text, fileName: "long-http.yaml", maxTimeLimit: 1800).get()
+        let result = await r.run(app)
+        XCTAssertEqual(stdout(result), "ok")
+        let recorded = try XCTUnwrap(recorder.all.first.flatMap(Double.init))
+        XCTAssertGreaterThan(recorded, 800)
+    }
+
     func testURLStepFailsOnAnErrorStatusWithoutShowingTheQuery() async throws {
         let r = try runner { _ in MicroAppHTTPResponse(status: 404, body: Self.body(["no such page"])) }
         let result = await r.run(try app("  - url: https://api.example.com/x\n    query:\n      key: ${API_TOKEN}\n"))

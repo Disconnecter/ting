@@ -184,4 +184,25 @@ final class MicroAppOutputRendererTests: XCTestCase {
         let codeFont = try XCTUnwrap(code.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
         XCTAssertTrue(codeFont.fontDescriptor.symbolicTraits.contains(.monoSpace))
     }
+
+    func testCustomBodySizeScalesAllOutputStyles() throws {
+        let size: CGFloat = 18
+
+        let plain = MicroAppOutputRenderer.render("Plain text", style: .text, bodySize: size)
+        XCTAssertEqual((plain.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize, 18)
+
+        let code = MicroAppOutputRenderer.render("let x = 1", style: .code, bodySize: size)
+        XCTAssertEqual((code.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize, 17)
+
+        let console = MicroAppOutputRenderer.render("\u{1B}[32mok\u{1B}[0m", style: .console, bodySize: size)
+        XCTAssertEqual((console.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize, 17)
+
+        let md = MicroAppOutputRenderer.render("# Heading\n\nBody `code`", style: .markdown, bodySize: size)
+        let headingRange = (md.string as NSString).range(of: "Heading")
+        let bodyRange = (md.string as NSString).range(of: "Body")
+        let inlineCodeRange = (md.string as NSString).range(of: "code")
+        XCTAssertEqual((md.attribute(.font, at: headingRange.location, effectiveRange: nil) as? NSFont)?.pointSize, 25)
+        XCTAssertEqual((md.attribute(.font, at: bodyRange.location, effectiveRange: nil) as? NSFont)?.pointSize, 18)
+        XCTAssertEqual((md.attribute(.font, at: inlineCodeRange.location, effectiveRange: nil) as? NSFont)?.pointSize, 17)
+    }
 }

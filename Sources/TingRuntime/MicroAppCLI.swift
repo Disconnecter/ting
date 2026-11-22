@@ -49,7 +49,7 @@ package enum MicroAppCLI {
         init(_ text: String) { description = text }
     }
 
-    static func parse(_ args: [String]) throws -> Options {
+    static func parse(_ args: [String], maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) throws -> Options {
         guard let file = args.first, !file.hasPrefix("-") else { throw UsageError("run needs a YAML file") }
         var options = Options(file: file)
         var i = 1
@@ -90,8 +90,8 @@ package enum MicroAppCLI {
                     guard options.input == nil else { throw UsageError("--input was given twice") }
                     options.input = value
                 default:
-                    guard let n = Int(value), (1...MicroAppChecker.maxTimeLimit).contains(n) else {
-                        throw UsageError("--timeout must be from 1 to \(MicroAppChecker.maxTimeLimit) seconds")
+                    guard let n = Int(value), (1...maxTimeLimit).contains(n) else {
+                        throw UsageError("--timeout must be from 1 to \(maxTimeLimit) seconds")
                     }
                     options.timeout = TimeInterval(n)
                 }
@@ -101,7 +101,7 @@ package enum MicroAppCLI {
         return options
     }
 
-    static func load(_ file: String, libs: String? = nil) throws -> MicroApp {
+    static func load(_ file: String, libs: String? = nil, maxTimeLimit: Int = MicroAppChecker.maxTimeLimit) throws -> MicroApp {
         guard file.hasSuffix(".yaml") else { throw UsageError("a script file must end in .yaml") }
         let handle: FileHandle
         do { handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: file)) }
@@ -111,7 +111,8 @@ package enum MicroAppCLI {
         guard data.count <= MicroAppChecker.maxFileSize else { throw UsageError(MicroAppChecker.tooLargeMessage) }
         guard let text = String(data: data, encoding: .utf8) else { throw UsageError(MicroAppChecker.notUTF8Message) }
         let folder = libs.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? MicroAppCheckCommand.libraryFolder(for: file)
-        return try MicroAppChecker.check(text, fileName: file, libraries: MicroAppLibraries.read(folder: folder)).get()
+        return try MicroAppChecker.check(text, fileName: file, libraries: MicroAppLibraries.read(folder: folder),
+                                         maxTimeLimit: maxTimeLimit).get()
     }
 
     static func validate(_ options: Options, app: MicroApp) throws {
@@ -155,6 +156,7 @@ package enum MicroAppCLI {
                 libs = files[at + 1]
                 files.removeSubrange(at...(at + 1))
             }
+            let maxTimeLimit = configuredMaxTimeLimit()
             let report = MicroAppCheckCommand.run(files, read: { path in
                 let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
                 defer { try? handle.close() }
@@ -162,7 +164,7 @@ package enum MicroAppCLI {
             }, libraries: { path in
                 MicroAppLibraries.read(folder: libs.map { URL(fileURLWithPath: $0, isDirectory: true) }
                     ?? MicroAppCheckCommand.libraryFolder(for: path))
-            })
+            }, maxTimeLimit: maxTimeLimit)
             // Uses the same checker as Ting --check, including duplicate-id validation.
             report.output.forEach { out($0 + "\n") }
             report.errors.forEach { err($0.replacingOccurrences(of: "Ting --check", with: "ting-micro check") + "\n") }
@@ -170,8 +172,9 @@ package enum MicroAppCLI {
         }
         do {
             guard args.first == "run" else { throw UsageError("expected `run` or `check`; use --help") }
-            let options = try parse(Array(args.dropFirst()))
-            let app = try load(options.file, libs: options.libs)
+            let maxTimeLimit = configuredMaxTimeLimit()
+            let options = try parse(Array(args.dropFirst()), maxTimeLimit: maxTimeLimit)
+            let app = try load(options.file, libs: options.libs, maxTimeLimit: maxTimeLimit)
             try validate(options, app: app)
             let input: String
             if let text = options.input { input = text }
@@ -227,6 +230,14 @@ package enum MicroAppCLI {
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/ting/config.json").path
     }
 
+    /// Reads `microApps.maxTimeout` from the default config file, falling back to `MicroAppChecker.maxTimeLimit`.
+    static func configuredMaxTimeLimit(environment: [String: String] = ProcessInfo.processInfo.environment) -> Int {
+        let path = defaultConfigPath(environment: environment)
+        guard let data = FileManager.default.contents(atPath: path),
+              let config = try? ConfigCodec.decode(data) else { return MicroAppChecker.maxTimeLimit }
+        return config.microApps.maxTimeout
+    }
+
     /// The micro-apps folder of a config file, as Ting finds it.
     static func microFolder(configPath: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         let url = URL(fileURLWithPath: configPath)
@@ -270,7 +281,7 @@ package enum MicroAppCLI {
                       let text = String(data: data, encoding: .utf8) else { return nil }
                 return (name, text)
             }
-        let catalog = MicroAppCatalog.load(files, libraries: libraries)
+        let catalog = MicroAppCatalog.load(files, libraries: libraries, maxTimeLimit: config.microApps.maxTimeout)
         func walk(_ items: [Item], _ prefix: [String]) {
             for item in items {
                 let sequence = prefix + [item.key]
