@@ -184,6 +184,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
             AppActivation.activate()
             win.makeKeyAndOrderFront(nil)
             win.orderFrontRegardless()
+            session.requestComposerFocus()
         }
         if autoConnect && session.phase == .disconnected {
             session.connect()
@@ -213,6 +214,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
         if reconnect && (presentsWindow || customClientFactory != nil) {
             session.connect()
         }
+        if presentsWindow { session.requestComposerFocus() }
     }
 
     /// Starts a clean session in the current mode.
@@ -223,6 +225,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
         if presentsWindow || customClientFactory != nil {
             session.connect()
         }
+        if presentsWindow { session.requestComposerFocus() }
     }
 
     /// Toggles agent tools for the current Chat session and reconnects if active.
