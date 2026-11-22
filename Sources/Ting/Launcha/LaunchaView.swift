@@ -75,7 +75,11 @@ private struct LaunchaCard: View {
         .padding(.bottom, 16)
         .frame(width: 460)
         .pickerPanel(palette: TingPickerStyle.palette)
-        .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        .background {
+            RoundedRectangle(cornerRadius: PickerMetrics.panelRadius, style: .continuous)
+                .fill(Color.tingPanel)
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("launcha")
     }
@@ -200,12 +204,14 @@ private struct ResultList: View {
     var body: some View {
         let rows = model.rows
         let selection = model.selection
+        let preparedQuery = model.query.isEmpty ? nil : FuzzyQuery(model.query)
+        let shortcuts = chrome.appHotkeysByID
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        ResultRow(row: row, query: model.query, selected: index == selection, icons: chrome.icons,
-                                  shortcut: chrome.appHotkeys.first { $0.id == row.id }?.hotkey) {
+                        ResultRow(row: row, preparedQuery: preparedQuery, selected: index == selection, icons: chrome.icons,
+                                  shortcut: shortcuts[row.id]) {
                             model.select(row.id)
                             onActivate(false)
                         }
@@ -220,7 +226,7 @@ private struct ResultList: View {
                 // No animation: also right for Reduce Motion.
                 if rows.indices.contains(selection) { proxy.scrollTo(rows[selection].id) }
             }
-            .onChange(of: rows.map(\.id)) {
+            .onChange(of: model.rowsVersion) {
                 // Refreshes preserve the selected result; keep it visible after reordering too.
                 if rows.indices.contains(selection) {
                     proxy.scrollTo(rows[selection].id, anchor: selection == 0 ? .top : nil)
@@ -234,8 +240,8 @@ private struct ResultList: View {
 
 private struct ResultRow: View {
     let row: LaunchaRow
-    /// Letters of the query that match the name are highlighted.
-    let query: String
+    /// Prepared once per list so rows do not re-parse the query or keyboard layout variants.
+    let preparedQuery: FuzzyQuery?
     let selected: Bool
     let icons: LaunchaIconCache
     let shortcut: Hotkey?
@@ -258,7 +264,8 @@ private struct ResultRow: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.isCalculation ? AttributedString(row.name)
-                                           : .highlighting(row.name, query: query, color: .tingAmber))
+                                           : preparedQuery.map { .highlighting(row.name, query: $0, color: .tingAmber) }
+                                               ?? AttributedString(row.name))
                         .font(row.isCalculation ? .system(size: 15, weight: .semibold, design: .monospaced)
                                                 : .system(size: 13, weight: .medium))
                         .lineLimit(1).truncationMode(.middle)

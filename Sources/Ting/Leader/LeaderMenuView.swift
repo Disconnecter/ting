@@ -41,7 +41,7 @@ private struct SoundList: View {
             HStack(spacing: 6) {
                 LeaderToken(leader: session.leader)
                 ForEach(Array(session.path.enumerated()), id: \.offset) { KeyCap(key: $0.element, style: .sound, large: true) }
-                BlinkingSlot()
+                BlinkingSlot(isActive: session.isVisible)
                 Spacer()
             }
             .padding(.vertical, 14)
@@ -144,18 +144,38 @@ private struct Row: View {
 }
 
 private struct BlinkingSlot: View {
-    @State private var on = true
+    let isActive: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .strokeBorder(Color.tingAmber.opacity(on ? 0.9 : 0.25), lineWidth: 1.5)
-            .frame(width: 30, height: 30)
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 0.6).repeatForever()) { on = false }
+        // Unmounting the pulsing view when the panel hides guarantees zero display-link work
+        // while ordered out, and animating layer opacity avoids per-frame stroke rasterization.
+        Group {
+            if isActive && !reduceMotion {
+                PulsingSlot()
+            } else {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(Color.tingAmber, lineWidth: 1.5)
+                    .opacity(0.9)
             }
-            .accessibilityHidden(true)
+        }
+        .frame(width: 30, height: 30)
+        .accessibilityHidden(true)
+    }
+
+    private struct PulsingSlot: View {
+        @State private var dimmed = false
+
+        var body: some View {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color.tingAmber, lineWidth: 1.5)
+                .opacity(dimmed ? 0.25 : 0.9)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                        dimmed = true
+                    }
+                }
+        }
     }
 }
 

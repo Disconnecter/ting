@@ -68,7 +68,11 @@ private struct ClipbawdCard: View {
         .padding(.bottom, 16)
         .frame(width: ClipbawdPanel.width - 40)
         .pickerPanel(palette: TingPickerStyle.palette)
-        .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        .background {
+            RoundedRectangle(cornerRadius: PickerMetrics.panelRadius, style: .continuous)
+                .fill(Color.tingPanel)
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Clipbawd")
     }
@@ -97,7 +101,7 @@ private struct ClipbawdCard: View {
                 .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
                 .accessibilityAddTraits(.updatesFrequently)
         } else {
-            let selected = state.selected
+            let selected = results.first { $0.id == state.selectedID } ?? results.first
             HStack(alignment: .top, spacing: 14) {
                 ClipList(results: results, selectedID: selected?.id, images: state.images, height: state.listHeight,
                          onSelect: { state.select($0) }, onChoose: { onChoose($0, true) })
@@ -209,7 +213,7 @@ private struct ClipIcon: View {
                     .fill(ClipFormat.color(hex) ?? .clear)
                     .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.tingStroke, lineWidth: 0.5))
             case .files(let files):
-                Image(nsImage: NSWorkspace.shared.icon(forFile: files.first?.path ?? "/")).resizable().scaledToFit()
+                Image(nsImage: images.fileIcon(for: files.first?.path ?? "/")).resizable().scaledToFit()
             default:
                 if let image {
                     Image(nsImage: image).resizable().scaledToFill()
@@ -304,7 +308,7 @@ private struct ClipContentPreview: View {
                     picture(image)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: files.first?.path ?? "/"))
+                        Image(nsImage: images.fileIcon(for: files.first?.path ?? "/"))
                             .resizable().frame(width: 64, height: 64)
                         ScrollView(.vertical) {
                             VStack(alignment: .leading, spacing: 2) {

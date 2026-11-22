@@ -257,8 +257,20 @@ final class ClipbawdController: NSObject {
 @MainActor
 final class ClipImageCache {
     private let cache = NSCache<NSString, NSImage>()
+    private let fileIcons = NSCache<NSString, NSImage>()
 
-    init() { cache.countLimit = 300 }
+    init() {
+        cache.countLimit = 300
+        fileIcons.countLimit = 256
+    }
+
+    func fileIcon(for path: String) -> NSImage {
+        let key = path as NSString
+        if let icon = fileIcons.object(forKey: key) { return icon }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        fileIcons.setObject(icon, forKey: key)
+        return icon
+    }
 
     func image(_ data: Data, key: String, maxPixels: Int) async -> NSImage? {
         let cacheKey = "\(key)@\(maxPixels)" as NSString

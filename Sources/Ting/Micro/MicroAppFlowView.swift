@@ -171,7 +171,11 @@ private struct Card<Content: View>: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.tingStroke.opacity(0.6), lineWidth: 0.75))
-        .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.soundPanel)
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("micro-app \(title)")
     }

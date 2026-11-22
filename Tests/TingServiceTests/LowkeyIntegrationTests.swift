@@ -124,10 +124,10 @@ import TingCore
         let home = root!
         return LaunchaModel(opener: opener, historyStore: LaunchaHistoryStore(url: home.appendingPathComponent("history.json")),
                             consent: LaunchaConsentStore(url: home.appendingPathComponent("consent.json")),
-                            home: home, refreshInterval: refresh, lowkeySites: sites) { policy in
+                            home: home, refreshInterval: refresh, lowkeySites: sites, makeServices: { policy in
             LaunchaModel.Services(index: LaunchaAppIndex(home: home, protectedFolders: policy, roots: appRoots),
                                  spotlight: LaunchaSpotlight(home: home, protectedFolders: policy, debounce: .zero) { _ in [] })
-        }
+        })
     }
 
     func testSearchesSitesByTitleAliasAndHostAndRecordsOnlySuccessfulOpen() async throws {

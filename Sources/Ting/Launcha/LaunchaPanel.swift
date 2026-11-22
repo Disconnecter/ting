@@ -100,7 +100,15 @@ final class LaunchaChrome {
     var maxListHeight: CGFloat = 360
     /// Bumped on every open to move focus into the search field.
     var focusToken = 0
-    var appHotkeys: [AppShortcut] = []
+    var appHotkeys: [AppShortcut] = [] {
+        didSet {
+            var map: [String: Hotkey] = [:]
+            map.reserveCapacity(appHotkeys.count)
+            for item in appHotkeys where map[item.id] == nil { map[item.id] = item.hotkey }
+            appHotkeysByID = map
+        }
+    }
+    private(set) var appHotkeysByID: [String: Hotkey] = [:]
     var appShortcutProblems: [String: String] = [:]
     var shortcutEditor: LaunchaShortcutEditor?
     @ObservationIgnored let icons = LaunchaIconCache()

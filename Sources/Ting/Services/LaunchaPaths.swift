@@ -18,8 +18,30 @@ struct LaunchaServiceIssue: Equatable, Sendable {
 }
 
 struct LaunchaPathPolicy: Sendable {
-    var home: URL
+    var home: URL {
+        didSet {
+            standardizedHome = home.standardizedFileURL
+            standardizedHomeComponents = standardizedHome.pathComponents
+            realHome = (Self.realURL(home) ?? standardizedHome).standardizedFileURL
+            realHomeComponents = realHome.pathComponents
+        }
+    }
     var protectedFolders: ProtectedFolderPolicy = .needsConsent
+    private var standardizedHome: URL
+    private var standardizedHomeComponents: [String]
+    private var realHome: URL
+    private var realHomeComponents: [String]
+
+    init(home: URL, protectedFolders: ProtectedFolderPolicy = .needsConsent) {
+        self.home = home
+        self.protectedFolders = protectedFolders
+        let standardized = home.standardizedFileURL
+        self.standardizedHome = standardized
+        self.standardizedHomeComponents = standardized.pathComponents
+        let resolved = (Self.realURL(home) ?? standardized).standardizedFileURL
+        self.realHome = resolved
+        self.realHomeComponents = resolved.pathComponents
+    }
 
     var protectedURLs: [URL] { ["Desktop", "Documents", "Downloads"].map { home.appendingPathComponent($0) } }
     func contains(_ url: URL, in root: URL) -> Bool {
@@ -27,15 +49,26 @@ struct LaunchaPathPolicy: Sendable {
         let base = root.standardizedFileURL.path
         return path == base || path.hasPrefix(base + "/")
     }
-    private func firstHomeComponent(_ url: URL, home: URL) -> String? {
-        guard contains(url, in: home) else { return nil }
-        return url.standardizedFileURL.pathComponents.dropFirst(home.standardizedFileURL.pathComponents.count).first?.lowercased()
+    private func containsPath(_ path: String, in basePath: String) -> Bool {
+        path == basePath || path.hasPrefix(basePath + "/")
+    }
+    private func firstHomeComponent(_ standardizedURL: URL, homePath: String, homeComponentCount: Int) -> String? {
+        guard containsPath(standardizedURL.path, in: homePath) else { return nil }
+        return standardizedURL.pathComponents.dropFirst(homeComponentCount).first?.lowercased()
     }
     func needsConsent(_ url: URL) -> Bool {
         guard protectedFolders == .needsConsent else { return false }
-        return [home, Self.realURL(home) ?? home].contains {
-            ["desktop", "documents", "downloads"].contains(firstHomeComponent(url, home: $0) ?? "")
+        let standardized = url.standardizedFileURL
+        if let first = firstHomeComponent(standardized, homePath: standardizedHome.path, homeComponentCount: standardizedHomeComponents.count),
+           ["desktop", "documents", "downloads"].contains(first) {
+            return true
         }
+        if realHome.path != standardizedHome.path,
+           let first = firstHomeComponent(standardized, homePath: realHome.path, homeComponentCount: realHomeComponents.count),
+           ["desktop", "documents", "downloads"].contains(first) {
+            return true
+        }
+        return false
     }
     /// Foundation may leave intermediate symlinks unresolved when a leaf is missing.
     /// realpath fails closed instead. Never use this before the lexical policy check.
@@ -44,19 +77,20 @@ struct LaunchaPathPolicy: Sendable {
         defer { free(path) }
         return URL(fileURLWithPath: String(cString: path))
     }
-    private func valid(_ path: URL, home: URL) -> Bool {
-        contains(path, in: home) && firstHomeComponent(path, home: home) != "library"
-            && !path.pathComponents.contains { $0.hasPrefix(".") || $0.lowercased().hasSuffix(".app") }
-            && !needsConsent(path)
+    private func valid(_ standardizedPath: URL, homePath: String, homeComponentCount: Int) -> Bool {
+        containsPath(standardizedPath.path, in: homePath)
+            && firstHomeComponent(standardizedPath, homePath: homePath, homeComponentCount: homeComponentCount) != "library"
+            && !standardizedPath.pathComponents.contains { $0.hasPrefix(".") || $0.lowercased().hasSuffix(".app") }
+            && !needsConsent(standardizedPath)
     }
     func lexicalSearchable(_ url: URL) -> Bool {
         guard !url.pathComponents.contains(where: { $0.hasPrefix(".") || $0.lowercased().hasSuffix(".app") }) else { return false }
-        return valid(url.standardizedFileURL, home: home.standardizedFileURL)
+        return valid(url.standardizedFileURL, homePath: standardizedHome.path, homeComponentCount: standardizedHomeComponents.count)
     }
     /// Check lexical paths before touching the filesystem, then check resolved paths too.
     func searchable(_ url: URL) -> Bool {
         guard lexicalSearchable(url) else { return false }
-        guard let resolved = Self.realURL(url), let realHome = Self.realURL(home) else { return false }
-        return valid(resolved, home: realHome)
+        guard let resolved = Self.realURL(url) else { return false }
+        return valid(resolved.standardizedFileURL, homePath: realHome.path, homeComponentCount: realHomeComponents.count)
     }
 }

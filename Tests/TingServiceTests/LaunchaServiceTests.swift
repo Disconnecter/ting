@@ -113,17 +113,25 @@ final class LaunchaServiceTests: XCTestCase {
         XCTAssertTrue(indexed.issues.isEmpty)
     }
 
-    func testIndexBeyondFormerDepthLimit() async throws {
+    func testIndexBoundsDepthToAppFolders() async throws {
         let root = try temporary()
-        var folder = root
-        for _ in 0..<32 { folder.appendPathComponent("level") }
-        let deepApp = folder.appendingPathComponent("Deep.app")
-        try app(deepApp, id: "io.bobuk.deep")
-        try FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("Loop"), withDestinationURL: root)
+        let direct = root.appendingPathComponent("Direct.app")
+        let nested = root.appendingPathComponent("Utilities/Nested.app")
+        let tooDeep = root.appendingPathComponent("Projects/Repo/Deep.app")
+        try app(direct, id: "io.bobuk.direct")
+        try app(nested, id: "io.bobuk.nested")
+        try app(tooDeep, id: "io.bobuk.deep")
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("Utilities/Loop"), withDestinationURL: root)
         let index = LaunchaAppIndex(home: root, roots: [root])
         let result = await index.refreshOnOpen()
-        XCTAssertEqual(result.apps.map(\.url.path), [deepApp.path])
+        XCTAssertEqual(Set(result.apps.map(\.url.path)), Set([direct.path, nested.path]))
         XCTAssertTrue(result.issues.isEmpty)
+
+        // Adding an app in a watched subfolder invalidates the directory-stamp cache on next open.
+        let added = root.appendingPathComponent("Utilities/Added.app")
+        try app(added, id: "io.bobuk.added")
+        let refreshed = await index.refreshOnOpen()
+        XCTAssertEqual(Set(refreshed.apps.map(\.url.path)), Set([direct.path, nested.path, added.path]))
     }
 
     func testIndexBeyondFormerEntryLimit() async throws {

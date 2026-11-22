@@ -129,6 +129,8 @@ final class LaunchaModel {
         didSet { if query != oldValue { queryChanged() } }
     }
     private(set) var rows: [LaunchaRow] = []
+    /// Bumped only when `rows` actually changes, so views do not re-map row IDs on every body pass.
+    private(set) var rowsVersion = 0
     private(set) var selection = 0
     private(set) var spotlight = LaunchaSpotlight.State()
     private(set) var indexIssues: [LaunchaServiceIssue] = []
@@ -251,10 +253,11 @@ final class LaunchaModel {
         isExplainingConsent = false
         query = ""
         selection = 0
+        lowkeySites = loadLowkeySites()
         refreshRunning()
         recompute(keepSelection: false)
         loadHistory()
-        startScan(onOpen: true)
+        startScan(onOpen: true, refreshContext: false)
         let interval = refreshInterval
         let token = generation
         refreshLoop?.cancel()
@@ -262,7 +265,7 @@ final class LaunchaModel {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: interval) } catch { return }
                 guard let self, self.isOpen, self.generation == token else { return }
-                self.startScan(onOpen: false)
+                self.startScan(onOpen: false, refreshContext: true)
             }
         }
     }
@@ -277,7 +280,10 @@ final class LaunchaModel {
         stopSpotlight()
         isExplainingConsent = false
         query = ""
-        rows = []
+        if !rows.isEmpty {
+            rows = []
+            rowsVersion += 1
+        }
         selection = 0
     }
 
@@ -453,33 +459,40 @@ final class LaunchaModel {
         // A query without letters or digits lists every app, so it never reaches Spotlight
         // unless the index is empty.
         let wantsFiles = !trimmed.isEmpty && hasIndex && appRows.isEmpty
+        var nextRows: [LaunchaRow]
         if wantsFiles {
             if spotlightQuery != trimmed {
                 spotlightQuery = trimmed
                 spotlight = LaunchaSpotlight.State()
                 services.spotlight.search(trimmed)
             }
-            rows = spotlight.files.map { file in
+            nextRows = spotlight.files.map { file in
                 LaunchaRow(id: "file:" + file.url.path, kind: .file(file.url), name: file.name,
                            detail: displayFolder(of: file.url))
             }
         } else {
             if spotlightQuery != nil { stopSpotlight() }
-            rows = appRows
+            nextRows = appRows
         }
         // A calculation or a conversion comes first, above the apps or files that match the same text.
         if calculator, let value = Calculator.evaluate(trimmed) {
-            rows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: value), name: value,
-                                   detail: "Return copies the result"), at: 0)
+            nextRows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: value), name: value,
+                                       detail: "Return copies the result"), at: 0)
         } else if converter, let result = Converter.evaluate(trimmed) {
-            rows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: result.value),
-                                   name: result.display, detail: result.detail), at: 0)
+            nextRows.insert(LaunchaRow(id: LaunchaRow.calculationID, kind: .calculation(value: result.value),
+                                       name: result.display, detail: result.detail), at: 0)
         }
+        if rows != nextRows {
+            rows = nextRows
+            rowsVersion += 1
+        }
+        let nextSelection: Int
         if let previous, let index = rows.firstIndex(where: { $0.id == previous }) {
-            selection = index
+            nextSelection = index
         } else {
-            selection = 0
+            nextSelection = 0
         }
+        if selection != nextSelection { selection = nextSelection }
     }
 
     private func displayFolder(of url: URL) -> String {
@@ -492,10 +505,15 @@ final class LaunchaModel {
         return folder
     }
 
-    private func startScan(onOpen: Bool) {
-        lowkeySites = loadLowkeySites()
-        refreshRunning()
-        if isOpen { recompute(keepSelection: true) }
+    private func startScan(onOpen: Bool, refreshContext: Bool = true) {
+        if refreshContext {
+            let nextSites = loadLowkeySites()
+            let previousRunning = running
+            refreshRunning()
+            let contextChanged = nextSites != lowkeySites || running != previousRunning
+            lowkeySites = nextSites
+            if isOpen && contextChanged { recompute(keepSelection: true) }
+        }
         scanSerial += 1
         let serial = scanSerial
         let index = services.index
@@ -511,10 +529,11 @@ final class LaunchaModel {
         if serial == scanSerial { isIndexing = false }
         guard serial > appliedScan, index === services.index else { return }
         appliedScan = serial
+        let changed = !hasIndex || apps != snapshot.apps || indexIssues != snapshot.issues
         apps = snapshot.apps
-        indexIssues = snapshot.issues
-        hasIndex = true
-        recompute(keepSelection: true)
+        if indexIssues != snapshot.issues { indexIssues = snapshot.issues }
+        if !hasIndex { hasIndex = true }
+        if changed { recompute(keepSelection: true) }
     }
 
     private func loadHistory() {
@@ -531,9 +550,11 @@ final class LaunchaModel {
     private func applyHistory(_ snapshot: LaunchaHistoryStore.Snapshot, serial: Int) {
         guard serial > appliedHistory else { return }
         appliedHistory = serial
+        let nextIssue = snapshot.issues.first.map { "Launch history: \($0.message)" }
+        let changed = history != snapshot.history || historyIssue != nextIssue
         history = snapshot.history
-        historyIssue = snapshot.issues.first.map { "Launch history: \($0.message)" }
-        recompute(keepSelection: true)
+        if historyIssue != nextIssue { historyIssue = nextIssue }
+        if changed { recompute(keepSelection: true) }
     }
 
     // MARK: App use outside launcha
@@ -596,8 +617,9 @@ final class LaunchaModel {
     private func applyUsage(_ snapshot: LaunchaHistoryStore.Snapshot, serial: Int) {
         guard serial > appliedUsage else { return }
         appliedUsage = serial
+        let changed = usage != snapshot.history
         usage = snapshot.history
-        if isOpen { recompute(keepSelection: true) }
+        if isOpen && changed { recompute(keepSelection: true) }
     }
 
     private func refreshRunning() {

@@ -51,6 +51,8 @@ final class LeaderSession {
     var selection = 0
     var selectedItem: Item? { items.indices.contains(selection) ? items[selection] : nil }
     var shakeToken = 0
+    /// True only while the panel is actually visible on screen, so idle animations stop when hidden.
+    var isVisible = false
     /// The loaded micro-apps, for the names and the "not working" mark of micro-app bindings.
     var microApps = MicroAppCatalog()
 }
@@ -249,15 +251,20 @@ final class LeaderController: NSObject {
         let panel = self.panel ?? makePanel()
         resizePanel()
         // Key at once, visible only after the delay: fast typing never shows the menu.
-        panel.alphaValue = showDelay <= 0 ? 1 : 0
+        let showNow = showDelay <= 0
+        panel.alphaValue = showNow ? 1 : 0
+        session.isVisible = showNow
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
         reveal?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.panel?.alphaValue = 1 }
+            MainActor.assumeIsolated {
+                self?.panel?.alphaValue = 1
+                self?.session.isVisible = true
+            }
         }
         reveal = work
-        if showDelay > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + showDelay, execute: work) }
+        if !showNow { DispatchQueue.main.asyncAfter(deadline: .now() + showDelay, execute: work) }
     }
 
     private func resizePanel() {
@@ -274,6 +281,7 @@ final class LeaderController: NSObject {
     private func hide() {
         reveal?.cancel()
         reveal = nil
+        session.isVisible = false
         panel?.orderOut(nil)
     }
 
