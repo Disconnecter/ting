@@ -20,7 +20,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
     @ObservationIgnored private let microAppsFolderURL: () -> URL
     @ObservationIgnored private let setupPromptProvider: () -> String
     @ObservationIgnored private let resourcesDirectory: () -> URL?
-    @ObservationIgnored private let openSettings: () -> Void
+    @ObservationIgnored let openSettings: () -> Void
     @ObservationIgnored private let customClientFactory: ((ChattaMode, ACPAgentPreset, Bool) throws -> ACPClient)?
 
     @ObservationIgnored private var window: ChromeWindow?
@@ -186,14 +186,11 @@ final class ChattaController: NSObject, NSWindowDelegate {
         let newChatButton = StripButton(glyph: .plus, label: "New chat · ⌘N") { [weak self] _ in
             self?.newChat()
         }
-        let settingsButton = StripButton(glyph: .settings, label: "Settings · ⌘,") { [weak self] _ in
-            self?.openSettings()
-        }
         let size = ChromeMetrics.windowSize(forBody: Self.defaultBodySize)
         let win = ChromeWindow(
             contentRect: NSRect(origin: .zero, size: size),
             theme: theme,
-            trailing: [newChatButton, settingsButton],
+            trailing: [newChatButton],
             resizable: true,
             showsTitle: true
         )

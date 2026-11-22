@@ -234,8 +234,8 @@ final class ChattaServiceTests: XCTestCase {
         model.settingsPageOpener = { openedPages.append($0) }
 
         let win = model.chatta.prepareWindow()
-        let gearButton = try XCTUnwrap(win.strip.trailing.last)
-        gearButton.onPress?([])
+        XCTAssertEqual(win.strip.trailing.count, 1)
+        model.chatta.openSettings()
         XCTAssertEqual(openedPages, [.chatta])
 
         let settings = SettingsWindowController(model: model, remembersFrame: false)
