@@ -29,10 +29,13 @@ final class ChattaController: NSObject, NSWindowDelegate {
     @ObservationIgnored let openSettings: () -> Void
     @ObservationIgnored private let onAllowToolsPermanently: (() -> Void)?
     @ObservationIgnored private let customClientFactory: ((ChattaMode, ACPAgentPreset, Bool, ACPAccessPolicy) throws -> ACPClient)?
+    @ObservationIgnored let preferences: AgentChatPreferences
 
     @ObservationIgnored private var window: ChromeWindow?
     @ObservationIgnored private var injectedSetupPrompt = false
     @ObservationIgnored private var configuredAgentID: String?
+    @ObservationIgnored private var configuredModel: String?
+    @ObservationIgnored private var configuredEffort: String?
     @ObservationIgnored private var isSwitchingProgrammatically = false
 
     @ObservationIgnored private(set) lazy var session: AgentChatSession = AgentChatSession(
@@ -91,6 +94,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
         resourcesDirectory: (() -> URL?)? = nil,
         openSettings: (() -> Void)? = nil,
         onAllowToolsPermanently: (() -> Void)? = nil,
+        preferences: AgentChatPreferences? = nil,
         installedAgents: (() -> [ACPAgentPreset])? = nil,
         customClientFactory: ((ChattaMode, ACPAgentPreset, Bool, ACPAccessPolicy) throws -> ACPClient)? = nil
     ) {
@@ -109,14 +113,36 @@ final class ChattaController: NSObject, NSWindowDelegate {
         self.onAllowToolsPermanently = onAllowToolsPermanently
         self.customClientFactory = customClientFactory
         let detected = installedAgents?() ?? ACPAgentPreset.detectInstalled().map(\.preset)
-        self.selectedAgent = ChattaPrompt.resolveAgent(configuredID: nil, installed: detected)
+        let defaultAgent = ChattaPrompt.resolveAgent(configuredID: nil, installed: detected)
+        let resolvedPreferences: AgentChatPreferences = if let preferences {
+            preferences
+        } else {
+            AgentChatPreferences(
+                defaults: presentsWindow
+                    ? .standard
+                    : (UserDefaults(suiteName: "io.bobuk.ting.chatta.ephemeral." + UUID().uuidString) ?? .standard),
+                keys: .init(agentID: "tingChattaAgentID", model: "tingChattaModel", effort: "tingChattaEffort"),
+                agents: ACPAgentPreset.all,
+                defaultAgent: defaultAgent
+            )
+        }
+        self.preferences = resolvedPreferences
+        if detected.isEmpty || detected.contains(resolvedPreferences.agent) {
+            self.selectedAgent = resolvedPreferences.agent
+        } else {
+            self.selectedAgent = defaultAgent
+        }
         super.init()
+        self.session.initialModel = resolvedPreferences.model
+        self.session.initialEffort = resolvedPreferences.effort
     }
 
     func configure(_ settings: ChattaSettings) {
         session.idleTimeout = settings.idleTimeout
-        session.initialModel = settings.model
-        session.initialEffort = settings.effort
+        configuredModel = settings.model
+        configuredEffort = settings.effort
+        session.initialModel = settings.model ?? preferences.model
+        session.initialEffort = settings.effort ?? preferences.effort
         let toolsChanged = allowToolsPermanently != settings.allowTools
         allowToolsPermanently = settings.allowTools
         if toolsChanged {
@@ -130,10 +156,22 @@ final class ChattaController: NSObject, NSWindowDelegate {
             if session.phase == .disconnected && session.messages.isEmpty {
                 let installed = ACPAgentPreset.detectInstalled().map(\.preset)
                 isSwitchingProgrammatically = true
-                selectedAgent = ChattaPrompt.resolveAgent(configuredID: settings.agent, installed: installed)
+                if let explicit = settings.agent {
+                    selectedAgent = ChattaPrompt.resolveAgent(configuredID: explicit, installed: installed)
+                } else if installed.isEmpty || installed.contains(preferences.agent) {
+                    selectedAgent = preferences.agent
+                } else {
+                    selectedAgent = ChattaPrompt.resolveAgent(configuredID: nil, installed: installed)
+                }
                 isSwitchingProgrammatically = false
             }
         }
+    }
+
+    func recordPreferences() {
+        preferences.record(from: session)
+        session.initialModel = configuredModel ?? preferences.model
+        session.initialEffort = configuredEffort ?? preferences.effort
     }
 
     /// Opens the Chatta window (optionally switching mode) and auto-connects when disconnected.
@@ -201,6 +239,9 @@ final class ChattaController: NSObject, NSWindowDelegate {
     /// Called by the view when the user picks a different agent from the composer menu.
     func agentSelectionChanged() {
         guard !isSwitchingProgrammatically else { return }
+        preferences.agent = selectedAgent
+        session.initialModel = configuredModel ?? preferences.model
+        session.initialEffort = configuredEffort ?? preferences.effort
         injectedSetupPrompt = false
         if customClientFactory == nil, case .needsACPAdapter = selectedAgent.detectAvailability() {
             return
@@ -211,6 +252,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
     }
 
     func shutdown() async {
+        preferences.record(from: session)
         await session.shutdown()
     }
 
@@ -264,6 +306,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
 
     /// Closing hides the window while keeping the session alive until idleTimeout or Quit.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        preferences.record(from: session)
         sender.orderOut(nil)
         return false
     }

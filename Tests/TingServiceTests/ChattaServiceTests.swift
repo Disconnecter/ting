@@ -362,4 +362,102 @@ final class ChattaServiceTests: XCTestCase {
         XCTAssertEqual(controller.session.lastReply, "Searched")
         await controller.shutdown()
     }
+
+    func testChattaPersistsPreferencesAndAutoConnectsOnSend() async throws {
+        _ = NSApplication.shared
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ting-chatta-prefs-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+
+        let agentScript = #"""
+        while IFS= read -r line; do
+            case "$line" in
+                *initialize*)
+                    printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}'
+                    ;;
+                *session*new*)
+                    printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"demo","configOptions":[{"type":"select","category":"model","id":"model","currentValue":"m1","options":[{"value":"m1","name":"Model 1"},{"value":"m2","name":"Model 2"}]},{"type":"select","category":"reasoning_effort","id":"effort","currentValue":"medium","options":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}]}]}}'
+                    ;;
+                *set_config_option*)
+                    id=$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+                    printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"configOptions\":[{\"type\":\"select\",\"category\":\"model\",\"id\":\"model\",\"currentValue\":\"m2\",\"options\":[{\"value\":\"m1\",\"name\":\"Model 1\"},{\"value\":\"m2\",\"name\":\"Model 2\"}]},{\"type\":\"select\",\"category\":\"reasoning_effort\",\"id\":\"effort\",\"currentValue\":\"high\",\"options\":[{\"value\":\"low\",\"name\":\"Low\"},{\"value\":\"medium\",\"name\":\"Medium\"},{\"value\":\"high\",\"name\":\"High\"}]}]}}"
+                    ;;
+                *session*prompt*)
+                    id=$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+                    printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"demo","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Auto-connected"}}}}'
+                    printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"stopReason\":\"end_turn\"}}"
+                    ;;
+            esac
+        done
+        """#
+
+        let defaultsSuiteName = "io.bobuk.ting.tests.chatta.prefs." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: defaultsSuiteName)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: defaultsSuiteName) }
+        let theme = ThemeStore(defaults: defaults, keys: ThemeStore.tingKeys,
+                               defaultAppearance: .dark, defaultPreset: .amber, appliesToApplication: false)
+        let keys = AgentChatPreferences.StorageKeys(agentID: "a", model: "m", effort: "e")
+        let prefs1 = AgentChatPreferences(defaults: defaults, keys: keys, agents: ACPAgentPreset.all, defaultAgent: .codex)
+
+        let first = ChattaController(
+            theme: theme,
+            configURL: dir.appendingPathComponent("config.json"),
+            microAppsFolderURL: { dir.appendingPathComponent("micro") },
+            presentsWindow: false,
+            preferences: prefs1,
+            installedAgents: { [.codex, .gemini] },
+            customClientFactory: { _, _, _, access in
+                ACPClient(
+                    launch: .init(
+                        executable: URL(fileURLWithPath: "/bin/bash"),
+                        arguments: ["-c", agentScript],
+                        directory: dir,
+                        environment: ["PATH": "/usr/bin:/bin"],
+                        clientName: "ting-test",
+                        isolation: .unrestricted,
+                        access: access
+                    ),
+                    requestTimeout: .seconds(2)
+                )
+            }
+        )
+
+        // BobukKit 0.10.0 auto-connects on send from .disconnected without requiring connect() first.
+        XCTAssertEqual(first.session.phase, .disconnected)
+        first.selectedAgent = .gemini
+        first.agentSelectionChanged()
+        for _ in 0..<200 where first.session.phase == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(first.session.phase, .ready)
+        first.session.selectModel("m2")
+        for _ in 0..<200 where first.session.phase == .switching {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        first.recordPreferences()
+        await first.shutdown()
+
+        // Disconnected send auto-connects and gets a reply.
+        first.session.draft = "Hello offline"
+        first.session.send()
+        for _ in 0..<200 where first.session.phase != .ready {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(first.session.lastReply, "Auto-connected")
+        await first.shutdown()
+
+        // A fresh controller restores the last selected agent, model and effort from AgentChatPreferences.
+        let prefs2 = AgentChatPreferences(defaults: defaults, keys: keys, agents: ACPAgentPreset.all, defaultAgent: .codex)
+        let second = ChattaController(
+            theme: theme,
+            configURL: dir.appendingPathComponent("config.json"),
+            microAppsFolderURL: { dir.appendingPathComponent("micro") },
+            presentsWindow: false,
+            preferences: prefs2,
+            installedAgents: { [.codex, .gemini] }
+        )
+        XCTAssertEqual(second.selectedAgent, .gemini)
+        XCTAssertEqual(second.session.initialModel, "m2")
+        XCTAssertEqual(second.session.initialEffort, "high")
+    }
 }

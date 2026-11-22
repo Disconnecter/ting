@@ -20,8 +20,8 @@ struct ChattaView: View {
         switch controller.mode {
         case .chat:
             controller.effectiveAllowTools
-                ? "Conversation with your local ACP agent (built-in tools enabled inside sandbox)."
-                : "Quick text-only conversation with your local ACP agent."
+                ? "Conversation with your local ACP agent (built-in tools enabled) — drop files or paste images."
+                : "Quick conversation with your local ACP agent — drop files or paste images."
         case .configure:
             "Ask Chatta to edit bindings, adjust settings, or write and check micro-apps in your Ting folder."
         }
@@ -64,19 +64,26 @@ struct ChattaView: View {
             )
             Divider()
             ShortcutFooter(
-                [.init("⌘↩", "send"), .init("esc", "stop"), .init("⌘N", "new chat")],
+                [.init("⌘↩", "send"), .init("esc", "stop"), .init("↑", "history"), .init("⌘N", "new chat")],
                 palette: tokens.pickerPalette(),
                 settingsHelp: "Settings · ⌘,",
                 onSettings: onSettings
             )
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
+            .background(tokens.elevatedColor.opacity(0.35))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(tokens.panelColor)
         .themedSurface(theme)
         .onChange(of: controller.selectedAgent) { _, _ in
             controller.agentSelectionChanged()
+        }
+        .onChange(of: controller.session.models?.current) { _, _ in
+            controller.recordPreferences()
+        }
+        .onChange(of: controller.session.efforts?.current) { _, _ in
+            controller.recordPreferences()
         }
         .background {
             Button("") { controller.newChat() }
