@@ -74,6 +74,9 @@ struct ChattaSettingsView: View {
             .id("chatta")
 
             Section {
+                Toggle("Allow agent tools in Chat mode", isOn: model.binding(\.chatta.allowTools))
+                Text("Off by default. Allows built-in tools such as web search in Chat mode inside the sandbox, without giving access to personal folders. On the first tool call while off, Chatta asks whether to allow always, for the session, or decline.")
+                    .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Close idle agent after") {
                     Stepper(value: model.binding(\.chatta.idleTimeoutMinutes),
                             in: ChattaSettings.idleTimeoutMinutesRange, step: 5) {

@@ -13,6 +13,12 @@ final class ChattaController: NSObject, NSWindowDelegate {
     var mode: ChattaMode = .chat
     var selectedAgent: ACPAgentPreset
     var sandboxed = true
+    var allowToolsPermanently = false
+    var toolsOverrideForSession: Bool? = nil
+
+    var effectiveAllowTools: Bool {
+        toolsOverrideForSession ?? allowToolsPermanently
+    }
 
     @ObservationIgnored private let theme: ThemeStore
     @ObservationIgnored private let presentsWindow: Bool
@@ -21,7 +27,8 @@ final class ChattaController: NSObject, NSWindowDelegate {
     @ObservationIgnored private let setupPromptProvider: () -> String
     @ObservationIgnored private let resourcesDirectory: () -> URL?
     @ObservationIgnored let openSettings: () -> Void
-    @ObservationIgnored private let customClientFactory: ((ChattaMode, ACPAgentPreset, Bool) throws -> ACPClient)?
+    @ObservationIgnored private let onAllowToolsPermanently: (() -> Void)?
+    @ObservationIgnored private let customClientFactory: ((ChattaMode, ACPAgentPreset, Bool, ACPAccessPolicy) throws -> ACPClient)?
 
     @ObservationIgnored private var window: ChromeWindow?
     @ObservationIgnored private var injectedSetupPrompt = false
@@ -32,10 +39,11 @@ final class ChattaController: NSObject, NSWindowDelegate {
         makeClient: { [weak self] in
             guard let self else { throw ACPError.disconnected }
             self.injectedSetupPrompt = false
+            let access = self.currentAccessPolicy()
             if let custom = self.customClientFactory {
-                return try custom(self.mode, self.selectedAgent, self.sandboxed)
+                return try custom(self.mode, self.selectedAgent, self.sandboxed, access)
             }
-            return try self.makeDefaultClient()
+            return try self.makeDefaultClient(access: access)
         },
         preparePrompt: { [weak self] text in
             guard let self else { return text }
@@ -55,7 +63,20 @@ final class ChattaController: NSObject, NSWindowDelegate {
         requiresModelCatalog: { [weak self] in
             self?.selectedAgent.requiresModelCatalog ?? false
         },
-        idleTimeout: ChattaSettings().idleTimeout
+        idleTimeout: ChattaSettings().idleTimeout,
+        onToolAccessChoice: { [weak self] choice in
+            guard let self else { return }
+            switch choice {
+            case .allowAlways:
+                self.allowToolsPermanently = true
+                self.toolsOverrideForSession = nil
+                self.onAllowToolsPermanently?()
+            case .allowForSession:
+                self.toolsOverrideForSession = true
+            case .deny:
+                break
+            }
+        }
     )
 
     var configDirectory: URL { configURL.deletingLastPathComponent() }
@@ -69,8 +90,9 @@ final class ChattaController: NSObject, NSWindowDelegate {
         setupPromptProvider: (() -> String)? = nil,
         resourcesDirectory: (() -> URL?)? = nil,
         openSettings: (() -> Void)? = nil,
+        onAllowToolsPermanently: (() -> Void)? = nil,
         installedAgents: (() -> [ACPAgentPreset])? = nil,
-        customClientFactory: ((ChattaMode, ACPAgentPreset, Bool) throws -> ACPClient)? = nil
+        customClientFactory: ((ChattaMode, ACPAgentPreset, Bool, ACPAccessPolicy) throws -> ACPClient)? = nil
     ) {
         self.theme = theme
         self.presentsWindow = presentsWindow
@@ -84,6 +106,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
                 .map { URL(fileURLWithPath: $0).deletingLastPathComponent() }
         }
         self.openSettings = openSettings ?? { SettingsOpener.open(page: .chatta) }
+        self.onAllowToolsPermanently = onAllowToolsPermanently
         self.customClientFactory = customClientFactory
         let detected = installedAgents?() ?? ACPAgentPreset.detectInstalled().map(\.preset)
         self.selectedAgent = ChattaPrompt.resolveAgent(configuredID: nil, installed: detected)
@@ -94,6 +117,14 @@ final class ChattaController: NSObject, NSWindowDelegate {
         session.idleTimeout = settings.idleTimeout
         session.initialModel = settings.model
         session.initialEffort = settings.effort
+        let toolsChanged = allowToolsPermanently != settings.allowTools
+        allowToolsPermanently = settings.allowTools
+        if toolsChanged {
+            toolsOverrideForSession = nil
+            if mode == .chat && session.phase == .ready && session.messages.isEmpty {
+                session.reconnectKeepingTranscript()
+            }
+        }
         if settings.agent != configuredAgentID {
             configuredAgentID = settings.agent
             if session.phase == .disconnected && session.messages.isEmpty {
@@ -132,13 +163,14 @@ final class ChattaController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Switches between Chat (text-only) and Configure Ting (config workspace).
+    /// Switches between Chat (text-only / optional tools) and Configure Ting (config workspace).
     func setMode(_ next: ChattaMode, reconnect: Bool = true) {
         guard next != mode else { return }
         if session.phase != .disconnected || !session.messages.isEmpty {
             session.disconnect()
         }
         mode = next
+        toolsOverrideForSession = nil
         injectedSetupPrompt = false
         if reconnect && (presentsWindow || customClientFactory != nil) {
             session.connect()
@@ -148,9 +180,21 @@ final class ChattaController: NSObject, NSWindowDelegate {
     /// Starts a clean session in the current mode.
     func newChat() {
         session.disconnect()
+        toolsOverrideForSession = nil
         injectedSetupPrompt = false
         if presentsWindow || customClientFactory != nil {
             session.connect()
+        }
+    }
+
+    /// Toggles agent tools for the current Chat session and reconnects if active.
+    func toggleChatTools() {
+        guard mode == .chat else { return }
+        guard session.phase == .ready || session.phase == .disconnected else { return }
+        let next = !effectiveAllowTools
+        toolsOverrideForSession = (next == allowToolsPermanently) ? nil : next
+        if session.phase == .ready {
+            session.reconnectKeepingTranscript()
         }
     }
 
@@ -226,26 +270,33 @@ final class ChattaController: NSObject, NSWindowDelegate {
 
     // MARK: - ACP Launch
 
-    private func makeDefaultClient() throws -> ACPClient {
+    private func currentAccessPolicy() -> ACPAccessPolicy {
+        switch mode {
+        case .chat:
+            return effectiveAllowTools ? .tools(autoApproveTools: true) : .textOnly
+        case .configure:
+            let dir = configDirectory
+            let additional = ChattaPrompt.configureAdditionalRoots(
+                configDirectory: dir,
+                microAppsFolder: microAppsFolderURL(),
+                resourcesDirectory: resourcesDirectory()
+            )
+            return .workspace(allowWrite: true, autoApproveTools: true, additionalRoots: additional)
+        }
+    }
+
+    private func makeDefaultClient(access: ACPAccessPolicy) throws -> ACPClient {
         let directory: URL
-        let access: ACPAccessPolicy
         switch mode {
         case .chat:
             let scratch = FileManager.default.temporaryDirectory
                 .appendingPathComponent("io.bobuk.ting.chatta", isDirectory: true)
             try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
             directory = scratch
-            access = .textOnly
         case .configure:
             let dir = configDirectory
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             directory = dir
-            let additional = ChattaPrompt.configureAdditionalRoots(
-                configDirectory: dir,
-                microAppsFolder: microAppsFolderURL(),
-                resourcesDirectory: resourcesDirectory()
-            )
-            access = .workspace(allowWrite: true, autoApproveTools: true, additionalRoots: additional)
         }
         let launch = try selectedAgent.launch(
             in: directory,

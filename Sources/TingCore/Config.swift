@@ -228,7 +228,7 @@ public struct MicroAppsSettings: Equatable, Sendable, Codable {
 
 /// Chatta settings: AI agent chat window and defaults for `chatta:` micro-app steps.
 /// JSON: {"hotkey": Hotkey string or null, "agent": preset id or null, "model": String or null,
-///        "effort": String or null, "idleTimeoutMinutes": Int (0 = never)}.
+///        "effort": String or null, "idleTimeoutMinutes": Int (0 = never), "allowTools": Bool}.
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct ChattaSettings: Equatable, Sendable, Codable {
     /// Default inactivity minutes before closing an idle agent subprocess.
@@ -248,6 +248,8 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
     public var effort: String? = nil
     /// Minutes of inactivity in `.ready` state before closing the agent subprocess (0 = never).
     public var idleTimeoutMinutes: Int = defaultIdleTimeoutMinutes
+    /// Allow built-in agent tools (such as web search) in Chatta's Chat mode. Off by default.
+    public var allowTools: Bool = false
 
     public var idleTimeout: Duration? {
         idleTimeoutMinutes > 0 ? .seconds(idleTimeoutMinutes * 60) : nil
@@ -256,7 +258,7 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case hotkey, agent, model, effort, idleTimeoutMinutes
+        case hotkey, agent, model, effort, idleTimeoutMinutes, allowTools
     }
 
     public init(from decoder: Decoder) throws {
@@ -274,6 +276,7 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
         effort = rawEffort.flatMap { Self.effortChoices.contains($0) ? $0 : nil }
         let minutes = try container.decodeIfPresent(Int.self, forKey: .idleTimeoutMinutes) ?? defaults.idleTimeoutMinutes
         idleTimeoutMinutes = min(max(minutes, Self.idleTimeoutMinutesRange.lowerBound), Self.idleTimeoutMinutesRange.upperBound)
+        allowTools = try container.decodeIfPresent(Bool.self, forKey: .allowTools) ?? defaults.allowTools
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -287,6 +290,7 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
         try container.encodeIfPresent(model, forKey: .model)
         try container.encodeIfPresent(effort, forKey: .effort)
         try container.encode(idleTimeoutMinutes, forKey: .idleTimeoutMinutes)
+        try container.encode(allowTools, forKey: .allowTools)
     }
 }
 

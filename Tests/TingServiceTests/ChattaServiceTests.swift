@@ -48,7 +48,7 @@ final class ChattaServiceTests: XCTestCase {
             presentsWindow: false,
             setupPromptProvider: { "TING_SETUP_PREFIX: " },
             installedAgents: { [.codex] },
-            customClientFactory: { _, _, _ in
+            customClientFactory: { _, _, _, access in
                 ACPClient(
                     launch: .init(
                         executable: URL(fileURLWithPath: "/bin/bash"),
@@ -56,7 +56,8 @@ final class ChattaServiceTests: XCTestCase {
                         directory: dir,
                         environment: ["PATH": "/usr/bin:/bin"],
                         clientName: "ting-test",
-                        isolation: .unrestricted
+                        isolation: .unrestricted,
+                        access: access
                     ),
                     requestTimeout: .seconds(2)
                 )
@@ -251,5 +252,114 @@ final class ChattaServiceTests: XCTestCase {
         settings.show(activate: false)
         XCTAssertEqual(settings.navigation.page, .general)
         settings.close()
+    }
+
+    func testChattaToolApprovalChoicesAndSessionOverride() async throws {
+        _ = NSApplication.shared
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ting-chatta-tools-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+
+        let toolAgent = #"""
+        while IFS= read -r line; do
+            case "$line" in
+                *initialize*)
+                    printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}'
+                    ;;
+                *session*new*)
+                    printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"demo","configOptions":[]}}'
+                    ;;
+                *session*prompt*)
+                    printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"demo","update":{"sessionUpdate":"tool_call","title":"web_search","status":"in_progress"}}}'
+                    printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"demo","update":{"sessionUpdate":"tool_call_update","status":"completed"}}}'
+                    printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"demo","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Searched"}}}}'
+                    printf '%s\n' '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}'
+                    ;;
+            esac
+        done
+        """#
+
+        let suite = UserDefaults(suiteName: "io.bobuk.ting.tests.chatta.tools." + UUID().uuidString)!
+        let theme = ThemeStore(defaults: suite, keys: ThemeStore.tingKeys,
+                               defaultAppearance: .dark, defaultPreset: .amber, appliesToApplication: false)
+        var persistedAlwaysCount = 0
+        var seenPolicies: [ACPAccessPolicy] = []
+
+        let controller = ChattaController(
+            theme: theme,
+            configURL: dir.appendingPathComponent("config.json"),
+            microAppsFolderURL: { dir.appendingPathComponent("micro") },
+            presentsWindow: false,
+            onAllowToolsPermanently: { persistedAlwaysCount += 1 },
+            installedAgents: { [.codex] },
+            customClientFactory: { _, _, _, access in
+                seenPolicies.append(access)
+                return ACPClient(
+                    launch: .init(
+                        executable: URL(fileURLWithPath: "/bin/bash"),
+                        arguments: ["-c", toolAgent],
+                        directory: dir,
+                        environment: ["PATH": "/usr/bin:/bin"],
+                        clientName: "ting-test",
+                        isolation: .unrestricted,
+                        access: access
+                    ),
+                    requestTimeout: .seconds(2)
+                )
+            }
+        )
+        defer { Task { await controller.shutdown() } }
+
+        // Default is tools off (.textOnly).
+        XCTAssertFalse(controller.effectiveAllowTools)
+        controller.open(mode: .chat)
+        for _ in 0..<200 where controller.session.phase == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(seenPolicies.last, .textOnly)
+
+        // First tool attempt triggers the inline prompt instead of a fatal error.
+        controller.session.draft = "Search docs"
+        controller.session.send()
+        for _ in 0..<200 where controller.session.phase == .replying {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.session.pendingToolApproval?.toolName, "web_search")
+        XCTAssertEqual(controller.session.pendingToolApproval?.promptText, "Search docs")
+
+        // Allow for this session: does not persist permanently, switches policy to .tools, retries automatically.
+        controller.session.resolveToolApproval(.allowForSession)
+        for _ in 0..<200 where controller.session.phase != .ready {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(persistedAlwaysCount, 0)
+        XCTAssertTrue(controller.effectiveAllowTools)
+        XCTAssertEqual(seenPolicies.last, .tools(autoApproveTools: true))
+        XCTAssertEqual(controller.session.lastReply, "Searched")
+
+        // New chat resets session-only override back to permanent setting (false).
+        controller.newChat()
+        for _ in 0..<200 where controller.session.phase == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(controller.effectiveAllowTools)
+        XCTAssertEqual(seenPolicies.last, .textOnly)
+
+        // Allow Always persists via callback and retries automatically.
+        controller.session.draft = "Search again"
+        controller.session.send()
+        for _ in 0..<200 where controller.session.phase == .replying {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.session.pendingToolApproval?.toolName, "web_search")
+        controller.session.resolveToolApproval(.allowAlways)
+        for _ in 0..<200 where controller.session.phase != .ready {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(persistedAlwaysCount, 1)
+        XCTAssertTrue(controller.allowToolsPermanently)
+        XCTAssertTrue(controller.effectiveAllowTools)
+        XCTAssertEqual(controller.session.lastReply, "Searched")
+        await controller.shutdown()
     }
 }

@@ -19,7 +19,9 @@ struct ChattaView: View {
     private var intro: String {
         switch controller.mode {
         case .chat:
-            "Quick text-only conversation with your local ACP agent."
+            controller.effectiveAllowTools
+                ? "Conversation with your local ACP agent (built-in tools enabled inside sandbox)."
+                : "Quick text-only conversation with your local ACP agent."
         case .configure:
             "Ask Chatta to edit bindings, adjust settings, or write and check micro-apps in your Ting folder."
         }
@@ -124,11 +126,48 @@ struct ChattaView: View {
 
             Spacer(minLength: 8)
 
-            Text(controller.mode == .configure ? "Config workspace" : "Text only")
-                .font(.system(size: 11))
-                .foregroundStyle(tokens.mutedColor)
+            if controller.mode == .configure {
+                Text("Config workspace")
+                    .font(.system(size: 11))
+                    .foregroundStyle(tokens.mutedColor)
+            } else {
+                chatToolsButton(tokens: tokens)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    private func chatToolsButton(tokens: ThemeTokens) -> some View {
+        let enabled = controller.effectiveAllowTools
+        let sessionOnly = controller.toolsOverrideForSession == true && !controller.allowToolsPermanently
+        let label = !enabled ? "Tools off" : (sessionOnly ? "Tools · Session" : "Tools on")
+        let canToggle = controller.session.phase == .ready || controller.session.phase == .disconnected
+        return Button {
+            controller.toggleChatTools()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: enabled ? "wrench.fill" : "wrench")
+                    .font(.system(size: 10))
+                Text(label)
+                    .font(.system(size: 11, weight: enabled ? .medium : .regular))
+            }
+            .foregroundStyle(enabled ? tokens.accentColor : tokens.mutedColor)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(
+                enabled ? tokens.accentSurfaceColor : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(enabled ? tokens.accentColor.opacity(0.35) : tokens.lineColor, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!canToggle)
+        .help(enabled
+              ? "Built-in agent tools (such as web search) are enabled for this session. Click to turn off."
+              : "Built-in agent tools are off. Click to enable for this session, or change the default in Settings › Chatta.")
     }
 }

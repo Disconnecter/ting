@@ -17,6 +17,7 @@ import Testing
         #expect(empty.chatta.effort == nil)
         #expect(empty.chatta.idleTimeoutMinutes == 15)
         #expect(empty.chatta.idleTimeout == .seconds(15 * 60))
+        #expect(empty.chatta.allowTools == false)
 
         let custom = try decode("""
         {
@@ -25,7 +26,8 @@ import Testing
             "agent": "codex",
             "model": "gpt-5",
             "effort": "HIGH",
-            "idleTimeoutMinutes": 30
+            "idleTimeoutMinutes": 30,
+            "allowTools": true
           },
           "items": [
             { "key": "c", "label": "Chatta", "open": "chatta" }
@@ -37,6 +39,7 @@ import Testing
         #expect(custom.chatta.model == "gpt-5")
         #expect(custom.chatta.effort == "high")
         #expect(custom.chatta.idleTimeoutMinutes == 30)
+        #expect(custom.chatta.allowTools == true)
         #expect(custom.items == [.open("c", "Chatta", .chatta)])
         #expect(try ConfigCodec.decode(ConfigCodec.encode(custom)) == custom)
 
