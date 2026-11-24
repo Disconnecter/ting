@@ -233,6 +233,8 @@ struct ItemIcon: View {
                 Image(systemName: "terminal").resizable().foregroundStyle(.secondary)
             case .open(let panel):
                 Image(systemName: panel.symbol).resizable().foregroundStyle(.secondary)
+            case .window:
+                Image(systemName: "rectangle.inset.filled").resizable().foregroundStyle(.secondary)
             }
         }
         .scaledToFit()

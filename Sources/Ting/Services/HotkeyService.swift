@@ -1,4 +1,4 @@
-// Global hotkeys: the leader, optional launcha and clipbawd keys and direct application and micro-app shortcuts.
+// Global hotkeys: the leader, optional launcha and clipbawd keys and direct application, micro-app and window shortcuts.
 // Each is any non-modifier key, alone or with modifiers. Registered through BobukKit's
 // `GlobalHotkeyCenter` (Carbon `RegisterEventHotKey`, no Accessibility or Input Monitoring
 // permission, press and release). This layer adds Ting's slots and the role messages.
@@ -16,11 +16,14 @@ final class HotkeyService {
         case chatta
         case application(Int)
         case micro(Int)
+        case window(Int)
 
         /// Far above any application index.
         static let clipbawdID: UInt32 = 0x7FFF_0000
-        /// Micro-app shortcuts take ids from here up to `clipbawdID`; applications stay below.
+        /// Micro-app shortcuts take ids from here up to `clipbawdID`.
         static let microBase: UInt32 = 0x4000_0000
+        /// Window-command shortcuts take ids from here up to `microBase`; applications stay below.
+        static let windowBase: UInt32 = 0x3000_0000
 
         init(_ launcher: LauncherHotkey) {
             switch launcher {
@@ -41,6 +44,7 @@ final class HotkeyService {
             case .clipbawd: Self.clipbawdID
             case .application(let index): UInt32(index) + 3
             case .micro(let index): Self.microBase + UInt32(index)
+            case .window(let index): Self.windowBase + UInt32(index)
             }
         }
 
@@ -53,6 +57,7 @@ final class HotkeyService {
             case Self.clipbawdID + 1: self = .alternateLeader
             case Self.clipbawdID + 2: self = .chatta
             case Self.microBase..<Self.clipbawdID: self = .micro(Int(rawValue - Self.microBase))
+            case Self.windowBase..<Self.microBase: self = .window(Int(rawValue - Self.windowBase))
             default: self = .application(Int(rawValue - 3))
             }
         }
@@ -65,6 +70,7 @@ final class HotkeyService {
             case .chatta: "open chatta"
             case .application: "open an application"
             case .micro: "start a micro-app"
+            case .window: "move a window"
             }
         }
     }
@@ -126,13 +132,14 @@ final class HotkeyService {
             case .chatta: role = "chatta"
             case .application: role = "another application"
             case .micro: role = "another micro-app"
+            case .window: role = "another window command"
             }
             return refuse(slot, "\(hotkey.display) is already used for \(role).")
         }
-        // Application and micro-app shortcuts start once per hold; the leaders see Carbon's repeats.
+        // Application, micro-app and window shortcuts run once per hold; the leaders see Carbon's repeats.
         let repeats: Bool
         switch slot {
-        case .application, .micro: repeats = false
+        case .application, .micro, .window: repeats = false
         case .leader, .alternateLeader, .launcha, .clipbawd, .chatta: repeats = true
         }
         center.register(hotkey, id: slot.rawValue, repeats: repeats,
@@ -149,6 +156,9 @@ final class HotkeyService {
             }
             for (index, shortcut) in assignments.micros.enumerated() {
                 desired.append((.micro(index), shortcut.hotkey))
+            }
+            for (index, shortcut) in assignments.windows.enumerated() {
+                desired.append((.window(index), shortcut.hotkey))
             }
             for (index, shortcut) in assignments.applications.enumerated() {
                 desired.append((.application(index), shortcut.hotkey))

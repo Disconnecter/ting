@@ -25,7 +25,7 @@ public struct AppShortcut: Equatable, Sendable, Codable, Identifiable {
 
 public enum AppShortcutRules {
     public enum Problem: Error, Equatable, Sendable, CustomStringConvertible {
-        case invalidKey, invalidTarget, leader, launcha, clipbawd, chatta, micro
+        case invalidKey, invalidTarget, leader, launcha, clipbawd, chatta, micro, window(String)
 
         public var description: String {
             switch self {
@@ -36,14 +36,18 @@ public enum AppShortcutRules {
             case .clipbawd: "This key is reserved for clipbawd. Choose another shortcut."
             case .chatta: "This key is reserved for chatta. Choose another shortcut."
             case .micro: "This key starts a micro-app. Choose another shortcut."
+            case .window(let name): "This key already runs \(name). Choose another shortcut."
             }
         }
     }
 
-    /// Reserved keys and micro-app hotkeys always win over apps.
+    /// Reserved keys, micro-app hotkeys and window-command hotkeys always win over apps.
     public static func problem(for hotkey: Hotkey, in config: Config) -> Problem? {
         if let reserved = reservedProblem(for: hotkey, in: config) { return reserved }
         if config.microHotkeys.contains(where: { $0.hasTarget && $0.hotkey == hotkey }) { return .micro }
+        if let shortcut = config.windowManagement.shortcuts.first(where: { $0.hotkey == hotkey }) {
+            return .window(shortcut.command.title)
+        }
         return nil
     }
 

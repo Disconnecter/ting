@@ -7,10 +7,11 @@ import BobukSystem
 @MainActor
 @Observable
 final class HotkeyRecording: HotkeyRecordingOwner {
-    /// What the recorded key is for: a Ting key or the hotkey of a micro-app id.
+    /// What the recorded key is for: a Ting key, the hotkey of a micro-app id or of a window command.
     enum Target: Equatable {
         case launcher(LauncherHotkey)
         case micro(String)
+        case window(WindowCommand)
     }
 
     private(set) var isRecording = false
@@ -23,6 +24,10 @@ final class HotkeyRecording: HotkeyRecordingOwner {
 
     func start(model: AppModel, target: LauncherHotkey = .leader) {
         start(model: model, for: .launcher(target))
+    }
+
+    func start(model: AppModel, command: WindowCommand) {
+        start(model: model, for: .window(command))
     }
 
     func start(model: AppModel, for target: Target) {
@@ -39,7 +44,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
             guard let self else { return event }
             return self.handle(event)
         }
-        // Leaving Ting stops recording, so the old leader never stays switched off.
+        // Leaving Ting stops recording, so the old shortcut never stays switched off.
         resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.cancel() }
@@ -86,6 +91,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
         switch target {
         case .launcher(let launcher): launcher.role
         case .micro: "start a micro-app"
+        case .window: "move a window"
         }
     }
 
@@ -96,11 +102,24 @@ final class HotkeyRecording: HotkeyRecordingOwner {
             return LauncherHotkey.owner(of: hotkey, in: config, excluding: launcher)?.conflict(for: hotkey)
         case .micro(let micro):
             return MicroShortcutRules.problem(for: hotkey, micro: micro, in: config)
+        case .window(let command):
+            return WindowShortcutRules.problem(for: hotkey, command: command, in: config)?.description
         }
     }
 
     private func finish(_ hotkey: Hotkey) {
         warning = nil
+        if case .window(let command) = target {
+            // Saved while still recording, so an OS conflict is probed with Ting's keys off;
+            // a refused key keeps recording and shows why.
+            do {
+                try model?.setWindowHotkey(command, hotkey: hotkey)
+                cancel()
+            } catch {
+                warning = error.localizedDescription
+            }
+            return
+        }
         cancel()
         switch target {
         case .launcher(.leader): model?.setLeader(hotkey)
@@ -109,6 +128,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
         case .launcher(.clipbawd): model?.setClipbawdHotkey(hotkey)
         case .launcher(.chatta): model?.setChattaHotkey(hotkey)
         case .micro(let micro): model?.setMicroHotkey(hotkey, for: micro)
+        case .window: break
         }
     }
 }

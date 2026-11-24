@@ -1,13 +1,14 @@
 import Foundation
 
 public enum SettingsPage: String, CaseIterable, Identifiable, Sendable {
-    case general, activation, bindings, clipbawd, chatta, microApps, advanced
+    case general, activation, bindings, windows, clipbawd, chatta, microApps, advanced
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .general: "General"
         case .activation: "Keys & Launch"
         case .bindings: "Bindings"
+        case .windows: "Windows"
         case .clipbawd: "Clipbawd"
         case .chatta: "Chatta"
         case .microApps: "Micro-apps"
@@ -19,6 +20,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Sendable {
         case .general: "gearshape"
         case .activation: "command"
         case .bindings: "keyboard"
+        case .windows: "rectangle.split.2x1"
         case .clipbawd: "list.clipboard"
         case .chatta: "sparkles"
         case .microApps: "square.stack.3d.up"
@@ -43,7 +45,8 @@ public enum SettingsCatalog {
         .init(id: "updates", page: .general, title: "Updates and version", keywords: "automatic check homebrew sparkle"),
         .init(id: "activation", page: .activation, title: "Leader keys and menu delay", keywords: "activation second alternate unknown shake close shortcut hotkey"),
         .init(id: "launcha", page: .activation, title: "launcha", keywords: "hotkey double tap interval calculator converter units dates protected folders desktop documents downloads icloud drive cloud search access rank ranking frequent usage switch switching running open apps fuzzy"),
-        .init(id: "bindings", page: .bindings, title: "Bindings and app shortcuts", keywords: "sequence group application key url open direct hotkey conflict"),
+        .init(id: "bindings", page: .bindings, title: "Bindings and app shortcuts", keywords: "sequence group application key url open direct hotkey conflict window resize move"),
+        .init(id: "windows", page: .windows, title: "Window management", keywords: "window resize move half quarter third maximize center restore display monitor screen hotkey shortcut gap tile"),
         .init(id: "clipbawd", page: .clipbawd, title: "Clipboard and hotkey", keywords: "clipbawd enable recording copy paste image video markdown"),
         .init(id: "storage", page: .clipbawd, title: "Clipboard history storage", keywords: "persistent persistence disk memory count size megabytes mib mb days age retention clear limit"),
         .init(id: "privacy", page: .clipbawd, title: "Clipboard privacy and exclusions", keywords: "never keep apps prefixes passwords private windows incognito browser automation permission"),
