@@ -44,4 +44,26 @@ final class MicroShortcutTests: XCTestCase {
             XCTAssertEqual($0 as? AppShortcutRules.Problem, .micro)
         }
     }
+
+    func testEditorRefusesTakenKeysAndKeepsOneHotkeyPerMicroInPlace() {
+        var config = Config()
+        config.leader = key("cmd+f12")
+        config.appHotkeys = [AppShortcut(id: "app:Editor", name: "Editor", path: "/Applications/Editor.app", hotkey: key("cmd+f13"))]
+        config.microHotkeys = [MicroShortcut(micro: "a", hotkey: key("cmd+f14")),
+                               MicroShortcut(micro: "b", hotkey: key("cmd+f15")),
+                               MicroShortcut(micro: "a", hotkey: key("cmd+f16"))]
+        XCTAssertNotNil(MicroShortcutRules.problem(for: key("cmd+f12"), micro: "a", in: config))
+        XCTAssertNotNil(MicroShortcutRules.problem(for: key("cmd+f13"), micro: "a", in: config))
+        XCTAssertNotNil(MicroShortcutRules.problem(for: key("cmd+f15"), micro: "a", in: config))
+        XCTAssertNotNil(MicroShortcutRules.problem(for: key("right-option"), micro: "a", in: config))
+        XCTAssertNil(MicroShortcutRules.problem(for: key("cmd+f16"), micro: "a", in: config))
+
+        MicroShortcutRules.assign(key("cmd+f17"), to: "a", in: &config)
+        XCTAssertEqual(config.microHotkeys, [MicroShortcut(micro: "a", hotkey: key("cmd+f17")),
+                                             MicroShortcut(micro: "b", hotkey: key("cmd+f15"))])
+        MicroShortcutRules.assign(key("cmd+f18"), to: "c", in: &config)
+        XCTAssertEqual(config.microHotkeys.last, MicroShortcut(micro: "c", hotkey: key("cmd+f18")))
+        MicroShortcutRules.assign(nil, to: "a", in: &config)
+        XCTAssertEqual(config.microHotkeys.map(\.micro), ["b", "c"])
+    }
 }

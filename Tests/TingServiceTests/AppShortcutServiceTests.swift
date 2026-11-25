@@ -122,16 +122,21 @@ final class AppShortcutServiceTests: XCTestCase {
         XCTAssertEqual(service.status(.micro(0)), .active)
         XCTAssertEqual(service.status(.application(0)), .inactive)
         XCTAssertTrue(model.issues.contains { $0.kind == .appHotkey })
-        XCTAssertEqual(model.microHotkeyProblems, ["upper: Already used by another app."])
+        XCTAssertEqual(model.microHotkeyProblems, ["upper": "Already used by another app."])
         XCTAssertTrue(model.needsAttention)
         model.isPaused = true
         XCTAssertEqual(service.status(.micro(0)), .inactive)
         model.isPaused = false
         XCTAssertEqual(service.status(.micro(0)), .active)
-        model.update { $0.microHotkeys = [] }
+        model.setMicroHotkey(key("cmd+f15"), for: "upper")
+        XCTAssertEqual(service.hotkey(.micro(1)), key("cmd+f15"))
+        XCTAssertEqual(model.microHotkeyProblems, [:])
+        model.setMicroHotkey(nil, for: "sort")
+        model.setMicroHotkey(nil, for: "upper")
+        XCTAssertEqual(model.config.microHotkeys, [])
         XCTAssertEqual(service.status(.micro(0)), .inactive)
         XCTAssertEqual(service.status(.application(0)), .active)
-        XCTAssertEqual(model.microHotkeyProblems, [])
+        XCTAssertEqual(model.microHotkeyProblems, [:])
     }
 
     func testRecordingKeepsLaunchaOpenAndRejectsOSConflictWithoutSaving() throws {

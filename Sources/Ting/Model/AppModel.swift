@@ -29,8 +29,8 @@ final class AppModel {
     private(set) var microApps: [MicroAppEntry] = []
     /// Problems of the micro-app files, by file name, then by line.
     private(set) var microAppIssues: [MicroAppIssue] = []
-    /// Micro-app hotkeys macOS refused, such as a key another app holds.
-    private(set) var microHotkeyProblems: [String] = []
+    /// Micro-app hotkeys macOS refused, such as a key another app holds, by micro-app id.
+    private(set) var microHotkeyProblems: [String: String] = [:]
     /// Session-only: the leader is off while paused.
     var isPaused = false {
         didSet { applyHotkey() }
@@ -365,6 +365,11 @@ final class AppModel {
         update { $0.chatta.hotkey = hotkey }
     }
 
+    /// The one hotkey of a micro-app, set in Settings; nil removes it.
+    func setMicroHotkey(_ hotkey: Hotkey?, for micro: String) {
+        update { MicroShortcutRules.assign(hotkey, to: micro, in: &$0) }
+    }
+
     /// Saves exactly the retained app selected in launcha, never a different bundle-ID match.
     func setAppShortcut(for row: LaunchaRow, hotkey: Hotkey?) throws {
         guard case .app(let url) = row.kind else { throw AppShortcutRules.Problem.invalidTarget }
@@ -393,9 +398,9 @@ final class AppModel {
     }
 
     private func refreshMicroShortcutProblems() {
-        var problems: [String] = []
-        for (index, shortcut) in activeMicroShortcuts.enumerated() {
-            if case .failed(let reason) = hotkeys.status(.micro(index)) { problems.append("\(shortcut.micro): \(reason)") }
+        var problems: [String: String] = [:]
+        for (index, shortcut) in activeMicroShortcuts.enumerated() where problems[shortcut.micro] == nil {
+            if case .failed(let reason) = hotkeys.status(.micro(index)) { problems[shortcut.micro] = reason }
         }
         if microHotkeyProblems != problems { microHotkeyProblems = problems }
     }

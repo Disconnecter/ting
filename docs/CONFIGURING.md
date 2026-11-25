@@ -188,8 +188,11 @@ Find an app's bundle identifier with
 
 ### Direct micro-app hotkeys
 
-`microHotkeys` is an optional list, empty by default, edited by hand. Each entry
-starts a micro-app with one global shortcut, without the leader:
+`microHotkeys` is an optional list, empty by default. Each entry starts a
+micro-app with one global shortcut, without the leader. In Settings › Micro-apps,
+click a working micro-app's Hotkey cell and press the shortcut; ✕ removes it.
+The editor keeps one hotkey per micro-app and refuses a key that a Ting hotkey,
+an app or another micro-app already holds.
 
 ```json
 "microHotkeys": [
@@ -205,8 +208,8 @@ approval panel on first use, and the app in front is the app of `context` and
 `output.to: [app]`. A micro-app may have several hotkeys; each hotkey starts one
 micro-app. Both leaders, `launcha.hotkey`, the enabled clipbawd hotkey and the
 chatta hotkey are reserved, and a micro-app hotkey wins over an `appHotkeys`
-entry with the same key, which is then disabled; launcha's editor refuses such a
-key. Invalid, reserved or duplicate entries produce validation issues, and
+entry with the same key in a hand-written file, which is then disabled;
+launcha's editor refuses such a key. Invalid, reserved or duplicate entries produce validation issues, and
 `ting-micro check-config` also reports ids that do not load. Pausing Ting or
 recording a shortcut suspends micro-app hotkeys too. Holding one starts the
 micro-app only once until release.

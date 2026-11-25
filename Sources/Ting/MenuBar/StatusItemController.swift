@@ -88,8 +88,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let error = model.configError ?? model.issues.first(where: { !launchaIssues.contains($0.kind) })?.message {
             problems.addItem(note(error, symbol: "exclamationmark.triangle"))
         }
-        if let problem = model.microHotkeyProblems.first {
-            problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
+        if let (micro, problem) = model.microHotkeyProblems.min(by: { $0.key < $1.key }) {
+            problems.addItem(note("\(micro): \(problem)", symbol: "exclamationmark.triangle"))
         }
         if let issue = model.microAppIssues.first {
             let files = Set(model.microAppIssues.map(\.file)).count
