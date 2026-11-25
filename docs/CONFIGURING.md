@@ -186,6 +186,31 @@ until release. Successful launches count toward launcha's ranking.
 Find an app's bundle identifier with
 `mdls -name kMDItemCFBundleIdentifier -r /Applications/Ghostty.app`.
 
+### Direct micro-app hotkeys
+
+`microHotkeys` is an optional list, empty by default, edited by hand. Each entry
+starts a micro-app with one global shortcut, without the leader:
+
+```json
+"microHotkeys": [
+  { "micro": "sort-selection", "hotkey": "ctrl+option+shift+cmd+x" }
+]
+```
+
+This fragment belongs at the top level of `config.json`. `micro` is a micro-app
+id, as in a `micro` binding; `hotkey` uses the same syntax as `appHotkeys`.
+
+A start from the hotkey is the same as a start from the leader: the same
+approval panel on first use, and the app in front is the app of `context` and
+`output.to: [app]`. A micro-app may have several hotkeys; each hotkey starts one
+micro-app. Both leaders, `launcha.hotkey`, the enabled clipbawd hotkey and the
+chatta hotkey are reserved, and a micro-app hotkey wins over an `appHotkeys`
+entry with the same key, which is then disabled; launcha's editor refuses such a
+key. Invalid, reserved or duplicate entries produce validation issues, and
+`ting-micro check-config` also reports ids that do not load. Pausing Ting or
+recording a shortcut suspends micro-app hotkeys too. Holding one starts the
+micro-app only once until release.
+
 ## Changing the config
 
 1. Read `config.json` and find where the change goes. Keep every other item,
@@ -213,7 +238,8 @@ Find an app's bundle identifier with
    and check the file in a temporary folder, then move it into
    `~/.config/ting/micro/`.
 2. Bind it: add `{"key": "…", "label": "…", "micro": "<id>"}` at the sequence the
-   person asked for, creating the groups on the way.
+   person asked for, creating the groups on the way. For a direct shortcut
+   without the leader, add a `microHotkeys` entry instead (see above).
 3. Run `ting-micro check-config`. It also checks that the micro-app id loads.
 4. Tell the person that the first start shows an approval panel and that `⌘↩`
    approves the file. Name any API key or keychain item the micro-app needs.

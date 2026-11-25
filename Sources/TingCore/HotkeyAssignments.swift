@@ -49,6 +49,7 @@ public enum LauncherHotkey: CaseIterable, Sendable {
 public struct HotkeyAssignments: Sendable {
     public private(set) var launchers: [LauncherHotkey: Hotkey] = [:]
     public private(set) var applications: [AppShortcut] = []
+    public private(set) var micros: [MicroShortcut] = []
     public private(set) var issues: [ConfigIssue] = []
 
     public init(_ config: Config) {
@@ -65,6 +66,23 @@ public struct HotkeyAssignments: Sendable {
             } else {
                 launchers[slot] = key
             }
+        }
+
+        var microKeys: Set<Hotkey> = []
+        for shortcut in config.microHotkeys {
+            let reason: String
+            if !shortcut.hasTarget {
+                reason = "Name the micro-app to start."
+            } else if let reserved = AppShortcutRules.reservedProblem(for: shortcut.hotkey, in: config) {
+                reason = reserved.description
+            } else if !microKeys.insert(shortcut.hotkey).inserted {
+                reason = "\(shortcut.hotkey.display) already starts another micro-app."
+            } else {
+                micros.append(shortcut)
+                continue
+            }
+            let name = shortcut.hasTarget ? shortcut.micro : "Micro-app hotkey \(shortcut.hotkey.display)"
+            issues.append(ConfigIssue(kind: .microHotkey, sequence: [], message: "\(name): \(reason)"))
         }
 
         var ids: Set<String> = []

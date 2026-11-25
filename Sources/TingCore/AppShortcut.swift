@@ -25,7 +25,7 @@ public struct AppShortcut: Equatable, Sendable, Codable, Identifiable {
 
 public enum AppShortcutRules {
     public enum Problem: Error, Equatable, Sendable, CustomStringConvertible {
-        case invalidKey, invalidTarget, leader, launcha, clipbawd, chatta
+        case invalidKey, invalidTarget, leader, launcha, clipbawd, chatta, micro
 
         public var description: String {
             switch self {
@@ -35,20 +35,28 @@ public enum AppShortcutRules {
             case .launcha: "This key is reserved for launcha. Choose another shortcut."
             case .clipbawd: "This key is reserved for clipbawd. Choose another shortcut."
             case .chatta: "This key is reserved for chatta. Choose another shortcut."
+            case .micro: "This key starts a micro-app. Choose another shortcut."
             }
         }
     }
 
+    /// Reserved keys and micro-app hotkeys always win over apps.
     public static func problem(for hotkey: Hotkey, in config: Config) -> Problem? {
+        if let reserved = reservedProblem(for: hotkey, in: config) { return reserved }
+        if config.microHotkeys.contains(where: { $0.hasTarget && $0.hotkey == hotkey }) { return .micro }
+        return nil
+    }
+
+    /// Invalid keys and Ting's launcher keys; shared by app and micro-app shortcuts.
+    static func reservedProblem(for hotkey: Hotkey, in config: Config) -> Problem? {
         if !hotkey.isValid { return .invalidKey }
         switch LauncherHotkey.owner(of: hotkey, in: config) {
         case .leader, .alternateLeader: return .leader
         case .launcha: return .launcha
         case .clipbawd: return .clipbawd
         case .chatta: return .chatta
-        case nil: break
+        case nil: return nil
         }
-        return nil
     }
 
     /// Validate before mutation: rejection must never delete a previous assignment.
