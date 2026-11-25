@@ -296,6 +296,7 @@ final class LaunchaModel {
         refreshLoop?.cancel()
         refreshLoop = nil
         stopSpotlight()
+        services.spotlight.forget()
         isExplainingConsent = false
         followsFiles = false
         query = ""
