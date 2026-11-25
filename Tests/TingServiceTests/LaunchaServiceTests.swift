@@ -239,6 +239,19 @@ final class LaunchaServiceTests: XCTestCase {
         XCTAssertEqual(service.state.status, .idle)
     }
 
+    func testSpotlightScopesSkipLibraryHiddenAppsAndProtectedFolders() throws {
+        let home = try temporary()
+        for folder in ["Library", ".hidden", "Projects", "Desktop", "Tool.app"] {
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        try Data().write(to: home.appendingPathComponent("loose.txt"))
+        let names = { (policy: ProtectedFolderPolicy) in
+            LaunchaSpotlight.searchScopes(LaunchaPathPolicy(home: home, protectedFolders: policy)).map(\.lastPathComponent)
+        }
+        XCTAssertEqual(names(.needsConsent), ["Projects"])
+        XCTAssertEqual(names(.allowed), ["Desktop", "Projects"])
+    }
+
     @MainActor
     func testSpotlightIncompleteEmptyAndFailure() async throws {
         let home = try temporary()
