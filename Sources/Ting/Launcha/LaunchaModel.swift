@@ -119,6 +119,7 @@ final class LaunchaModel {
         var spotlight: LaunchaSpotlight
     }
     typealias ServiceFactory = @MainActor (ProtectedFolderPolicy) -> Services
+    typealias FolderAccess = @MainActor ([URL]) -> Void
 
     enum Message: Equatable {
         case info(String)
@@ -207,6 +208,7 @@ final class LaunchaModel {
     @ObservationIgnored private let runningAppIDs: () -> Set<String>
     @ObservationIgnored private var running: Set<String> = []
     @ObservationIgnored private let consent: LaunchaConsentStore
+    @ObservationIgnored private let requestFolderAccess: FolderAccess
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let refreshInterval: Duration
     @ObservationIgnored private var apps: [IndexedLaunchaApp] = []
@@ -228,13 +230,15 @@ final class LaunchaModel {
          refreshInterval: Duration = .seconds(15),
          lowkeySites: @escaping () -> [LowkeySite] = { [] },
          runningAppIDs: @escaping () -> Set<String> = { [] },
-         makeServices: ServiceFactory? = nil) {
+         makeServices: ServiceFactory? = nil,
+         requestFolderAccess: @escaping FolderAccess = LaunchaModel.readFolders) {
         self.opener = opener
         self.historyStore = historyStore
         self.usageStore = usageStore ?? LaunchaHistoryStore(
             url: historyStore.url.deletingLastPathComponent().appendingPathComponent("app-usage.json"))
         self.runningAppIDs = runningAppIDs
         self.consent = consent
+        self.requestFolderAccess = requestFolderAccess
         self.home = home
         self.refreshInterval = refreshInterval
         self.loadLowkeySites = lowkeySites
@@ -247,6 +251,8 @@ final class LaunchaModel {
         consentError = consent.error
         services = factory(consent.policy)
         wireSpotlight()
+        // Also for consent saved by a version that never asked macOS.
+        if consent.policy == .allowed { requestProtectedFolderAccess() }
     }
 
     // MARK: Session
@@ -389,6 +395,7 @@ final class LaunchaModel {
         services.spotlight.onChange = nil
         services = makeServices(policy)
         wireSpotlight()
+        if policy == .allowed { requestProtectedFolderAccess() }
         if policy == .needsConsent {
             // Drop apps found in folders that are no longer allowed.
             let gate = LaunchaPathPolicy(home: home, protectedFolders: .needsConsent)
@@ -398,6 +405,19 @@ final class LaunchaModel {
         appliedScan = scanSerial
         if isOpen { recompute(keepSelection: true) }
         startScan(onOpen: true)
+    }
+
+    /// macOS asks about a protected folder only when the app reads it, and Spotlight drops results
+    /// from folders the app cannot read, so read each one: macOS then asks about every folder once.
+    private func requestProtectedFolderAccess() {
+        requestFolderAccess(LaunchaPathPolicy(home: home).protectedURLs)
+    }
+
+    /// Reads the folders one after another off the main thread; each read waits for its prompt.
+    nonisolated static func readFolders(_ urls: [URL]) {
+        Task.detached(priority: .utility) {
+            for url in urls { _ = try? FileManager.default.contentsOfDirectory(atPath: url.path) }
+        }
     }
 
     // MARK: Messages
