@@ -127,7 +127,10 @@ final class LaunchaSpotlight {
                     // Finder-hidden directories and extensionless application packages also count.
                     for start in [url.standardizedFileURL, real] {
                         var ancestor = start
-                        let root = start == real ? (LaunchaPathPolicy.realURL(policy.home) ?? policy.home) : policy.home.standardizedFileURL
+                        let home = start == real ? (LaunchaPathPolicy.realURL(policy.home) ?? policy.home) : policy.home.standardizedFileURL
+                        // iCloud Drive sits in hidden ~/Library: check only the folders inside it.
+                        let iCloud = home.appendingPathComponent(LaunchaPathPolicy.iCloudDrivePath)
+                        let root = policy.contains(start, in: iCloud) ? iCloud : home
                         while ancestor.path != root.path && ancestor.path != "/" {
                             if Task.isCancelled { return (files, issues) }
                             let values = try ancestor.resourceValues(forKeys: [.isHiddenKey, .isApplicationKey])

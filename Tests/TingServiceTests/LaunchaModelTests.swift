@@ -257,6 +257,11 @@ final class LaunchaModelTests: XCTestCase {
     func testICloudDriveFilesNeedConsentAndShowAsICloudDrive() async throws {
         let folder = root.appendingPathComponent(LaunchaPathPolicy.iCloudDrivePath + "/Downloads")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // As in a real home, Finder hides ~/Library.
+        var hidden = URLResourceValues()
+        hidden.isHidden = true
+        var library = root.appendingPathComponent("Library")
+        try library.setResourceValues(hidden)
         let manual = folder.appendingPathComponent("manual.pdf")
         try Data().write(to: manual)
         let fixture = try makeModel(files: [manual])
