@@ -35,7 +35,7 @@ final class AppModel {
     }
     /// All hotkeys are off while a new one is recorded, so an existing shortcut can be captured.
     private(set) var isRecordingHotkey = false
-    /// launcha may search Desktop, Documents and Downloads. Stored apart from the config.
+    /// launcha may search Desktop, Documents, Downloads and iCloud Drive. Stored apart from the config.
     var protectedFoldersAllowed: Bool { launchaModel.protectedFolders == .allowed }
     var launchaConsentError: String? { launchaModel.consentError }
 

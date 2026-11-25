@@ -1,4 +1,4 @@
-// The user's choice to let launcha search Desktop, Documents and Downloads.
+// The user's choice to let launcha search Desktop, Documents, Downloads and iCloud Drive.
 // Kept apart from the config file, so a shared or synced config never grants it.
 import Foundation
 import TingCore
