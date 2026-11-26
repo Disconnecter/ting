@@ -60,10 +60,12 @@ public struct MicroAppStep: Equatable, Sendable {
         public var baseURL: MicroAppTemplate?
         public var temperature: MicroAppTemplate?
         public var maxTokens: MicroAppTemplate?
+        /// Anthropic only: sent as `output_config.effort`.
+        public var effort: MicroAppTemplate?
 
         public init(prompt: MicroAppTemplate, provider: Provider, model: MicroAppTemplate, key: MicroAppTemplate? = nil,
                     system: MicroAppTemplate? = nil, baseURL: MicroAppTemplate? = nil, temperature: MicroAppTemplate? = nil,
-                    maxTokens: MicroAppTemplate? = nil) {
+                    maxTokens: MicroAppTemplate? = nil, effort: MicroAppTemplate? = nil) {
             self.prompt = prompt
             self.provider = provider
             self.model = model
@@ -72,6 +74,7 @@ public struct MicroAppStep: Equatable, Sendable {
             self.baseURL = baseURL
             self.temperature = temperature
             self.maxTokens = maxTokens
+            self.effort = effort
         }
 
         /// The key used when the step has no `key`: the provider's environment variable for its own
@@ -242,7 +245,7 @@ public struct MicroAppStep: Equatable, Sendable {
             case nil: break
             }
         case .ai(let a):
-            result += [a.prompt, a.model] + [a.key, a.system, a.baseURL, a.temperature, a.maxTokens].compactMap { $0 }
+            result += [a.prompt, a.model] + [a.key, a.system, a.baseURL, a.temperature, a.maxTokens, a.effort].compactMap { $0 }
         case .chatta(let c):
             result += [c.prompt] + [c.model, c.effort, c.system, c.cwd].compactMap { $0 }
         case .text(let t), .choose(let t):
@@ -414,12 +417,14 @@ public struct MicroAppHTTPRequest: Equatable, Sendable {
         case badURL(String)
         case badNumber(key: String, value: String)
         case missingKey(String)
+        case badEffort(String)
 
         public var description: String {
             switch self {
             case .badURL(let url): "`\(url)` is not an http or https URL"
             case .badNumber(let key, let value): "`\(key)` is `\(value)`, not a number"
             case .missingKey(let name): "no API key: set `key:` in the step or the environment variable \(name)"
+            case .badEffort(let value): "`effort` is `\(value)`, not one of: \(ChattaSettings.effortChoices.joined(separator: ", "))"
             }
         }
     }
@@ -504,6 +509,11 @@ public struct MicroAppHTTPRequest: Equatable, Sendable {
         }
         let temperature = try number(step.temperature, "temperature", integer: false)
         let maxTokens = try number(step.maxTokens, "max_tokens", integer: true)
+        let effort = try step.effort.map { template in
+            let text = try template.render(resolve).trimmingCharacters(in: .whitespaces)
+            guard ChattaSettings.effortChoices.contains(text.lowercased()) else { throw BuildError.badEffort(text) }
+            return text.lowercased()
+        }
 
         var fields: [String] = ["\"model\":" + MicroAppJSON.quote(model)]
         var headers: [(name: String, value: String)] = [("Content-Type", "application/json"), ("Accept", "text/event-stream")]
@@ -525,6 +535,7 @@ public struct MicroAppHTTPRequest: Equatable, Sendable {
             if let system { fields.append("\"system\":" + MicroAppJSON.quote(system)) }
             fields.append("\"messages\":[{\"role\":\"user\",\"content\":" + MicroAppJSON.quote(prompt) + "}]")
             fields.append("\"max_tokens\":" + (maxTokens ?? String(anthropicDefaultMaxTokens)))
+            if let effort { fields.append("\"output_config\":{\"effort\":" + MicroAppJSON.quote(effort) + "}") }
             headers.append(("anthropic-version", anthropicVersion))
             if !key.isEmpty { headers.append(("x-api-key", key)) }
         }
