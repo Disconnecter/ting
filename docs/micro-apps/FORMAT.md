@@ -389,7 +389,7 @@ The output is the response body. A status outside 200–299 fails the step.
 | `base_url` | A compatible server, such as `http://localhost:11434/v1` (Ollama, LM Studio, OpenRouter). |
 | `temperature` | A number. Recent Claude models accept only the default; leave it out for them. |
 | `max_tokens` | A whole number; default 8192 for `anthropic`. An answer cut at this limit fails the step. |
-| `effort` | `anthropic` only: `low`, `medium`, `high`, `xhigh` or `max`, with variables. Lower is faster and thinks less; default is the model's own. |
+| `effort` | `anthropic` only: `low`, `medium`, `high`, `xhigh` or `max`, with variables. Lower is faster and thinks less; default is the model's own. Older models reject it (Claude Sonnet 4.5, Haiku 4.5), and `xhigh` needs Claude Opus 4.7 or later. |
 
 The answer streams into the panel word by word.
 
