@@ -78,10 +78,14 @@ final class ActionRunner: LaunchaOpening {
         visit(items)
     }
 
-    // 1Password can keep running with its main window closed. Activation alone
-    // does not reopen it; let Launch Services deliver a normal open request instead.
-    func tryActivation(bundleID: String?, activate: () -> Bool) -> Bool {
-        guard bundleID != "com.1password.1password", activate() else { return false }
+    /// Brings a running app to the front and asks it to reopen its window.
+    /// Many apps (WhatsApp, 1Password) keep running after their last window closes.
+    /// `activate` alone does not send them the reopen event, so they stay active with no window.
+    /// An open request through Launch Services sends that event, as a Dock click does.
+    func tryActivation(bundleURL: URL?, activate: () -> Bool) -> Bool {
+        guard activate() else { return false }
+        // The app is already in front, so a failed reopen request needs no error.
+        if let bundleURL { submitApplication(bundleURL) { _ in } }
         onPlaySound?()
         return true
     }
@@ -90,7 +94,7 @@ final class ActionRunner: LaunchaOpening {
     func activateRunning(_ item: Item) -> LaunchOutcome? {
         guard case .app(let id) = item.action,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first,
-              tryActivation(bundleID: id, activate: { app.activate(options: []) }) else { return nil }
+              tryActivation(bundleURL: app.bundleURL, activate: { app.activate(options: []) }) else { return nil }
         return .activated
     }
 
@@ -120,7 +124,7 @@ final class ActionRunner: LaunchaOpening {
 
     func openApp(at url: URL, name: String) async -> LaunchOutcome {
         let running = NSWorkspace.shared.runningApplications.first { $0.bundleURL == url }
-        if let running, tryActivation(bundleID: running.bundleIdentifier, activate: { running.activate(options: []) }) {
+        if let running, tryActivation(bundleURL: url, activate: { running.activate(options: []) }) {
             return .activated
         }
         let error: Error? = await withCheckedContinuation { done in
