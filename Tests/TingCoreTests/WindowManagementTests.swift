@@ -126,4 +126,27 @@ import Testing
         #expect(assignments.issues.filter { $0.kind == .windowHotkey }.count == 2)
         #expect(assignments.issues.filter { $0.kind == .appHotkey }.count == 1)
     }
+
+    @Test func microAppAndWindowHotkeysRefuseEachOtherAndMicroAppsWin() throws {
+        var config = Config()
+        config.leader = key("home")
+        config.microHotkeys = [MicroShortcut(micro: "sort-selection", hotkey: key("cmd+f15"))]
+        // The window editor refuses the micro-app's key and keeps the config.
+        let saved = config
+        #expect(throws: WindowShortcutRules.Problem.micro("sort-selection")) {
+            try WindowShortcutRules.assign(command: .leftHalf, hotkey: key("cmd+f15"), in: &config)
+        }
+        #expect(config == saved)
+        // The micro-app editor refuses a window command's key.
+        try WindowShortcutRules.assign(command: .maximize, hotkey: key("cmd+f16"), in: &config)
+        #expect(MicroShortcutRules.problem(for: key("cmd+f16"), micro: "other", in: config)?.contains("Maximize") == true)
+
+        // A hand-written clash: the micro-app keeps the key, the window command reports why.
+        config.windowManagement.shortcuts.append(.init(command: .center, hotkey: key("cmd+f15")))
+        let assignments = HotkeyAssignments(config)
+        #expect(assignments.micros.map(\.hotkey) == [key("cmd+f15")])
+        #expect(assignments.windows.map(\.command) == [.maximize])
+        #expect(assignments.windowProblems[.center]?.contains("micro-app") == true)
+    }
 }
+

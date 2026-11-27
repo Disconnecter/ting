@@ -250,8 +250,9 @@ The same commands can have direct global shortcuts, recorded in **Settings › W
 Window commands act on the focused window and require Accessibility permission. `center` keeps the
 current size. `restore` returns to the frame saved before Ting first moved that window in this app
 session. Previous/next display preserves size when it fits and keeps the relative position. Spaces
-are not controlled. A window hotkey cannot reuse a leader or launcher hotkey, and an `appHotkeys`
-entry with the same key is disabled. Pausing Ting or recording a shortcut suspends window hotkeys too.
+are not controlled. A window hotkey cannot reuse a leader, launcher or micro-app hotkey, and an
+`appHotkeys` entry with the same key is disabled. In a hand-written file, a micro-app hotkey wins over
+a window hotkey with the same key, which is then disabled; both editors refuse such a key. Pausing Ting or recording a shortcut suspends window hotkeys too.
 
 ## Changing the config
 

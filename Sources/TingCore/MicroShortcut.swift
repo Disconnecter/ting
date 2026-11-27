@@ -19,12 +19,15 @@ public struct MicroShortcut: Equatable, Sendable, Codable {
 
 /// The Settings editor: one hotkey per micro-app.
 public enum MicroShortcutRules {
-    /// Why `hotkey` cannot start `micro`: invalid, reserved, or held by an app or another micro-app.
+    /// Why `hotkey` cannot start `micro`: invalid, reserved, or held by a window command, an app or another micro-app.
     public static func problem(for hotkey: Hotkey, micro: String, in config: Config) -> String? {
         if !hotkey.isValid { return AppShortcutRules.Problem.invalidKey.description }
         if let owner = LauncherHotkey.owner(of: hotkey, in: config) { return owner.conflict(for: hotkey) }
         if let other = config.microHotkeys.first(where: { $0.hotkey == hotkey && $0.micro != micro }) {
             return "\(hotkey.display) already starts \(other.micro)."
+        }
+        if let window = config.windowManagement.shortcuts.first(where: { $0.hotkey == hotkey }) {
+            return "\(hotkey.display) already runs \(window.command.title)."
         }
         if let app = config.appHotkeys.first(where: { $0.hotkey == hotkey }) {
             return "\(hotkey.display) already opens \(app.name)."

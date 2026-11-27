@@ -96,6 +96,9 @@ public struct HotkeyAssignments: Sendable {
                 reason = "This command is assigned more than once."
             } else if let reserved = AppShortcutRules.reservedProblem(for: shortcut.hotkey, in: config) {
                 reason = reserved.description
+            } else if microKeys.contains(shortcut.hotkey) {
+                // A micro-app hotkey in a hand-written file wins, as it does over app shortcuts.
+                reason = AppShortcutRules.Problem.micro.description
             } else if windowKeys.contains(shortcut.hotkey) {
                 reason = "A window shortcut is assigned more than once."
             } else {

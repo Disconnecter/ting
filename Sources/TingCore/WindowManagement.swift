@@ -104,6 +104,7 @@ public enum WindowShortcutRules {
         case clipbawd
         case chatta
         case window(String)
+        case micro(String)
         case application(String)
 
         public var description: String {
@@ -114,6 +115,7 @@ public enum WindowShortcutRules {
             case .clipbawd: "This key is reserved for clipbawd. Choose another shortcut."
             case .chatta: "This key is reserved for chatta. Choose another shortcut."
             case .window(let name): "This key already runs \(name). Choose another shortcut."
+            case .micro(let id): "This key already starts the micro-app \(id). Choose another shortcut."
             case .application(let name): "This key already opens \(name). Choose another shortcut."
             }
         }
@@ -130,6 +132,9 @@ public enum WindowShortcutRules {
         }
         if let existing = config.windowManagement.shortcuts.first(where: { $0.command != command && $0.hotkey == hotkey }) {
             return .window(existing.command.title)
+        }
+        if let micro = config.microHotkeys.first(where: { $0.hasTarget && $0.hotkey == hotkey }) {
+            return .micro(micro.micro)
         }
         if let app = config.appHotkeys.first(where: { $0.hotkey == hotkey }) {
             return .application(app.name)
