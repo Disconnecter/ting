@@ -178,7 +178,7 @@ final class LaunchaServiceTests: XCTestCase {
         XCTAssertFalse(LaunchaPathPolicy(home: home).searchable(home.appendingPathComponent("Desktop/file")))
     }
 
-    func testOnlyICloudDriveIsSearchableInLibraryAndNeedsConsent() throws {
+    func testOnlyICloudDriveIsSearchableInLibraryAndOnlyWhenOn() throws {
         let home = try temporary()
         let library = home.appendingPathComponent("Library")
         for path in [LaunchaPathPolicy.iCloudDrivePath + "/Downloads", "Library/Mobile Documents/iCloud~com~example~app/Documents", "Library/Keychains"] {
@@ -187,15 +187,19 @@ final class LaunchaServiceTests: XCTestCase {
             try Data().write(to: folder.appendingPathComponent("file"))
         }
         let file = home.appendingPathComponent(LaunchaPathPolicy.iCloudDrivePath + "/Downloads/file")
-        let allowed = LaunchaPathPolicy(home: home, protectedFolders: .allowed)
-        XCTAssertTrue(allowed.searchable(file))
-        XCTAssertFalse(allowed.searchable(library.appendingPathComponent("Mobile Documents/iCloud~com~example~app/Documents/file")))
-        XCTAssertFalse(allowed.searchable(library.appendingPathComponent("Keychains/file")))
-        XCTAssertFalse(allowed.searchable(home.appendingPathComponent(LaunchaPathPolicy.iCloudDrivePath + "/.Trash/file")))
-        let gated = LaunchaPathPolicy(home: home)
-        XCTAssertTrue(gated.needsConsent(file))
-        XCTAssertFalse(gated.searchable(file))
-        XCTAssertEqual(gated.protectedURLs.last, allowed.iCloudDrive)
+        let on = LaunchaPathPolicy(home: home, iCloudDrive: true)
+        XCTAssertTrue(on.searchable(file), "iCloud Drive does not need the protected-folder consent")
+        XCTAssertFalse(on.searchable(library.appendingPathComponent("Mobile Documents/iCloud~com~example~app/Documents/file")))
+        XCTAssertFalse(on.searchable(library.appendingPathComponent("Keychains/file")))
+        XCTAssertFalse(on.searchable(home.appendingPathComponent(LaunchaPathPolicy.iCloudDrivePath + "/.Trash/file")))
+        XCTAssertEqual(LaunchaSpotlight.searchScopes(on).map(\.path), [on.iCloudDriveURL.path])
+
+        // Off by default, also with the protected folders allowed.
+        let off = LaunchaPathPolicy(home: home, protectedFolders: .allowed)
+        XCTAssertFalse(off.searchable(file))
+        XCTAssertFalse(off.needsConsent(file))
+        XCTAssertEqual(LaunchaSpotlight.searchScopes(off), [])
+        XCTAssertEqual(off.protectedURLs.map(\.lastPathComponent), ["Desktop", "Documents", "Downloads"])
     }
 
     func testHistoryRecoveryIsolationAndSerializedWrites() async throws {
@@ -365,7 +369,7 @@ final class LaunchaServiceTests: XCTestCase {
         XCTAssertEqual(service.state.status, .searching)
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(service.state.status, .empty)
-        XCTAssertEqual(service.state.issues.map(\.kind), [.needsConsent, .needsConsent, .needsConsent, .needsConsent])
+        XCTAssertEqual(service.state.issues.map(\.kind), [.needsConsent, .needsConsent, .needsConsent])
         let failure = LaunchaSpotlight(home: home, debounce: .zero) { _ in throw CocoaError(.fileReadNoPermission) }
         failure.search("failure")
         try await Task.sleep(for: .milliseconds(50))

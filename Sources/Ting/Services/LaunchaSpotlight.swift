@@ -29,7 +29,16 @@ final class LaunchaSpotlight {
     typealias Provider = @Sendable (String) async throws -> [URL]
     private(set) var state = State()
     var onChange: ((State) -> Void)?
-    private let policy: LaunchaPathPolicy
+    private var policy: LaunchaPathPolicy
+    /// iCloud Drive is searched too. Changing it forgets the remembered searches.
+    var searchesICloudDrive: Bool {
+        get { policy.iCloudDrive }
+        set {
+            guard newValue != policy.iCloudDrive else { return }
+            policy.iCloudDrive = newValue
+            forget()
+        }
+    }
     private let debounce: Duration
     private let timeout: Duration
     private let cap: Int
@@ -119,13 +128,15 @@ final class LaunchaSpotlight {
         }
     }
 
-    /// Visible top-level folders of home that the policy allows. Spotlight then never
-    /// spends the inspection limit on `~/Library`, hidden folders or protected folders.
-    /// Loose files directly in home are not searched.
+    /// Visible top-level folders of home that the policy allows, and iCloud Drive when it is on.
+    /// Spotlight then never spends the inspection limit on the rest of `~/Library`, hidden
+    /// folders or protected folders. Loose files directly in home are not searched.
     nonisolated static func searchScopes(_ policy: LaunchaPathPolicy) -> [URL] {
         let children = (try? FileManager.default.contentsOfDirectory(
             at: policy.home, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
-        return children.filter { url in
+        // iCloud Drive sits in hidden ~/Library, so the listing above never has it.
+        let iCloud = policy.iCloudDrive ? [policy.iCloudDriveURL] : []
+        return (children + iCloud).filter { url in
             (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true && policy.searchable(url)
         }.sorted { $0.path < $1.path }
     }

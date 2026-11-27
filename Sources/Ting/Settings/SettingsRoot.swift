@@ -351,6 +351,7 @@ private struct SoundSettings: View {
 private struct LaunchaSettingsSection: View {
     @Environment(AppModel.self) private var model
     @State private var confirmingFolders = false
+    @State private var confirmingICloudDrive = false
 
     var body: some View {
         let launcha = model.config.launcha
@@ -384,21 +385,33 @@ private struct LaunchaSettingsSection: View {
             }
             .disabled(!launcha.appSwitching)
             .help("Where launcha lists apps that are already open, among equally good matches.")
-            SettingsToggle("Search Desktop, Documents, Downloads and iCloud Drive", detail: "Off by default. macOS may ask for folder access.", isOn: Binding(
+            SettingsToggle("Search Desktop, Documents and Downloads", detail: "Off by default. macOS may ask for folder access.", isOn: Binding(
                 get: { model.protectedFoldersAllowed },
                 set: { allowed in
                     if allowed { confirmingFolders = true } else { model.setProtectedFoldersAllowed(false) }
+                }))
+            .help("Ting saves this consent separately from config.json.")
+            SettingsToggle("Search iCloud Drive", detail: "Off by default. macOS may ask for access. Opening a file that is only in iCloud downloads it first.", isOn: Binding(
+                get: { model.iCloudDriveAllowed },
+                set: { allowed in
+                    if allowed { confirmingICloudDrive = true } else { model.setICloudDriveAllowed(false) }
                 }))
             .help("Ting saves this consent separately from config.json.")
             if let error = model.launchaConsentError {
                 Text(error).font(.caption).foregroundStyle(Color.tingAmber)
             }
         } header: { SettingsSectionTitle("launcha") }
-        .alert("Search Desktop, Documents, Downloads and iCloud Drive?", isPresented: $confirmingFolders) {
+        .alert("Search Desktop, Documents and Downloads?", isPresented: $confirmingFolders) {
             Button("Allow Access") { model.setProtectedFoldersAllowed(true) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("launcha will also list apps on your Desktop and find files in these folders. macOS may ask you to allow Ting to access each folder.")
+        }
+        .alert("Search iCloud Drive?", isPresented: $confirmingICloudDrive) {
+            Button("Allow Access") { model.setICloudDriveAllowed(true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("launcha will also find files in iCloud Drive. macOS may ask you to allow Ting to access it. Files in other apps' iCloud folders are not searched.")
         }
     }
 }

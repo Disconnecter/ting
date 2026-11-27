@@ -1,4 +1,4 @@
-// The user's choice to let launcha search Desktop, Documents, Downloads and iCloud Drive.
+// The user's choices to let launcha search Desktop, Documents and Downloads, and iCloud Drive.
 // Kept apart from the config file, so a shared or synced config never grants it.
 import Foundation
 import TingCore
@@ -7,10 +7,14 @@ import TingCore
 final class LaunchaConsentStore {
     private struct Stored: Codable {
         var protectedFolders: Bool
+        /// Missing in files from before the iCloud Drive choice: off.
+        var iCloudDrive: Bool?
     }
 
     let url: URL
     private(set) var policy: ProtectedFolderPolicy
+    /// A separate opt-in, off by default: allowing the protected folders does not include it.
+    private(set) var iCloudDrive = false
     /// Why the choice could not be read or saved.
     private(set) var error: String?
 
@@ -31,6 +35,7 @@ final class LaunchaConsentStore {
         do {
             let stored = try JSONDecoder().decode(Stored.self, from: Data(contentsOf: url))
             policy = stored.protectedFolders ? .allowed : .needsConsent
+            iCloudDrive = stored.iCloudDrive ?? false
         } catch {
             // No file is the normal first state. Anything else fails closed.
             let ns = error as NSError
@@ -38,18 +43,30 @@ final class LaunchaConsentStore {
                 self.error = "Cannot read the launcha folder choice: \(error.localizedDescription)"
             }
             policy = .needsConsent
+            iCloudDrive = false
         }
     }
 
     /// Saves the choice. The policy changes only when the file was written.
     @discardableResult
     func set(_ policy: ProtectedFolderPolicy) -> Bool {
+        save(policy: policy, iCloudDrive: iCloudDrive)
+    }
+
+    /// Saves the iCloud Drive choice. It changes only when the file was written.
+    @discardableResult
+    func setICloudDrive(_ allowed: Bool) -> Bool {
+        save(policy: policy, iCloudDrive: allowed)
+    }
+
+    private func save(policy: ProtectedFolderPolicy, iCloudDrive: Bool) -> Bool {
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
-            try encoder.encode(Stored(protectedFolders: policy == .allowed)).write(to: url, options: .atomic)
+            try encoder.encode(Stored(protectedFolders: policy == .allowed, iCloudDrive: iCloudDrive)).write(to: url, options: .atomic)
             self.policy = policy
+            self.iCloudDrive = iCloudDrive
             error = nil
             return true
         } catch {

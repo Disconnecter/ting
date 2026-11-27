@@ -147,6 +147,8 @@ final class LaunchaModel {
     private(set) var hasIndex = false
     private(set) var isOpen = false
     private(set) var protectedFolders: ProtectedFolderPolicy
+    /// iCloud Drive is searched too: its own opt-in, off by default.
+    private(set) var searchesICloudDrive: Bool
     /// The explanation of protected-folder access is shown.
     var isExplainingConsent = false
     private(set) var consentError: String?
@@ -254,11 +256,13 @@ final class LaunchaModel {
         }
         self.makeServices = factory
         protectedFolders = consent.policy
+        searchesICloudDrive = consent.iCloudDrive
         consentError = consent.error
         services = factory(consent.policy)
         wireSpotlight()
         // Also for consent saved by a version that never asked macOS.
         if consent.policy == .allowed { requestProtectedFolderAccess() }
+        if consent.iCloudDrive { requestICloudDriveAccess() }
     }
 
     // MARK: Session
@@ -404,7 +408,7 @@ final class LaunchaModel {
 
     // MARK: Protected folders
 
-    /// The user read the explanation and allowed Desktop, Documents, Downloads and iCloud Drive.
+    /// The user read the explanation and allowed Desktop, Documents and Downloads.
     func allowProtectedFolders() {
         setProtectedFolders(.allowed)
     }
@@ -436,6 +440,26 @@ final class LaunchaModel {
         appliedScan = scanSerial
         if isOpen { recompute(keepSelection: true) }
         startScan(onOpen: true)
+    }
+
+    /// Call only after the user read that macOS may ask about iCloud Drive.
+    func setICloudDrive(_ allowed: Bool) {
+        guard consent.setICloudDrive(allowed) else {
+            consentError = consent.error
+            return
+        }
+        consentError = nil
+        guard allowed != searchesICloudDrive else { return }
+        searchesICloudDrive = allowed
+        stopSpotlight()
+        services.spotlight.searchesICloudDrive = allowed
+        if allowed { requestICloudDriveAccess() }
+        if isOpen { recompute(keepSelection: true) }
+    }
+
+    /// Like the protected folders, macOS asks about iCloud Drive only when the app reads it.
+    private func requestICloudDriveAccess() {
+        requestFolderAccess([LaunchaPathPolicy(home: home).iCloudDriveURL])
     }
 
     /// macOS asks about a protected folder only when the app reads it, and Spotlight drops results
@@ -494,6 +518,7 @@ final class LaunchaModel {
     }
 
     private func wireSpotlight() {
+        services.spotlight.searchesICloudDrive = searchesICloudDrive
         services.spotlight.onChange = { [weak self] state in
             guard let self, self.isOpen, self.spotlightQuery != nil else { return }
             self.spotlight = state

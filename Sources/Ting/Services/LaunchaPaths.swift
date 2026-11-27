@@ -27,14 +27,17 @@ struct LaunchaPathPolicy: Sendable {
         }
     }
     var protectedFolders: ProtectedFolderPolicy = .needsConsent
+    /// iCloud Drive is searched only after its own opt-in, apart from the protected folders.
+    var iCloudDrive = false
     private var standardizedHome: URL
     private var standardizedHomeComponents: [String]
     private var realHome: URL
     private var realHomeComponents: [String]
 
-    init(home: URL, protectedFolders: ProtectedFolderPolicy = .needsConsent) {
+    init(home: URL, protectedFolders: ProtectedFolderPolicy = .needsConsent, iCloudDrive: Bool = false) {
         self.home = home
         self.protectedFolders = protectedFolders
+        self.iCloudDrive = iCloudDrive
         let standardized = home.standardizedFileURL
         self.standardizedHome = standardized
         self.standardizedHomeComponents = standardized.pathComponents
@@ -43,10 +46,11 @@ struct LaunchaPathPolicy: Sendable {
         self.realHomeComponents = resolved.pathComponents
     }
 
-    /// The iCloud Drive folder, the only place under `~/Library` that may be searched.
+    /// The iCloud Drive folder, the only place under `~/Library` that may be searched, and only
+    /// with `iCloudDrive` on. Other apps' containers in `Mobile Documents` stay excluded.
     static let iCloudDrivePath = "Library/Mobile Documents/com~apple~CloudDocs"
-    var iCloudDrive: URL { home.appendingPathComponent(Self.iCloudDrivePath, isDirectory: true) }
-    var protectedURLs: [URL] { ["Desktop", "Documents", "Downloads"].map { home.appendingPathComponent($0) } + [iCloudDrive] }
+    var iCloudDriveURL: URL { home.appendingPathComponent(Self.iCloudDrivePath, isDirectory: true) }
+    var protectedURLs: [URL] { ["Desktop", "Documents", "Downloads"].map { home.appendingPathComponent($0) } }
     func contains(_ url: URL, in root: URL) -> Bool {
         let path = url.standardizedFileURL.path
         let base = root.standardizedFileURL.path
@@ -65,9 +69,6 @@ struct LaunchaPathPolicy: Sendable {
     func needsConsent(_ url: URL) -> Bool {
         guard protectedFolders == .needsConsent else { return false }
         let standardized = url.standardizedFileURL
-        if inICloudDrive(standardized.path, homePath: standardizedHome.path) || inICloudDrive(standardized.path, homePath: realHome.path) {
-            return true
-        }
         if let first = firstHomeComponent(standardized, homePath: standardizedHome.path, homeComponentCount: standardizedHomeComponents.count),
            ["desktop", "documents", "downloads"].contains(first) {
             return true
@@ -89,7 +90,7 @@ struct LaunchaPathPolicy: Sendable {
     private func valid(_ standardizedPath: URL, homePath: String, homeComponentCount: Int) -> Bool {
         containsPath(standardizedPath.path, in: homePath)
             && (firstHomeComponent(standardizedPath, homePath: homePath, homeComponentCount: homeComponentCount) != "library"
-                || inICloudDrive(standardizedPath.path, homePath: homePath))
+                || (iCloudDrive && inICloudDrive(standardizedPath.path, homePath: homePath)))
             && !standardizedPath.pathComponents.contains { $0.hasPrefix(".") || $0.lowercased().hasSuffix(".app") }
             && !needsConsent(standardizedPath)
     }

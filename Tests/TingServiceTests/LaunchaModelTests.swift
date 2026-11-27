@@ -332,7 +332,7 @@ final class LaunchaModelTests: XCTestCase {
         model.close()
     }
 
-    func testICloudDriveFilesNeedConsentAndShowAsICloudDrive() async throws {
+    func testICloudDriveIsItsOwnOptInAndShowsAsICloudDrive() async throws {
         let folder = root.appendingPathComponent(LaunchaPathPolicy.iCloudDrivePath + "/Downloads")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         // As in a real home, Finder hides ~/Library.
@@ -342,19 +342,43 @@ final class LaunchaModelTests: XCTestCase {
         try library.setResourceValues(hidden)
         let manual = folder.appendingPathComponent("manual.pdf")
         try Data().write(to: manual)
+        folderRequests = []
         let fixture = try makeModel(files: [manual])
         let model = fixture.model
+        XCTAssertFalse(model.searchesICloudDrive, "Off by default")
         model.open()
         try await wait("index") { model.hasIndex }
-        model.query = "manual"
-        try await wait("gated search") { model.spotlight.status == .empty }
-        XCTAssertTrue(model.rows.isEmpty, "iCloud Drive needs consent first")
-
         model.allowProtectedFolders()
-        model.query = ""
         model.query = "manual"
+        try await wait("search without iCloud Drive") { model.spotlight.status == .empty }
+        XCTAssertTrue(model.rows.isEmpty, "Allowing the protected folders does not include iCloud Drive")
+
+        folderRequests = []
+        model.setICloudDrive(true)
+        XCTAssertEqual(folderRequests, [["com~apple~CloudDocs"]], "iCloud Drive is read so macOS asks")
         try await wait("iCloud file") { model.rows.first?.url?.path == manual.path }
         XCTAssertEqual(model.rows.first?.detail, "iCloud Drive/Downloads")
+
+        // Saved apart from the protected folders; a fresh store reads both.
+        let saved = LaunchaConsentStore(url: fixture.consent)
+        XCTAssertTrue(saved.iCloudDrive)
+        XCTAssertEqual(saved.policy, .allowed)
+        model.revokeProtectedFolders()
+        XCTAssertTrue(LaunchaConsentStore(url: fixture.consent).iCloudDrive, "Revoking the folders keeps iCloud Drive")
+
+        model.setICloudDrive(false)
+        try await wait("iCloud file dropped") { model.rows.isEmpty }
+        XCTAssertFalse(LaunchaConsentStore(url: fixture.consent).iCloudDrive)
+        model.close()
+    }
+
+    func testConsentFileWithoutICloudDriveKeyKeepsItOff() throws {
+        let url = root.appendingPathComponent("old-consent.json")
+        try Data(#"{"protectedFolders":true}"#.utf8).write(to: url)
+        let store = LaunchaConsentStore(url: url)
+        XCTAssertEqual(store.policy, .allowed)
+        XCTAssertFalse(store.iCloudDrive)
+        XCTAssertNil(store.error)
     }
 
     func testConsentRecreatesServicesAndPersistsSeparately() async throws {

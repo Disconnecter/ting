@@ -37,8 +37,10 @@ final class AppModel {
     }
     /// All hotkeys are off while a new one is recorded, so an existing shortcut can be captured.
     private(set) var isRecordingHotkey = false
-    /// launcha may search Desktop, Documents, Downloads and iCloud Drive. Stored apart from the config.
+    /// launcha may search Desktop, Documents and Downloads. Stored apart from the config.
     var protectedFoldersAllowed: Bool { launchaModel.protectedFolders == .allowed }
+    /// launcha may search iCloud Drive. Off by default, stored apart from the config.
+    var iCloudDriveAllowed: Bool { launchaModel.searchesICloudDrive }
     var launchaConsentError: String? { launchaModel.consentError }
 
     @ObservationIgnored let theme: ThemeStore
@@ -465,6 +467,11 @@ final class AppModel {
     /// Call only after the user read what this allows and which macOS prompts may follow.
     func setProtectedFoldersAllowed(_ allowed: Bool) {
         if allowed { launchaModel.allowProtectedFolders() } else { launchaModel.revokeProtectedFolders() }
+    }
+
+    /// Call only after the user read that macOS may ask about iCloud Drive.
+    func setICloudDriveAllowed(_ allowed: Bool) {
+        launchaModel.setICloudDrive(allowed)
     }
 
     func replaceConfig(_ imported: Config) {
