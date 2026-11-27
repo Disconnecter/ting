@@ -223,6 +223,35 @@ final class ChattaServiceTests: XCTestCase {
         XCTAssertNoThrow(try MicroAppCLI.validate(.init(file: "sum.yaml"), app: app))
     }
 
+    func testChattaZoomSavesTextScaleAndConfigReachesTheWindow() throws {
+        _ = NSApplication.shared
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ting-chatta-zoom-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let store = ConfigStore(url: dir.appendingPathComponent("config.json"))
+        let model = AppModel(presentsWindows: false, store: store)
+        XCTAssertEqual(model.chatta.textScale, 1)
+        XCTAssertEqual(model.chatta.sendKey, .commandReturn)
+
+        model.chatta.zoom(by: 1)
+        model.chatta.zoom(by: 1)
+        XCTAssertEqual(model.chatta.textScale, 1.2, accuracy: 0.0001)
+        XCTAssertEqual(model.config.chatta.textScale, 1.2, accuracy: 0.0001, "⌘+ is saved to the config")
+        model.chatta.zoom(by: -1)
+        XCTAssertEqual(model.config.chatta.textScale, 1.1, accuracy: 0.0001)
+        model.chatta.zoom(by: nil)
+        XCTAssertEqual(model.chatta.textScale, 1)
+        XCTAssertEqual(model.config.chatta.textScale, 1, "⌘0 returns to 100%")
+        for _ in 0..<20 { model.chatta.zoom(by: -1) }
+        XCTAssertEqual(model.config.chatta.textScale, ChatTextScale.range.lowerBound)
+
+        // Settings change the open window too.
+        model.update { $0.chatta.textScale = 1.5; $0.chatta.sendKey = .return }
+        XCTAssertEqual(model.chatta.textScale, 1.5)
+        XCTAssertEqual(model.chatta.sendKey, .return)
+        _ = model.chatta.prepareWindow()
+    }
+
     func testChattaSettingsGearOpensChattaSettingsPage() throws {
         _ = NSApplication.shared
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ting-chatta-settings-" + UUID().uuidString)

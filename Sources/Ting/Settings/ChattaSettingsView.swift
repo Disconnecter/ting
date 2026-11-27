@@ -86,6 +86,24 @@ struct ChattaSettingsView: View {
                 }
                 Text("Closing the Chatta window hides it and keeps the session ready. After this many minutes without activity, Ting stops the agent process while keeping the visible transcript.")
                     .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Text size") {
+                    HStack(spacing: 8) {
+                        Stepper(value: Binding(
+                            get: { settings.textScale },
+                            set: { value in model.update { $0.chatta.textScale = ChatTextScale.clamped(value) } }
+                        ), in: ChatTextScale.range, step: ChatTextScale.step) {
+                            Text(ChatTextScale.percent(settings.textScale)).monospacedDigit()
+                        }
+                        Button("Reset") { model.update { $0.chatta.textScale = ChatTextScale.standard } }
+                            .disabled(settings.textScale == ChatTextScale.standard)
+                    }
+                }
+                Text("The chat text, its headings and code, and the message field. In the Chatta window, ⌘+ and ⌘− change it and ⌘0 returns to 100%.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Picker("Send with", selection: model.binding(\.chatta.sendKey)) {
+                    Text("⌘↩ — ↩ adds a line").tag(ChatSendKey.commandReturn)
+                    Text("↩ — ⇧↩ adds a line").tag(ChatSendKey.return)
+                }
                 HStack(spacing: 10) {
                     Button("Open Chatta") { model.openChatta() }
                     Button("Configure Ting with Chatta") { model.openChatta(mode: .configure) }

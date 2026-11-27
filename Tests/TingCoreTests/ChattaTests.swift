@@ -55,6 +55,22 @@ import Testing
         #expect(capped.chatta.idleTimeoutMinutes == ChattaSettings.idleTimeoutMinutesRange.upperBound)
     }
 
+    @Test func textScaleAndSendKeyDefaultClampAndRoundTrip() throws {
+        let empty = try decode("{}")
+        #expect(empty.chatta.textScale == 1)
+        #expect(empty.chatta.sendKey == .commandReturn)
+
+        let custom = try decode(#"{"chatta":{"textScale":1.3,"sendKey":"return"}}"#)
+        #expect(abs(custom.chatta.textScale - 1.3) < 0.0001)
+        #expect(custom.chatta.sendKey == .return)
+        #expect(try ConfigCodec.decode(ConfigCodec.encode(custom)) == custom)
+
+        #expect(try decode(#"{"chatta":{"textScale":5}}"#).chatta.textScale == ChatTextScale.range.upperBound)
+        #expect(try decode(#"{"chatta":{"textScale":0}}"#).chatta.textScale == ChatTextScale.range.lowerBound)
+        // An unknown key keeps ⌘↩ instead of rejecting the whole config.
+        #expect(try decode(#"{"chatta":{"sendKey":"space"}}"#).chatta.sendKey == .commandReturn)
+    }
+
     @Test func hotkeyConflictsAndReservation() throws {
         var config = Config()
         config.leader = Hotkey(string: "f13")

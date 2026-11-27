@@ -88,14 +88,17 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   60–86400 seconds and caps the `timeout` a micro-app file may ask for, while each file still defaults
   to 60s and may set any smaller or larger value up to that limit; `resultWidth` is 480–1200 points
   for the result panel card; `resultTextSize` is 11–24 points for result panel body text),
-  `chatta` (`{"hotkey": null, "agent": null, "model": null, "effort": null, "idleTimeoutMinutes": 15, "allowTools": false}`;
+  `chatta` (`{"hotkey": null, "agent": null, "model": null, "effort": null, "idleTimeoutMinutes": 15, "allowTools": false, "textScale": 1, "sendKey": "commandReturn"}`;
   `hotkey` opens the Chatta agent chat window; `agent` picks a built-in ACP preset id
   (`antigravity`, `codex`, `claude`, `pi`, `kimi`, `gemini`, `opencode`, or `null` to auto-detect);
   `model` and `effort` (`low`, `medium`, `high`, `xhigh`, `max`) set optional defaults shared by the
   Chatta window and `chatta:` micro-app steps; `idleTimeoutMinutes` (0–240, 0 disables) stops an idle
   agent subprocess after inactivity while keeping the transcript visible; `allowTools` is `false` by
   default and lets agents use built-in tools such as `web_search` in Chat mode inside the sandbox,
-  prompting once on the first tool call when off to allow always, for this session, or decline). The
+  prompting once on the first tool call when off to allow always, for this session, or decline;
+  `textScale` (0.8–2.0) sizes the chat text, headings, code and message field, and ⌘+, ⌘− and ⌘0 in
+  the Chatta window change and save it; `sendKey` is `commandReturn` (⌘↩ sends, ↩ adds a line) or
+  `return` (↩ sends, ⇧↩ or ⌥↩ adds a line, an input method's ↩ still confirms its text)). The
   Clipbawd and Chatta hotkeys cannot match either leader or another launcher hotkey. Clipbawd (while enabled) and Chatta are also searchable by name in launcha.
 - Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images, videos and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 

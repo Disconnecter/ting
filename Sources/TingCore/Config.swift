@@ -250,6 +250,10 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
     public var idleTimeoutMinutes: Int = defaultIdleTimeoutMinutes
     /// Allow built-in agent tools (such as web search) in Chatta's Chat mode. Off by default.
     public var allowTools: Bool = false
+    /// Size of the chat text, 1 = 100% (`ChatTextScale.range`). ⌘+ / ⌘− / ⌘0 in the window change it.
+    public var textScale: Double = ChatTextScale.standard
+    /// The key that sends from the composer: ⌘↩ (default) or ↩.
+    public var sendKey: ChatSendKey = .commandReturn
 
     public var idleTimeout: Duration? {
         idleTimeoutMinutes > 0 ? .seconds(idleTimeoutMinutes * 60) : nil
@@ -258,7 +262,7 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case hotkey, agent, model, effort, idleTimeoutMinutes, allowTools
+        case hotkey, agent, model, effort, idleTimeoutMinutes, allowTools, textScale, sendKey
     }
 
     public init(from decoder: Decoder) throws {
@@ -277,6 +281,10 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
         let minutes = try container.decodeIfPresent(Int.self, forKey: .idleTimeoutMinutes) ?? defaults.idleTimeoutMinutes
         idleTimeoutMinutes = min(max(minutes, Self.idleTimeoutMinutesRange.lowerBound), Self.idleTimeoutMinutesRange.upperBound)
         allowTools = try container.decodeIfPresent(Bool.self, forKey: .allowTools) ?? defaults.allowTools
+        textScale = ChatTextScale.clamped(try container.decodeIfPresent(Double.self, forKey: .textScale) ?? defaults.textScale)
+        // An unknown key name keeps the default instead of rejecting the whole file.
+        let rawSendKey = try container.decodeIfPresent(String.self, forKey: .sendKey)
+        sendKey = rawSendKey.flatMap(ChatSendKey.init(rawValue:)) ?? defaults.sendKey
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -291,6 +299,8 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
         try container.encodeIfPresent(effort, forKey: .effort)
         try container.encode(idleTimeoutMinutes, forKey: .idleTimeoutMinutes)
         try container.encode(allowTools, forKey: .allowTools)
+        try container.encode(textScale, forKey: .textScale)
+        try container.encode(sendKey, forKey: .sendKey)
     }
 }
 

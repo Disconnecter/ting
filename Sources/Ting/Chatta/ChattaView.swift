@@ -62,9 +62,11 @@ struct ChattaView: View {
                 workingDirectory: controller.mode == .configure ? controller.configDirectory : nil,
                 tokens: tokens
             )
+            .chatTextScale(controller.textScale)
+            .chatSendKey(controller.sendKey)
             Divider()
             ShortcutFooter(
-                [.init("⌘↩", "send"), .init("esc", "stop"), .init("↑", "history"), .init("⌘N", "new chat")],
+                [.init(controller.sendKey.label, "send"), .init("esc", "stop"), .init("↑", "history"), .init("⌘N", "new chat")],
                 palette: tokens.pickerPalette(),
                 settingsHelp: "Settings · ⌘,",
                 onSettings: onSettings
@@ -88,6 +90,19 @@ struct ChattaView: View {
         .background {
             Button("") { controller.newChat() }
                 .keyboardShortcut("n", modifiers: .command)
+                .hidden()
+            // Text zoom, as in any macOS text view: ⌘+ (also ⌘= without Shift), ⌘−, ⌘0.
+            Button("") { controller.zoom(by: 1) }
+                .keyboardShortcut("+", modifiers: .command)
+                .hidden()
+            Button("") { controller.zoom(by: 1) }
+                .keyboardShortcut("=", modifiers: .command)
+                .hidden()
+            Button("") { controller.zoom(by: -1) }
+                .keyboardShortcut("-", modifiers: .command)
+                .hidden()
+            Button("") { controller.zoom(by: nil) }
+                .keyboardShortcut("0", modifiers: .command)
                 .hidden()
         }
     }

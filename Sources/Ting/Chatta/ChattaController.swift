@@ -14,6 +14,10 @@ final class ChattaController: NSObject, NSWindowDelegate {
     var selectedAgent: ACPAgentPreset
     var sandboxed = true
     var allowToolsPermanently = false
+    /// From `chatta.textScale`; ⌘+ / ⌘− / ⌘0 change it here at once and save it through `onTextScale`.
+    var textScale = ChatTextScale.standard
+    var sendKey = ChatSendKey.commandReturn
+    @ObservationIgnored private let onTextScale: ((Double) -> Void)?
     var toolsOverrideForSession: Bool? = nil
 
     var effectiveAllowTools: Bool {
@@ -94,6 +98,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
         resourcesDirectory: (() -> URL?)? = nil,
         openSettings: (() -> Void)? = nil,
         onAllowToolsPermanently: (() -> Void)? = nil,
+        onTextScale: ((Double) -> Void)? = nil,
         preferences: AgentChatPreferences? = nil,
         installedAgents: (() -> [ACPAgentPreset])? = nil,
         customClientFactory: ((ChattaMode, ACPAgentPreset, Bool, ACPAccessPolicy) throws -> ACPClient)? = nil
@@ -111,6 +116,7 @@ final class ChattaController: NSObject, NSWindowDelegate {
         }
         self.openSettings = openSettings ?? { SettingsOpener.open(page: .chatta) }
         self.onAllowToolsPermanently = onAllowToolsPermanently
+        self.onTextScale = onTextScale
         self.customClientFactory = customClientFactory
         let detected = installedAgents?() ?? ACPAgentPreset.detectInstalled().map(\.preset)
         let defaultAgent = ChattaPrompt.resolveAgent(configuredID: nil, installed: detected)
@@ -139,6 +145,8 @@ final class ChattaController: NSObject, NSWindowDelegate {
 
     func configure(_ settings: ChattaSettings) {
         session.idleTimeout = settings.idleTimeout
+        if textScale != settings.textScale { textScale = settings.textScale }
+        if sendKey != settings.sendKey { sendKey = settings.sendKey }
         configuredModel = settings.model
         configuredEffort = settings.effort
         session.initialModel = settings.model ?? preferences.model
@@ -226,6 +234,14 @@ final class ChattaController: NSObject, NSWindowDelegate {
     }
 
     /// Starts a clean session in the current mode.
+    /// ⌘+ / ⌘− (`steps` 1 or -1); ⌘0 (`nil`) returns to 100%.
+    func zoom(by steps: Int?) {
+        let next = steps.map { ChatTextScale.stepped(textScale, by: $0) } ?? ChatTextScale.standard
+        guard next != textScale else { return }
+        textScale = next
+        onTextScale?(next)
+    }
+
     func newChat() {
         session.disconnect()
         toolsOverrideForSession = nil

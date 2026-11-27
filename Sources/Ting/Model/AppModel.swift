@@ -67,7 +67,8 @@ final class AppModel {
         microAppsFolderURL: { [weak self] in self?.microStore.folderURL ?? MicroAppStore.folderURL(configURL: ConfigStore.defaultURL()) },
         presentsWindow: presentsWindows,
         openSettings: { [weak self] in self?.openSettingsFromLauncher(page: .chatta) },
-        onAllowToolsPermanently: { [weak self] in self?.update { $0.chatta.allowTools = true } }
+        onAllowToolsPermanently: { [weak self] in self?.update { $0.chatta.allowTools = true } },
+        onTextScale: { [weak self] scale in self?.update { $0.chatta.textScale = scale } }
     )
     /// Shows the Settings window; tests replace it so they never activate the app.
     @ObservationIgnored var settingsOpener: () -> Void = { SettingsOpener.open() }
