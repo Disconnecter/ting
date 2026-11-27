@@ -305,6 +305,46 @@ final class ClipbawdPanelTests: XCTestCase {
         XCTAssertEqual(state.query, "")
     }
 
+    func testShiftReturnIsPasteAsPlainText() {
+        XCTAssertTrue(ClipbawdPanel.isPastePlainText(keyCode: VirtualKey.returnKey, flags: .shift, composing: false))
+        XCTAssertTrue(ClipbawdPanel.isPastePlainText(keyCode: VirtualKey.keypadEnter, flags: [.shift, .capsLock], composing: false))
+        XCTAssertFalse(ClipbawdPanel.isPastePlainText(keyCode: VirtualKey.returnKey, flags: [], composing: false))
+        XCTAssertFalse(ClipbawdPanel.isPastePlainText(keyCode: VirtualKey.returnKey, flags: [.shift, .command], composing: false))
+        XCTAssertFalse(ClipbawdPanel.isPastePlainText(keyCode: VirtualKey.returnKey, flags: .shift, composing: true),
+                       "An input method's Return confirms its text")
+    }
+
+    func testPlainTextCopyDropsRichTextAndIsNotRecordedAgain() throws {
+        let (_, history, pasteboard) = controller()
+        let rtf = Data(#"{\rtf1\ansi {\b Bold} text}"#.utf8)
+        let html = Data("<b>Bold</b> text".utf8)
+        history.record(ClipCapture(types: [ClipboardTypes.plainText, ClipboardTypes.rtf, ClipboardTypes.html], text: "Bold text",
+                                   representations: [ClipRepresentation(type: ClipboardTypes.plainText, data: Data("Bold text".utf8)),
+                                                     ClipRepresentation(type: ClipboardTypes.rtf, data: rtf),
+                                                     ClipRepresentation(type: ClipboardTypes.html, data: html)]))
+        let rich = try XCTUnwrap(history.entries.first)
+        XCTAssertEqual(rich.content.plainText, "Bold text")
+
+        XCTAssertTrue(history.copy(id: rich.id))
+        XCTAssertNotNil(pasteboard.data(forType: .rtf), "↩ keeps the formatting")
+
+        XCTAssertTrue(history.copy(id: rich.id, plainText: true))
+        XCTAssertNil(pasteboard.data(forType: .rtf))
+        XCTAssertNil(pasteboard.data(forType: .html))
+        XCTAssertEqual(pasteboard.string(forType: .string), "Bold text")
+        let count = history.entries.count
+        history.monitor.poll()
+        XCTAssertEqual(history.entries.count, count, "Ting's own write is not a new item")
+        XCTAssertEqual(history.entries.first?.id, rich.id)
+
+        // An image has no text: it is written whole.
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let image = ClipContent.image(ClipImageInfo(width: 1, height: 1, format: "PNG", byteCount: png.count))
+        XCTAssertNil(image.plainText)
+        XCTAssertEqual(ClipContent.link("https://bobuk.io").plainText, "https://bobuk.io")
+        XCTAssertEqual(ClipContent.color("#ff8800").plainText, "#ff8800")
+    }
+
     func testCopyPutsTheItemBackAndCloses() {
         let (controller, history, pasteboard) = controller()
         var toasts: [String] = []

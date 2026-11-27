@@ -50,7 +50,7 @@ private struct ClipbawdCard: View {
             content.padding(.top, 12)
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 12)
             HStack(spacing: 10) {
-                ShortcutFooter([.init("↩", "paste"), .init("⌘↩", "copy"),
+                ShortcutFooter([.init("↩", "paste"), .init("⇧↩", "plain"), .init("⌘↩", "copy"),
                                 .init("⇧⌘⌫", "remove"), .init("esc", "close")],
                                palette: TingPickerStyle.palette)
                 MonoLabel("this session only", size: 9, weight: .regular, tracking: 1)
@@ -84,7 +84,7 @@ private struct ClipbawdCard: View {
                            onSubmit: { onChoose(nil, true) },
                            onCancel: onDismiss,
                            accessibilityLabel: "Search the clipboard history",
-                           accessibilityHelp: "Up and down arrows choose an item. Return pastes it. Command-Return copies it. Shift-Command-Delete removes it. Escape closes Clipbawd.")
+                           accessibilityHelp: "Up and down arrows choose an item. Return pastes it. Shift-Return pastes it as plain text. Command-Return copies it. Shift-Command-Delete removes it. Escape closes Clipbawd.")
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
             .frame(height: 40)

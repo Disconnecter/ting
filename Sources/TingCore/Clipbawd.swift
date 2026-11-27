@@ -290,6 +290,9 @@ public enum ClipContent: Equatable, Sendable, Codable {
         }
     }
 
+    /// What "paste as plain text" pastes: the text without RTF or HTML; nil for images, videos and files.
+    public var plainText: String? { checkedText }
+
     /// The string checked against `ignoredPrefixes`; nil for images and files.
     var checkedText: String? {
         switch self {

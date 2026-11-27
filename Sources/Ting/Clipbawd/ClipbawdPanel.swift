@@ -27,7 +27,21 @@ final class ClipbawdPanel: BobukPanel {
         onCommandKey = { [unowned self] event, command in self.handleCommand(event, command) }
     }
 
+    /// ⇧↩: paste the selected item as plain text.
+    var onPastePlainText: (() -> Void)?
+
+    /// ⇧↩ with no other modifier, and no input method composing (its ↩ confirms the text).
+    static func isPastePlainText(keyCode: UInt16, flags: NSEvent.ModifierFlags, composing: Bool) -> Bool {
+        !composing && VirtualKey.isReturn(keyCode) && flags.intersection([.command, .shift, .option, .control]) == [.shift]
+    }
+
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, let onPastePlainText,
+           Self.isPastePlainText(keyCode: event.keyCode, flags: event.modifierFlags,
+                                 composing: KeyEquivalent.isComposing(in: self)) {
+            onPastePlainText()
+            return
+        }
         if event.type == .keyDown, let onMove,
            let delta = LaunchaPanel.navigationDelta(keyCode: event.keyCode, flags: event.modifierFlags,
                                                    composing: KeyEquivalent.isComposing(in: self)) {
@@ -195,10 +209,11 @@ final class ClipbawdController: NSObject {
         panel?.orderOut(nil)
     }
 
-    /// ↩ pastes into the app that was in front; ⌘↩ (`paste` false) only copies.
-    func choose(id: Int? = nil, paste: Bool) {
+    /// ↩ pastes into the app that was in front; ⌘↩ (`paste` false) only copies; ⇧↩ (`plainText`)
+    /// pastes only the text, without fonts, colors or links. Items without text paste as usual.
+    func choose(id: Int? = nil, paste: Bool, plainText: Bool = false) {
         guard isOpen, let entry = id.flatMap(state.history.history.entry(id:)) ?? state.selected else { return }
-        guard state.history.copy(id: entry.id) else { return }
+        guard state.history.copy(id: entry.id, plainText: plainText) else { return }
         let target = self.target
         close()
         guard paste else {
@@ -231,6 +246,7 @@ final class ClipbawdController: NSObject {
         }
         panel.onMove = { [weak self] delta in self?.state.move(by: delta) }
         panel.onCopy = { [weak self] in self?.choose(paste: false) }
+        panel.onPastePlainText = { [weak self] in self?.choose(paste: true, plainText: true) }
         panel.onDelete = { [weak self] in self?.removeSelected() }
         panel.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
         let view = ClipbawdView(state: state,

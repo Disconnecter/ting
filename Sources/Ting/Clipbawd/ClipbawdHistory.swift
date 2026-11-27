@@ -157,10 +157,15 @@ final class ClipbawdHistory {
         }
     }
 
-    func copy(id: Int) -> Bool {
+    /// `plainText` writes only the text of a text, link or color item; other items are written whole.
+    func copy(id: Int, plainText: Bool = false) -> Bool {
         guard let entry = history.entry(id: id) else { return false }
         let previous = pasteboard.changeCount
-        let written = ClipboardWriter.write(entry, to: pasteboard)
+        let written = if plainText, let text = entry.content.plainText {
+            ClipboardWriter.writePlainText(text, to: pasteboard)
+        } else {
+            ClipboardWriter.write(entry, to: pasteboard)
+        }
         guard written != previous else { return false }
         monitor.ignore(changeCount: written)
         history.promote(id: id, at: now())

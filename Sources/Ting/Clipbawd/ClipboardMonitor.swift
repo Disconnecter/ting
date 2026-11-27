@@ -222,6 +222,14 @@ final class ClipboardMonitor {
 /// Puts a history item back on the clipboard.
 @MainActor
 enum ClipboardWriter {
+    /// Writes only the text, so the target app pastes it in its own style. Returns the new change count.
+    @discardableResult
+    static func writePlainText(_ text: String, to pasteboard: NSPasteboard) -> Int {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        return pasteboard.changeCount
+    }
+
     /// Writes every kept representation; files as one item per file. Returns the new change count.
     @discardableResult
     static func write(_ entry: ClipEntry, to pasteboard: NSPasteboard) -> Int {
