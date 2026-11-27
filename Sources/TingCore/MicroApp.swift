@@ -226,7 +226,7 @@ public enum MicroAppChecker {
     public static let stepKeys: [MicroAppStep.Kind: [String]] = [
         .command: ["env"], .python: ["env"],
         .url: ["method", "query", "headers", "body", "form"],
-        .ai: ["provider", "model", "key", "system", "base_url", "temperature", "max_tokens"],
+        .ai: ["provider", "model", "key", "system", "base_url", "temperature", "max_tokens", "effort"],
         .chatta: ["agent", "model", "effort", "system", "access", "cwd"],
         .preview: [], .lowkey: ["action", "label", "file", "field", "value", "as"], .text: [], .json: [], .open: ["app"], .notify: ["title"], .call: [], .keys: [], .paste: [],
         .choose: [], .ask: ["default", "placeholder", "multiline", "required"],
@@ -1181,9 +1181,17 @@ public enum MicroAppChecker {
             if let e = keys["max_tokens"], let literal = maxTokens?.literalText, (Int(literal) ?? 0) < 1 {
                 fail(e.value.line, "`\(what).max_tokens` must be a whole number above 0")
             }
+            let effort = keys["effort"].flatMap { template($0.value, "\(what).effort", ctx: &ctx, usage: &usage) }
+            if let e = keys["effort"] {
+                if provider == .openai {
+                    fail(e.value.line, "`\(what).effort` works only with `provider: anthropic`")
+                } else if let literal = effort?.literalText, !ChattaSettings.effortChoices.contains(literal.lowercased()) {
+                    fail(e.value.line, "`\(what).effort` must be one of: \(ChattaSettings.effortChoices.joined(separator: ", "))")
+                }
+            }
             guard issues.count == before, let prompt, let provider, let model else { return nil }
             return MicroAppStep.AIStep(prompt: prompt, provider: provider, model: model, key: key, system: system, baseURL: baseURL,
-                                       temperature: temperature, maxTokens: maxTokens)
+                                       temperature: temperature, maxTokens: maxTokens, effort: effort)
         }
 
         mutating func checkChatta(_ value: YAMLNode, keys: [String: YAMLEntry], what: String, ctx: inout TemplateContext,

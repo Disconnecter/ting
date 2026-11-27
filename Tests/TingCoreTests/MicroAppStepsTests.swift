@@ -111,6 +111,7 @@ private func template(_ text: String) throws -> MicroAppTemplate {
             system: Be short.
             max_tokens: 100
             temperature: 0.5
+            effort: low
           - json: content.0.text
           - text: "Result: ${input}"
           - open: https://example.com/?q=${input|url}
@@ -131,6 +132,7 @@ private func template(_ text: String) throws -> MicroAppTemplate {
         #expect(put.method == "PUT")
         #expect(form.method == "POST")
         #expect(ai.provider == .anthropic)
+        #expect(ai.effort == (try template("low")))
         let request = try MicroAppHTTPRequest.build(put) { v in
             switch v {
             case .input: "x&y"
@@ -194,6 +196,8 @@ private func template(_ text: String) throws -> MicroAppTemplate {
         ("  - ai: ${input}\n    provider: gemini\n    model: m\n", 6, "`steps[0].provider` is `gemini`"),
         ("  - ai: x\n    provider: openai\n    model: m\n    max_tokens: 0\n", 8, "must be a whole number above 0"),
         ("  - ai: x\n    provider: openai\n    model: m\n    temperature: warm\n", 8, "must be a number"),
+        ("  - ai: x\n    provider: anthropic\n    model: m\n    effort: tiny\n", 8, "`steps[0].effort` must be one of: low, medium"),
+        ("  - ai: x\n    provider: openai\n    model: m\n    effort: low\n", 8, "works only with `provider: anthropic`"),
         ("  - ai: x\n    provider: openai\n    model: m\n    base_url: localhost\n", 8, "is not an http or https URL"),
         ("  - url: ftp://example.com\n", 5, "is not an http or https URL"),
         ("  - url: https://x.org\n    method: GET\n    body: x\n", 6, "a GET request cannot have a `body` or `form`"),
@@ -258,10 +262,10 @@ private func template(_ text: String) throws -> MicroAppTemplate {
 
 @Suite struct MicroAppAIRequestTests {
     private func ai(_ provider: MicroAppStep.AIStep.Provider, key: String? = nil, base: String? = nil, system: String? = "Be brief.",
-                    maxTokens: String? = nil) throws -> MicroAppStep.AIStep {
+                    maxTokens: String? = nil, effort: String? = nil) throws -> MicroAppStep.AIStep {
         MicroAppStep.AIStep(prompt: try template("${input}"), provider: provider, model: try template("m-1"),
                             key: try key.map(template), system: try system.map(template), baseURL: try base.map(template),
-                            temperature: nil, maxTokens: try maxTokens.map(template))
+                            temperature: nil, maxTokens: try maxTokens.map(template), effort: try effort.map(template))
     }
 
     private func resolve(_ v: MicroAppVariable) throws -> String {
@@ -293,6 +297,15 @@ private func template(_ text: String) throws -> MicroAppTemplate {
         #expect(r.header("x-api-key") == "sk-ant")
         #expect(r.header("anthropic-version") == "2023-06-01")
         #expect(String(decoding: r.body!, as: UTF8.self) == #"{"model":"m-1","system":"Be brief.","messages":[{"role":"user","content":"Say \"hi\""}],"max_tokens":8192,"stream":true}"#)
+    }
+
+    @Test func anthropicEffort() throws {
+        let r = try MicroAppHTTPRequest.build(try ai(.anthropic, key: "sk-ant", system: nil, effort: "Low"), resolve: resolve)
+        #expect(r.header("anthropic-version") == "2023-06-01")
+        #expect(String(decoding: r.body!, as: UTF8.self) == #"{"model":"m-1","messages":[{"role":"user","content":"Say \"hi\""}],"max_tokens":8192,"output_config":{"effort":"low"},"stream":true}"#)
+        #expect(throws: MicroAppHTTPRequest.BuildError.badEffort("tiny")) {
+            try MicroAppHTTPRequest.build(try ai(.anthropic, key: "sk-ant", effort: "tiny"), resolve: resolve)
+        }
     }
 
     @Test func missingDefaultKey() throws {
