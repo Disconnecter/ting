@@ -212,7 +212,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func showAbout() {
         AppActivation.activate()
-        NSApp.orderFrontStandardAboutPanel(nil)
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: AboutCredits.text()])
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

@@ -6,6 +6,8 @@
   `bobuk-io/ting`. Do not change its visibility unless the user explicitly asks.
   Never publish credentials, signing keys or private configuration.
 - Use `io.bobuk.ting` for the app and `io.bobuk` for new identifiers.
+- When you merge a pull request from someone new, add them to `CONTRIBUTORS.md` and
+  `Sources/TingCore/Contributors.swift` (shown in About Ting); a test keeps the two equal.
 - Commit the changes you make for each task before reporting it complete. Use a
   clear subject that says what changed. Explain why in the body when the reason
   would be hard to infer from the subject alone.
