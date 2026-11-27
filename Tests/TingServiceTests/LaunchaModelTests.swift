@@ -85,6 +85,7 @@ final class LaunchaModelTests: XCTestCase {
     }
 
     private var policies: [ProtectedFolderPolicy] = []
+    private var folderRequests: [[String]] = []
 
     private func makeModel(files: [URL] = [], spotlightDelay: Duration = .zero, running: Set<String> = []) throws -> Fixture {
         let apps = root.appendingPathComponent("Applications")
@@ -106,6 +107,8 @@ final class LaunchaModelTests: XCTestCase {
                     if spotlightDelay > .zero { try? await Task.sleep(for: spotlightDelay) }
                     return files
                 })
+        }, requestFolderAccess: { [weak self] urls in
+            self?.folderRequests.append(urls.map(\.lastPathComponent))
         })
         return Fixture(model: model, opener: opener, calls: calls, history: historyURL, consent: consentURL)
     }
@@ -259,8 +262,10 @@ final class LaunchaModelTests: XCTestCase {
         try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true)
         _ = try app("DeskTool", id: "io.bobuk.desk", in: desktop)
         policies = []
+        folderRequests = []
         let fixture = try makeModel()
         let model = fixture.model
+        XCTAssertEqual(folderRequests, [], "No folder is read before consent")
         model.open()
         try await wait("index") { model.hasIndex }
         XCTAssertTrue(model.rows.isEmpty, "Desktop needs consent first")
@@ -271,15 +276,20 @@ final class LaunchaModelTests: XCTestCase {
         XCTAssertFalse(model.isExplainingConsent)
         XCTAssertEqual(model.protectedFolders, .allowed)
         XCTAssertEqual(policies, [.needsConsent, .allowed])
+        XCTAssertEqual(folderRequests, [["Desktop", "Documents", "Downloads"]], "Each folder is read so macOS asks")
         try await wait("desktop app") { model.rows.map(\.name) == ["DeskTool"] }
         XCTAssertFalse(model.showsConsentNotice)
 
         // A fresh store reads the saved choice.
         XCTAssertEqual(LaunchaConsentStore(url: fixture.consent).policy, .allowed)
+        // A model with saved consent asks again: consent may predate the folder reads.
+        _ = try makeModel()
+        XCTAssertEqual(folderRequests.count, 2)
 
         model.revokeProtectedFolders()
         XCTAssertTrue(model.rows.isEmpty, "Apps from folders no longer allowed are dropped at once")
         XCTAssertEqual(LaunchaConsentStore(url: fixture.consent).policy, .needsConsent)
+        XCTAssertEqual(folderRequests.count, 2, "Revoking reads nothing")
         model.close()
     }
 
