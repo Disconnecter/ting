@@ -19,21 +19,27 @@ final class LaunchPreparationTests: XCTestCase {
         AppIcons.prepare([])
     }
 
-    func testRunning1PasswordFallsThroughToWorkspaceOpen() {
-        let runner = ActionRunner()
+    func testActivatingRunningAppAlsoAsksItToReopenItsWindow() {
         var events: [String] = []
-        runner.onPlaySound = { events.append("sound") }
-        XCTAssertFalse(runner.tryActivation(bundleID: "com.1password.1password") {
-            XCTFail("Activation would bypass the reopen request")
-            return true
+        let url = URL(fileURLWithPath: "/Applications/WhatsApp.app")
+        let runner = ActionRunner(submitApplication: { requested, _ in
+            XCTAssertEqual(requested, url)
+            events.append("reopen")
         })
-        XCTAssertFalse(runner.tryActivation(bundleID: "io.example.editor") { false })
-        XCTAssertTrue(events.isEmpty)
-        XCTAssertTrue(runner.tryActivation(bundleID: "io.example.editor") {
+        runner.onPlaySound = { events.append("sound") }
+        XCTAssertTrue(runner.tryActivation(bundleURL: url) {
             events.append("activate")
             return true
         })
-        XCTAssertEqual(events, ["activate", "sound"])
+        XCTAssertEqual(events, ["activate", "reopen", "sound"])
+    }
+
+    func testFailedActivationFallsThroughWithoutReopenOrSound() {
+        var events: [String] = []
+        let runner = ActionRunner(submitApplication: { _, _ in events.append("reopen") })
+        runner.onPlaySound = { events.append("sound") }
+        XCTAssertFalse(runner.tryActivation(bundleURL: URL(fileURLWithPath: "/Applications/Editor.app")) { false })
+        XCTAssertTrue(events.isEmpty)
     }
 
     func testLaunchSoundFollowsSubmissionWhileApplicationIsOpening() async {
