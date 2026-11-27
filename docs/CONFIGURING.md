@@ -59,15 +59,21 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   including schemes such as `raycast://`), `micro` (a micro-app id), `open`
   (a Ting window: `"launcha"`, `"clipbawd"`, `"schedule"` or `"chatta"`) or `window`
   (a focused-window command such as `"left-half"`, see [Window management](#window-management)).
-- `key`: a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`. Keys
-  are Latin even when the person types with another layout.
+- `key`: any key except Esc, Delete, Forward Delete and the arrows, which move
+  through the menu: a lower-case Latin letter or digit, a sign of the Latin layout
+  (`-`, `=`, `[`, `]`, `;`, `'`, `,`, `.`, `/`, `\`, `` ` ``), `space`, `return`, `tab`,
+  `home`, `end`, `pageup`, `pagedown`, `help`, `keypadclear`, `f1`…`f20`, an
+  [extended key](#extended-key-capture) (`stop`, `again`, `f21`…) or `key<N>` for a
+  physical key with no name (the ISO § key is `key10`). Keys are Latin even when the
+  person types with another layout; keypad digits and signs count as the same characters.
 - In one group a key is used once.
 - `alternateLeader` is an optional second leader, recorded in Settings › Keys & Launch. Either key opens the same bindings. Two successive taps of either key open launcha when double tap is enabled. Omit the field or set it to `null` to clear it.
 - Settings: `leader` (a key name with optional modifiers, such as `home`,
   `f13`, `option+shift+cmd+f`; `pause` is the Pause key of a PC keyboard, the same key as `f15`
   and saved as `f15`; never a modifier alone), `showDelay` (seconds,
   0–2, default 0 for immediate display), `unknownKey` (`shake` or `close`), `appearance` (`dark` or `light`),
-  `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound` (booleans),
+  `launchAtLogin`, `showMenuBarIcon`, `showPanelHeader`, `playSound`, `extendedKeys` (booleans, see
+  [Extended key capture](#extended-key-capture)),
   `sound` (a system sound name from `/System/Library/Sounds` without extension,
   default `Purr`; an unknown name plays `Purr`), `soundVolume` (0–1, default 0.5),
   `launcha` (`{"hotkey": null, "doubleTap": true, "doubleTapWindow": 0.3, "calculator": true,
@@ -353,3 +359,28 @@ My task:
 
 **Copy Agent Prompt** in the Ting menu copies a ready text with the paths of
 this Mac.
+
+## Extended key capture
+
+macOS ignores some keys before any app sees them: Stop, Again, Undo, Cut, Copy, Paste,
+Find, Execute, Menu and Select (found on some PC, Sun and programmable keyboards) and
+F21–F24. With `"extendedKeys": true` (**Settings › Keys & Launch › Extended key capture
+(HID)**, off by default) Ting reads these keys straight from the keyboards through HID.
+They can then be the leader, the second leader, the launcha, Clipbawd and Chatta keys,
+micro-app and window hotkeys, with or without modifiers, and keys inside the menu:
+
+```json
+{
+  "extendedKeys": true,
+  "leader": "stop",
+  "items": [{ "key": "again", "label": "Apps", "items": [] }]
+}
+```
+
+Names: `execute`, `menu`, `select`, `stop`, `again`, `undo`, `cut`, `copy`, `paste`,
+`find`, `f21`, `f22`, `f23`, `f24`. Reading them needs Input Monitoring: Ting asks once
+when you turn the option on, and Settings shows whether it is allowed. Ting looks only for
+these keys and keeps nothing it reads; other keys still go through the standard macOS
+hotkey API. The keys still reach the app in front, which ignores them. With the option off,
+a hotkey on one of them shows why it does not work. With Karabiner-Elements, keys it does
+not remap come through its virtual keyboard as usual.

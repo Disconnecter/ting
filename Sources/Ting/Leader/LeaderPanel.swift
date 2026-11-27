@@ -207,6 +207,15 @@ final class LeaderController: NSObject {
         }
     }
 
+    /// A key that only extended key capture reads (Stop, Again…), pressed while the menu is open.
+    func handleExtendedKey(_ event: ExtendedKeyEvent) {
+        guard machine.isOpen, !keysSuspended, event.pressed,
+              !event.modifiers.contains(.command), !event.modifiers.contains(.control),
+              let name = SequenceKey.name(keyCode: event.keyCode, latin: nil) else { return }
+        doubleTap.sequenceInput()
+        apply(machine.handle(.key(name)))
+    }
+
     func select(_ key: String) {
         guard machine.isOpen else { return }
         doubleTap.sequenceInput()

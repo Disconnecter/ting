@@ -51,6 +51,11 @@ final class AppModel {
     @ObservationIgnored let store: ConfigStore
     @ObservationIgnored private(set) lazy var microStore = MicroAppStore(configURL: store.url)
     @ObservationIgnored private let hotkeys: HotkeyService
+    /// Makes the extended key reader when the option turns on (`HIDKeyMonitor`; nil in tests).
+    @ObservationIgnored private let makeExtendedKeys: () -> ExtendedKeySource?
+    @ObservationIgnored private var extendedKeySource: ExtendedKeySource?
+    /// The recorder that takes extended keys no hotkey took; the last one to start wins.
+    @ObservationIgnored private var extendedKeyListener: (owner: ObjectIdentifier, handler: (ExtendedKeyEvent) -> Void)?
     @ObservationIgnored private var activeAppShortcuts: [AppShortcut] = []
     @ObservationIgnored private var activeMicroShortcuts: [MicroShortcut] = []
     @ObservationIgnored private var activeWindowShortcuts: [WindowShortcut] = []
@@ -94,8 +99,10 @@ final class AppModel {
     /// `presentsWindows` false: the launchers keep their state but show no window (tests).
     init(presentsWindows: Bool = true, store: ConfigStore? = nil, hotkeys: HotkeyService? = nil,
          clipbawd: ClipbawdHistory? = nil, theme: ThemeStore? = nil, windowManager: WindowManaging? = nil,
-         scheduleService: (any ScheduleServing)? = nil) {
+         scheduleService: (any ScheduleServing)? = nil, extendedKeys: (() -> ExtendedKeySource?)? = nil) {
         self.presentsWindows = presentsWindows
+        // Tests (no windows) never read the keyboards or ask for Input Monitoring.
+        makeExtendedKeys = extendedKeys ?? (presentsWindows ? { HIDKeyMonitor() } : { nil })
         self.windowManager = windowManager ?? WindowManager()
         self.accessibility = AccessibilityWindowController(presentsWindow: presentsWindows)
         if let theme {
@@ -243,6 +250,7 @@ final class AppModel {
         }
         hotkeys.onPress = { [weak self] slot, time in self?.hotkeyPressed(slot, at: time) }
         hotkeys.onRelease = { [weak self] slot in self?.hotkeyReleased(slot) }
+        hotkeys.onUnclaimedExtendedKey = { [weak self] event in self?.extendedKeyUnclaimed(event) }
         leader.onRun = { [weak self] item in self?.run(item) }
         leader.onDoubleTap = { [weak self] in self?.launcha.open() }
         runner.onPlaySound = { [weak self] in
@@ -461,6 +469,38 @@ final class AppModel {
         recordingGate.end(owner)
     }
 
+    /// `handler` gets the extended keys (Stop, Again…) that no hotkey takes until `stop…(owner)`.
+    func listenForExtendedKeys(_ owner: AnyObject, _ handler: @escaping (ExtendedKeyEvent) -> Void) {
+        extendedKeyListener = (ObjectIdentifier(owner), handler)
+    }
+
+    func stopListeningForExtendedKeys(_ owner: AnyObject) {
+        guard extendedKeyListener?.owner == ObjectIdentifier(owner) else { return }
+        extendedKeyListener = nil
+    }
+
+    /// The reader exists only while the option is on; turning it off stops reading the keyboards.
+    private func applyExtendedKeys(_ enabled: Bool) {
+        if enabled, extendedKeySource == nil {
+            extendedKeySource = makeExtendedKeys()
+            hotkeys.extendedKeys = extendedKeySource
+        } else if !enabled, let source = extendedKeySource {
+            hotkeys.extendedKeys = nil
+            (source as? HIDKeyMonitor)?.stop()
+            extendedKeySource = nil
+        }
+    }
+
+    /// An extended key no hotkey took goes to a recorder, or else to the open leader menu.
+    func extendedKeyUnclaimed(_ event: ExtendedKeyEvent) {
+        if let listener = extendedKeyListener {
+            listener.handler(event)
+            return
+        }
+        guard !isPaused, !isRecordingHotkey, !isMenuTracking else { return }
+        leader.handleExtendedKey(event)
+    }
+
     private func setRecordingHotkey(_ recording: Bool) {
         guard recording != isRecordingHotkey else { return }
         isRecordingHotkey = recording
@@ -628,6 +668,7 @@ final class AppModel {
         theme.palette = next.theme
         if presentsWindows { theme.apply() }
         syncingTheme = false
+        applyExtendedKeys(next.extendedKeys)
         applyHotkey()
         if next.launchAtLogin != previous.launchAtLogin {
             loginItemError = LoginItem.setReportingError(next.launchAtLogin, openSettingsIfNeeded: false)

@@ -7,6 +7,7 @@ import SwiftUI
 import TingCore
 import UniformTypeIdentifiers
 import BobukUpdates
+import BobukSystem
 
 struct SettingsRoot: View {
     @Environment(AppModel.self) private var model
@@ -266,6 +267,7 @@ private struct GeneralSettings: View {
                 }
             } header: { SettingsSectionTitle("Leader and selecta") }
             .id("activation")
+            ExtendedKeysSection().id("extended-keys")
             LaunchaSettingsSection().id("launcha")
             }
             if !activation {
@@ -312,6 +314,43 @@ private struct GeneralSettings: View {
             }
         }
         .tingSettingsForm()
+    }
+}
+
+// MARK: - Extended keys
+
+/// Extended key capture: Stop, Again and other keys that macOS never reports, read through HID.
+private struct ExtendedKeysSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var access = HIDKeyMonitor.access
+
+    var body: some View {
+        Section {
+            SettingsToggle("Read keys macOS ignores", detail: "Stop, Again, Undo, Cut, Copy, Paste, Find, Execute, Menu, Select and F21–F24 can then be leaders, hotkeys and keys in the menu. Ting reads them straight from the keyboard through HID, which needs Input Monitoring; other keys still go through macOS.",
+                           isOn: model.binding(\.extendedKeys))
+            if model.config.extendedKeys {
+                LabeledContent("Input Monitoring") {
+                    HStack(spacing: 8) {
+                        if access == .granted {
+                            Label("Allowed", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                        } else {
+                            Text("Not allowed").foregroundStyle(Color.tingAmber)
+                            Button("Open System Settings…") { NSWorkspace.shared.open(HIDKeyMonitor.settingsURL) }
+                        }
+                    }
+                }
+                Text("Ting only looks for the keys above and never records what you type. They still reach the app in front, which ignores them.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        } header: { SettingsSectionTitle("Extended key capture (HID)") }
+        .onAppear { access = HIDKeyMonitor.access }
+        .onChange(of: model.config.extendedKeys) { access = HIDKeyMonitor.access }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            access = HIDKeyMonitor.access
+        }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            if model.config.extendedKeys, access != .granted { access = HIDKeyMonitor.access }
+        }
     }
 }
 

@@ -5,6 +5,16 @@ import Testing
 @Suite struct ConfigCodecTests {
     private func decode(_ json: String) throws -> Config { try ConfigCodec.decode(Data(json.utf8)) }
 
+    @Test func extendedKeysAndAnyMenuKey() throws {
+        let c = try decode(#"{"extendedKeys": true, "leader": "cmd+stop", "items": [{"key": "Again", "items": [{"key": "[", "url": "https://example.com"}, {"key": "tab", "url": "https://example.com"}]}]}"#)
+        #expect(c.extendedKeys)
+        #expect(c.leader?.display == "⌘Stop")
+        #expect(c.items.first?.key == "again")
+        #expect(c.items.first?.children?.map(\.key) == ["[", "tab"])
+        let again = try JSONDecoder().decode(Config.self, from: JSONEncoder().encode(c))
+        #expect(again == c)
+    }
+
     @Test func defaults() throws {
         let c = try decode("{}")
         #expect(c == Config())
@@ -18,6 +28,7 @@ import Testing
         #expect(c.showMenuBarIcon)
         #expect(c.showPanelHeader)
         #expect(c.playSound)
+        #expect(!c.extendedKeys)
         #expect(c.sound == "Purr")
         #expect(c.soundVolume == 0.5)
         #expect(Config().sound == "Purr")
@@ -138,7 +149,7 @@ import Testing
         #"{"items":[{"key":"a","app":"x","url":"https://x"}]}"#,
         #"{"items":[{"key":"a","items":[],"app":"x"}]}"#,
         #"{"items":[{"key":"a","items":[],"url":"https://x"}]}"#,
-        #"{"items":[{"key":"tab","app":"x"}]}"#,
+        #"{"items":[{"key":"escape","app":"x"}]}"#,
         #"{"leader":"unknown"}"#, #"{"showDelay":"fast"}"#, #"{"showPanelHeader":"yes"}"#,
         #"{"sound":1}"#, #"{"soundVolume":"loud"}"#,
         #"{"launcha":"yes"}"#, #"{"launcha":{"hotkey":"nope"}}"#, #"{"launcha":{"doubleTap":"yes"}}"#,

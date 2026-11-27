@@ -1,7 +1,8 @@
 // Global hotkeys: the leader, optional launcha and clipbawd keys and direct application, micro-app and window shortcuts.
 // Each is any non-modifier key, alone or with modifiers. Registered through BobukKit's
 // `GlobalHotkeyCenter` (Carbon `RegisterEventHotKey`, no Accessibility or Input Monitoring
-// permission, press and release). This layer adds Ting's slots and the role messages.
+// permission, press and release). This layer adds Ting's slots and the role messages. Keys that
+// macOS never reports (Stop, Again…) work only while `extendedKeys` is set (extended key capture).
 import AppKit
 import BobukSystem
 import TingCore
@@ -104,6 +105,21 @@ final class HotkeyService {
             self.report(slot)
         }
     }
+
+    /// Reads hotkeys on `KeyCodes.extended` keys; nil turns them off (they fail with a reason).
+    var extendedKeys: ExtendedKeySource? {
+        get { center.extendedKeys }
+        set { center.extendedKeys = newValue }
+    }
+
+    /// An extended key that no active hotkey took: for the open menu or a recorder.
+    var onUnclaimedExtendedKey: ((ExtendedKeyEvent) -> Void)? {
+        get { center.onUnclaimedExtendedKey }
+        set { center.onUnclaimedExtendedKey = newValue }
+    }
+
+    /// Delivers an extended key as the source does (tests).
+    func receiveExtended(_ event: ExtendedKeyEvent) { center.receiveExtended(event) }
 
     func status(_ slot: Slot) -> Status {
         if let reason = refusals[slot] { return .failed(reason) }

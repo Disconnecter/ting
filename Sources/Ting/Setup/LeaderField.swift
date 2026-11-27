@@ -44,6 +44,11 @@ final class HotkeyRecording: HotkeyRecordingOwner {
             guard let self else { return event }
             return self.handle(event)
         }
+        // Stop, Again and other keys that macOS never reports, while extended key capture is on.
+        model.listenForExtendedKeys(self) { [weak self] event in
+            guard event.pressed else { return }
+            self?.consider(event.hotkey)
+        }
         // Leaving Ting stops recording, so the old shortcut never stays switched off.
         resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in
@@ -61,6 +66,7 @@ final class HotkeyRecording: HotkeyRecordingOwner {
 
     private func stopListening() {
         monitor.stop()
+        model?.stopListeningForExtendedKeys(self)
         if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         resignObserver = nil
     }
@@ -73,17 +79,21 @@ final class HotkeyRecording: HotkeyRecordingOwner {
             preview = modifiers.symbols
             return nil
         case .keyDown:
-            let hotkey = Hotkey.combo(keyCode: event.keyCode, modifiers: modifiers)
-            if KeyCodes.name(for: event.keyCode) == nil || !hotkey.isValid {
-                warning = "A modifier alone cannot \(role). Press any other key."
-            } else if let conflict = conflict(for: hotkey) {
-                warning = conflict + " Press another key."
-            } else {
-                finish(hotkey)
-            }
+            consider(.combo(keyCode: event.keyCode, modifiers: modifiers))
             return nil
         default:
             return event
+        }
+    }
+
+    private func consider(_ hotkey: Hotkey) {
+        guard isRecording else { return }
+        if case .combo(let keyCode, _) = hotkey, KeyCodes.name(for: keyCode) == nil || !hotkey.isValid {
+            warning = "A modifier alone cannot \(role). Press any other key."
+        } else if let conflict = conflict(for: hotkey) {
+            warning = conflict + " Press another key."
+        } else {
+            finish(hotkey)
         }
     }
 

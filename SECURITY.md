@@ -21,9 +21,12 @@ latest published version.
 
 ## Security model
 
-- Ting registers one global hotkey with the standard macOS hotkey API. It never
-  requests Input Monitoring permission and does not observe keystrokes outside its
-  own leader menu. It asks for Accessibility when you use a window command (to move
+- Ting registers its global hotkeys with the standard macOS hotkey API. It requests
+  Input Monitoring only when you turn on Extended key capture (off by default), and
+  then reads from the keyboards only the keys macOS ignores (Stop, Again, Undo, Cut,
+  Copy, Paste, Find, Execute, Menu, Select, F21–F24); it keeps nothing it reads and
+  never sees what you type. Otherwise it does not observe keystrokes outside its own
+  leader menu. It asks for Accessibility when you use a window command (to move
   or resize the focused window of another app) or when an approved micro-app needs
   it, and for Automation (Apple Events to Finder or a browser) only when an approved
   micro-app needs it, see below. Window commands only read and set the position and

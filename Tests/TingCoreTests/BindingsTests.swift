@@ -17,10 +17,10 @@ import Testing
     }
     @Test func problemsAndCheckOrder() {
         #expect(BindingTree.problem(placing: [], moving: ["a"], in: fixture) == .empty)
-        #expect(BindingTree.problem(placing: ["a", "tab"], moving: ["a"], in: fixture) == .invalidKey("tab"))
+        #expect(BindingTree.problem(placing: ["a", "escape"], moving: ["a"], in: fixture) == .invalidKey("escape"))
         #expect(BindingTree.problem(placing: ["a", "t", "x"], moving: ["a"], in: fixture) == .insideItself)
         #expect(BindingTree.problem(placing: ["a", "t", "x"], moving: nil, in: fixture) == .prefixIsAction(prefix: ["a", "t"], label: "Terminal"))
-        #expect(BindingTree.problem(placing: ["a", "t", "x", "tab"], moving: nil, in: fixture) == .invalidKey("tab"))
+        #expect(BindingTree.problem(placing: ["a", "t", "x", "escape"], moving: nil, in: fixture) == .invalidKey("escape"))
         #expect(BindingTree.problem(placing: ["w", "x", "y"], moving: nil, in: fixture) == .prefixIsAction(prefix: ["w"], label: "Web"))
         #expect(BindingTree.problem(placing: ["a", "t"], moving: nil, in: fixture) == .taken(label: "Terminal"))
         #expect(BindingTree.problem(placing: ["a"], moving: nil, in: fixture) == .taken(label: "Apps"))
@@ -36,7 +36,7 @@ import Testing
         #expect(BindingTree.item(at: ["a"], in: items)?.children?.map(\.key) == ["b", "t", "x"])
     }
     @Test func insertErrors() {
-        let cases: [([String], SequenceProblem)] = [([], .empty), (["tab"], .invalidKey("tab")), (["w", "x"], .prefixIsAction(prefix: ["w"], label: "Web")), (["a"], .taken(label: "Apps"))]
+        let cases: [([String], SequenceProblem)] = [([], .empty), (["escape"], .invalidKey("escape")), (["w", "x"], .prefixIsAction(prefix: ["w"], label: "Web")), (["a"], .taken(label: "Apps"))]
         for (path, error) in cases {
             var items = fixture
             #expect(throws: error) { try BindingTree.insert(terminal, at: path, in: &items) }
@@ -65,7 +65,7 @@ import Testing
     @Test func failedMovesAreAtomic() {
         let cases: [([String], [String], SequenceProblem)] = [
             (["z"], ["x"], .notFound), (["a"], [], .empty),
-            (["a"], ["tab"], .invalidKey("tab")),
+            (["a"], ["escape"], .invalidKey("escape")),
             (["a"], ["a", "x"], .insideItself),
             (["a"], ["a", "b"], .insideItself),
             (["a", "t"], ["w"], .taken(label: "Web")),

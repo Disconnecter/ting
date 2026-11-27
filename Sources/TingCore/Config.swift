@@ -62,7 +62,7 @@ public struct Item: Equatable, Sendable, Codable {
         let rawKey = try container.decode(String.self, forKey: .key)
         guard let key = SequenceKey.normalize(rawKey) else {
             throw DecodingError.dataCorruptedError(forKey: .key, in: container,
-                                                   debugDescription: "Invalid key \"\(rawKey)\". Use a letter, a digit, space, return or f1...f20.")
+                                                   debugDescription: "Invalid key \"\(rawKey)\". Use any key but Esc, Delete and the arrows: a letter, a digit, a sign such as [ or /, space, return, tab, f1...f24 or stop.")
         }
         let items = try container.decodeIfPresent([Item].self, forKey: .items)
         let app = try container.decodeIfPresent(String.self, forKey: .app)
@@ -349,7 +349,7 @@ public struct ScheduleSettings: Equatable, Sendable, Codable {
 
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" and "alternateLeader" (Hotkey strings or null), "showDelay", "unknownKey",
-/// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
+/// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound", "extendedKeys",
 /// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipbawd" (`ClipbawdSettings`),
 /// "microApps" (`MicroAppsSettings`), "schedule" (`ScheduleSettings`), "chatta" (`ChattaSettings`),
 /// "windowManagement" (`WindowManagementSettings`), "appHotkeys", "microHotkeys", "items".
@@ -381,6 +381,10 @@ public struct Config: Equatable, Sendable, Codable {
     /// Show the title row above selecta and launcha panels.
     public var showPanelHeader: Bool = true
     public var playSound: Bool = true
+    /// Extended key capture: read keys that macOS never reports (Stop, Again, Undo, F21…) straight
+    /// from the keyboards through HID, so they can be leaders, hotkeys and menu keys. Needs Input
+    /// Monitoring, so it is off by default.
+    public var extendedKeys: Bool = false
     /// Name of a system sound without extension, e.g. "Glass". Played when `playSound` is on.
     public var sound: String = SystemSounds.defaultName
     /// Volume of `sound`, relative to the system output volume. Clamped to 0...1 when decoding.
@@ -424,7 +428,7 @@ public struct Config: Equatable, Sendable, Codable {
 
     private enum ConfigCodingKeys: String, CodingKey {
         case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme
-        case launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume
+        case launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, extendedKeys
         case launcha, clipbawd, microApps, schedule, chatta, windowManagement
         case appHotkeys, microHotkeys, items
     }
@@ -444,6 +448,7 @@ public struct Config: Equatable, Sendable, Codable {
         showMenuBarIcon = try container.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? defaults.showMenuBarIcon
         showPanelHeader = try container.decodeIfPresent(Bool.self, forKey: .showPanelHeader) ?? defaults.showPanelHeader
         playSound = try container.decodeIfPresent(Bool.self, forKey: .playSound) ?? defaults.playSound
+        extendedKeys = try container.decodeIfPresent(Bool.self, forKey: .extendedKeys) ?? defaults.extendedKeys
         sound = try container.decodeIfPresent(String.self, forKey: .sound) ?? defaults.sound
         let volume = try container.decodeIfPresent(Double.self, forKey: .soundVolume) ?? defaults.soundVolume
         soundVolume = min(max(volume, 0), 1)
@@ -478,6 +483,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(playSound, forKey: .playSound)
         try container.encode(sound, forKey: .sound)
         try container.encode(soundVolume, forKey: .soundVolume)
+        try container.encode(extendedKeys, forKey: .extendedKeys)
         try container.encode(launcha, forKey: .launcha)
         try container.encode(clipbawd, forKey: .clipbawd)
         try container.encode(microApps, forKey: .microApps)

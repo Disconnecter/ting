@@ -88,8 +88,15 @@ struct SequenceRecorder: View {
         .onAppear {
             keys = recording.initialKeys
             monitor.start(handle)
+            // Stop, Again and other keys that macOS never reports, while extended key capture is on.
+            model.listenForExtendedKeys(monitor) { event in
+                guard event.pressed, let key = SequenceKey.name(keyCode: event.keyCode, latin: nil) else { return }
+                rejected = nil
+                saveError = nil
+                keys.append(key)
+            }
         }
-        .onDisappear { monitor.stop() }
+        .onDisappear { stopListening() }
     }
 
     private var needsNewGroups: Bool {
@@ -97,8 +104,13 @@ struct SequenceRecorder: View {
     }
 
     private func finish() {
-        monitor.stop()
+        stopListening()
         close()
+    }
+
+    private func stopListening() {
+        monitor.stop()
+        model.stopListeningForExtendedKeys(monitor)
     }
 
     @ViewBuilder private func problemView(_ problem: SequenceProblem) -> some View {
@@ -143,7 +155,7 @@ struct SequenceRecorder: View {
             if let key = SequenceKey.name(keyCode: event.keyCode, latin: KeyTranslator.latin(event.keyCode)) {
                 keys.append(key)
             } else {
-                rejected = "Only letters, digits, Space, Return and F-keys."
+                rejected = "Esc, ⌫ and the arrows move through the menu, so they cannot be bound."
             }
         }
         return nil

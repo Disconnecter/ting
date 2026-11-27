@@ -23,7 +23,7 @@ struct WindowSettingsView: View {
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     access.refresh()
                 }
-                Text("macOS lets Ting move and resize other apps' windows only with Accessibility. Ting never asks for Input Monitoring.")
+                Text("macOS lets Ting move and resize other apps' windows only with Accessibility. Moving windows does not need Input Monitoring.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Gap") {
                     HStack {

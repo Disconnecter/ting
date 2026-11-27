@@ -46,6 +46,7 @@ public enum SettingsCatalog {
         .init(id: "sound", page: .general, title: "Sound and volume", keywords: "ting audio mute play"),
         .init(id: "updates", page: .general, title: "Updates and version", keywords: "automatic check homebrew sparkle"),
         .init(id: "activation", page: .activation, title: "Leader keys and menu delay", keywords: "activation second alternate unknown shake close shortcut hotkey"),
+        .init(id: "extended-keys", page: .activation, title: "Extended key capture (HID)", keywords: "stop again undo cut copy paste find f21 f22 f23 f24 hid input monitoring karabiner special extra keyboard keys"),
         .init(id: "launcha", page: .activation, title: "launcha", keywords: "hotkey double tap interval calculator converter units dates protected folders desktop documents downloads icloud drive cloud search access rank ranking frequent usage switch switching running open apps fuzzy"),
         .init(id: "bindings", page: .bindings, title: "Bindings and app shortcuts", keywords: "sequence group application key url open direct hotkey conflict window resize move"),
         .init(id: "windows", page: .windows, title: "Window management", keywords: "window resize move half quarter third maximize center restore display monitor screen hotkey shortcut gap tile"),
