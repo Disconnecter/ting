@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TingCore
 
@@ -7,6 +8,23 @@ struct WindowSettingsView: View {
     var body: some View {
         Form {
             Section {
+                let access = model.accessibility.access
+                LabeledContent("Accessibility") {
+                    HStack(spacing: 8) {
+                        if access.isTrusted {
+                            Label("Allowed", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                        } else {
+                            Text("Not allowed").foregroundStyle(Color.tingAmber)
+                            Button("Allow…") { model.accessibility.show() }
+                        }
+                    }
+                }
+                .onAppear { access.refresh() }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    access.refresh()
+                }
+                Text("macOS lets Ting move and resize other apps' windows only with Accessibility. Ting never asks for Input Monitoring.")
+                    .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Gap") {
                     HStack {
                         Slider(value: model.binding(\.windowManagement.gap),

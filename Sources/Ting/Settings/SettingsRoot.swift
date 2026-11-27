@@ -548,7 +548,7 @@ private struct MicroAppsSection: View {
             }
             .onAppear { access.refresh() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in access.refresh() }
-            Text("Only micro-apps that read the selected text or the front window, press keys or paste need it.")
+            Text("Window commands need it, and micro-apps that read the selected text or the front window, press keys or paste.")
                 .font(.caption).foregroundStyle(.secondary)
             Text("One micro-app per .yaml file. Ting creates the folder when you open it, loads it again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
                 .font(.caption).foregroundStyle(.secondary)
