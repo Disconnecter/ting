@@ -298,7 +298,7 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
 /// JSON keys: "version", "leader" and "alternateLeader" (Hotkey strings or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
 /// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipbawd" (`ClipbawdSettings`),
-/// "microApps" (`MicroAppsSettings`), "chatta" (`ChattaSettings`), "appHotkeys", "items".
+/// "microApps" (`MicroAppsSettings`), "chatta" (`ChattaSettings`), "appHotkeys", "microHotkeys", "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
     public static let currentVersion = 1
@@ -341,6 +341,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var chatta: ChattaSettings = ChattaSettings()
     /// Direct global shortcuts assigned from launcha; older files default to none.
     public var appHotkeys: [AppShortcut] = []
+    /// Direct global shortcuts that start micro-apps; written by hand, older files default to none.
+    public var microHotkeys: [MicroShortcut] = []
     public var items: [Item] = []
 
     public init() {}
@@ -363,7 +365,7 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, microApps, chatta, appHotkeys, items
+        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, microApps, chatta, appHotkeys, microHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -389,6 +391,7 @@ public struct Config: Equatable, Sendable, Codable {
         microApps = try container.decodeIfPresent(MicroAppsSettings.self, forKey: .microApps) ?? defaults.microApps
         chatta = try container.decodeIfPresent(ChattaSettings.self, forKey: .chatta) ?? defaults.chatta
         appHotkeys = try container.decodeIfPresent([AppShortcut].self, forKey: .appHotkeys) ?? defaults.appHotkeys
+        microHotkeys = try container.decodeIfPresent([MicroShortcut].self, forKey: .microHotkeys) ?? defaults.microHotkeys
         items = try container.decodeIfPresent([Item].self, forKey: .items) ?? defaults.items
     }
 
@@ -416,6 +419,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(microApps, forKey: .microApps)
         try container.encode(chatta, forKey: .chatta)
         try container.encode(appHotkeys, forKey: .appHotkeys)
+        try container.encode(microHotkeys, forKey: .microHotkeys)
         try container.encode(items, forKey: .items)
     }
 }
@@ -513,6 +517,8 @@ public struct ConfigIssue: Equatable, Sendable {
         case chattaHotkeyConflict
         /// Invalid, reserved or duplicate application hotkey assignment.
         case appHotkey
+        /// Invalid, reserved or duplicate micro-app hotkey assignment.
+        case microHotkey
     }
 
     public var kind: Kind
@@ -528,7 +534,7 @@ public struct ConfigIssue: Equatable, Sendable {
 }
 
 public enum ConfigValidator {
-    /// Leader issues first, then launcha and clipbawd hotkey issues, then app hotkey issues, then all item issues depth-first in item order. For a duplicate key, report one issue per duplicate
+    /// Leader issues first, then launcha and clipbawd hotkey issues, then micro-app and app hotkey issues, then all item issues depth-first in item order. For a duplicate key, report one issue per duplicate
     /// after the first, with the duplicate's sequence.
     public static func validate(_ config: Config) -> [ConfigIssue] {
         HotkeyAssignments(config).issues + bindingIssues(in: config)

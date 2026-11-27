@@ -566,14 +566,14 @@ private struct MicroAppsSection: View {
     }
 }
 
-/// Read-only: every file of the micro-apps folder with its name, id and state.
+/// Every file of the micro-apps folder with its name, id and state, and the hotkey of each working one.
 private struct MicroAppList: View {
     let entries: [MicroAppEntry]
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
             GridRow {
-                ForEach(["Name", "Id", "File", "State"], id: \.self) { title in
+                ForEach(["Name", "Id", "File", "State", "Hotkey"], id: \.self) { title in
                     MonoLabel(title, size: 9, weight: .regular, tracking: 1).foregroundStyle(.secondary)
                 }
             }
@@ -589,6 +589,11 @@ private struct MicroAppList: View {
                     } else {
                         Label("good", systemImage: "checkmark.circle").foregroundStyle(.secondary)
                     }
+                    if let id = entry.app?.id {
+                        MicroHotkeyCell(micro: id)
+                    } else {
+                        Text("—").foregroundStyle(.secondary)
+                    }
                 }
                 .font(.caption)
                 .accessibilityElement(children: .combine)
@@ -596,5 +601,77 @@ private struct MicroAppList: View {
         }
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Click to record the global hotkey that starts a micro-app without the leader; ✕ removes it.
+private struct MicroHotkeyCell: View {
+    let micro: String
+    @Environment(AppModel.self) private var model
+    @State private var recording = HotkeyRecording()
+
+    private var hotkey: Hotkey? { model.config.microHotkeys.first { $0.micro == micro }?.hotkey }
+
+    /// Why the saved hotkey does not work: a config issue or a key macOS refused.
+    private var problem: String? {
+        if let reason = model.microHotkeyProblems[micro] { return reason }
+        let prefix = micro + ": "
+        return model.issues.first { $0.kind == .microHotkey && $0.message.hasPrefix(prefix) }
+            .map { String($0.message.dropFirst(prefix.count)) }
+    }
+
+    var body: some View {
+        let hotkey = hotkey
+        let isRecording = recording.isRecording
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Button {
+                    if isRecording { recording.cancel() } else { recording.start(model: model, for: .micro(micro)) }
+                } label: {
+                    Group {
+                        if isRecording {
+                            let preview = recording.preview
+                            Text(preview.isEmpty ? "Press a key…" : preview)
+                                .foregroundStyle(preview.isEmpty ? Color.tingMuted : Color.tingInk)
+                        } else if let hotkey {
+                            Text(hotkey.display)
+                        } else {
+                            Text("Record").foregroundStyle(Color.tingMuted)
+                        }
+                    }
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .frame(minWidth: 90, alignment: .leading)
+                    .frame(height: 20)
+                    .contentShape(Rectangle())
+                    .background(Color.tingInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(isRecording ? Color.tingAmber : Color.tingInk.opacity(0.12),
+                                      style: StrokeStyle(lineWidth: isRecording ? 1.5 : 1, dash: isRecording ? [4, 3] : [])))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(hotkey.map { "Hotkey of \(micro): \($0.display). Click to change." }
+                                    ?? "Record a hotkey for \(micro)")
+                if hotkey != nil, !isRecording {
+                    Button { model.setMicroHotkey(nil, for: micro) } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove the hotkey")
+                    .accessibilityLabel("Remove the hotkey of \(micro)")
+                }
+                if let problem, !isRecording {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.tingAmber).help(problem)
+                }
+            }
+            if let warning = recording.warning {
+                Text(warning).foregroundStyle(Color.tingAmber)
+                    .frame(maxWidth: 220, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onDisappear { recording.cancel() }
+        .onChange(of: hotkey) { recording.cancel() }
     }
 }

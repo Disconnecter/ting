@@ -106,6 +106,39 @@ final class AppShortcutServiceTests: XCTestCase {
         XCTAssertTrue(model.issues.contains { $0.kind == .appHotkey })
     }
 
+    func testMicroHotkeysRegisterBeforeAppsAndReportOSRefusals() throws {
+        let (model, service, _) = try model { hotkey, _ in
+            hotkey == self.key("cmd+f14") ? .failed("Already used by another app.") : .active
+        }
+        XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.micro(2).rawValue), .micro(2))
+        XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.application(2).rawValue), .application(2))
+        try model.setAppShortcut(for: row(), hotkey: key("cmd+f12"))
+        model.update {
+            $0.leader = key("home")
+            $0.microHotkeys = [MicroShortcut(micro: "sort", hotkey: key("cmd+f12")),
+                               MicroShortcut(micro: "upper", hotkey: key("cmd+f14"))]
+        }
+        XCTAssertEqual(service.hotkey(.micro(0)), key("cmd+f12"))
+        XCTAssertEqual(service.status(.micro(0)), .active)
+        XCTAssertEqual(service.status(.application(0)), .inactive)
+        XCTAssertTrue(model.issues.contains { $0.kind == .appHotkey })
+        XCTAssertEqual(model.microHotkeyProblems, ["upper": "Already used by another app."])
+        XCTAssertTrue(model.needsAttention)
+        model.isPaused = true
+        XCTAssertEqual(service.status(.micro(0)), .inactive)
+        model.isPaused = false
+        XCTAssertEqual(service.status(.micro(0)), .active)
+        model.setMicroHotkey(key("cmd+f15"), for: "upper")
+        XCTAssertEqual(service.hotkey(.micro(1)), key("cmd+f15"))
+        XCTAssertEqual(model.microHotkeyProblems, [:])
+        model.setMicroHotkey(nil, for: "sort")
+        model.setMicroHotkey(nil, for: "upper")
+        XCTAssertEqual(model.config.microHotkeys, [])
+        XCTAssertEqual(service.status(.micro(0)), .inactive)
+        XCTAssertEqual(service.status(.application(0)), .active)
+        XCTAssertEqual(model.microHotkeyProblems, [:])
+    }
+
     func testRecordingKeepsLaunchaOpenAndRejectsOSConflictWithoutSaving() throws {
         let (model, service, store) = try model { hotkey, _ in
             hotkey == self.key("cmd+f13") ? .failed("Already used by another app.") : .active

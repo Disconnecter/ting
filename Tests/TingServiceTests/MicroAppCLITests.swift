@@ -134,11 +134,13 @@ extension MicroAppCLITests {
         try FileManager.default.createDirectory(at: directory.appendingPathComponent("micro"), withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let config = directory.appendingPathComponent("config.json")
-        try #"{"version": 1, "leader": "home", "items": [{"key": "t", "label": "T", "items": [{"key": "a", "micro": "say"}]}]}"#
+        try #"{"version": 1, "leader": "home", "items": [{"key": "t", "label": "T", "items": [{"key": "a", "micro": "say"}]}], "microHotkeys": [{"micro": "say", "hotkey": "cmd+f12"}]}"#
             .write(to: config, atomically: true, encoding: .utf8)
         let missing = try await run(["check-config", config.path])
         XCTAssertEqual(missing.end, .exited(1))
-        XCTAssertTrue(String(decoding: missing.stdout, as: UTF8.self).contains("t a: Micro-app `say` not found"))
+        let missingText = String(decoding: missing.stdout, as: UTF8.self)
+        XCTAssertTrue(missingText.contains("t a: Micro-app `say` not found"))
+        XCTAssertTrue(missingText.contains("\(Hotkey(string: "cmd+f12")!.display): Micro-app `say` not found"), missingText)
         try "format: ting.microapp/2\ndescription: Say.\ninput: none\ncommand: echo hi\n"
             .write(to: directory.appendingPathComponent("micro/say.yaml"), atomically: true, encoding: .utf8)
         let good = try await run(["check-config", config.path])

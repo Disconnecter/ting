@@ -29,6 +29,8 @@ final class AppModel {
     private(set) var microApps: [MicroAppEntry] = []
     /// Problems of the micro-app files, by file name, then by line.
     private(set) var microAppIssues: [MicroAppIssue] = []
+    /// Micro-app hotkeys macOS refused, such as a key another app holds, by micro-app id.
+    private(set) var microHotkeyProblems: [String: String] = [:]
     /// Session-only: the leader is off while paused.
     var isPaused = false {
         didSet { applyHotkey() }
@@ -47,6 +49,7 @@ final class AppModel {
     @ObservationIgnored private(set) lazy var microStore = MicroAppStore(configURL: store.url)
     @ObservationIgnored private let hotkeys: HotkeyService
     @ObservationIgnored private var activeAppShortcuts: [AppShortcut] = []
+    @ObservationIgnored private var activeMicroShortcuts: [MicroShortcut] = []
     @ObservationIgnored let leader: LeaderController
     @ObservationIgnored private let runner: ActionRunner
     @ObservationIgnored private let toast: ToastController
@@ -163,7 +166,8 @@ final class AppModel {
     var needsAttention: Bool {
         configError != nil || hotkeyProblem != nil || launchaHotkeyProblem != nil || clipbawdHotkeyProblem != nil
             || chattaHotkeyProblem != nil || !microAppIssues.isEmpty
-            || !launcha.chrome.appShortcutProblems.isEmpty || issues.contains { $0.kind == .appHotkey }
+            || !launcha.chrome.appShortcutProblems.isEmpty || !microHotkeyProblems.isEmpty
+            || issues.contains { $0.kind == .appHotkey || $0.kind == .microHotkey }
     }
 
     var launchaHotkeyDisplay: String { config.launcha.hotkey?.display ?? "Not set" }
@@ -213,6 +217,7 @@ final class AppModel {
             case .clipbawd: self?.clipbawdHotkeyStatus = status
             case .chatta: self?.chattaHotkeyStatus = status
             case .application: self?.refreshAppShortcutProblems()
+            case .micro: self?.refreshMicroShortcutProblems()
             }
         }
         hotkeys.onPress = { [weak self] slot, time in self?.hotkeyPressed(slot, at: time) }
@@ -360,6 +365,11 @@ final class AppModel {
         update { $0.chatta.hotkey = hotkey }
     }
 
+    /// The one hotkey of a micro-app, set in Settings; nil removes it.
+    func setMicroHotkey(_ hotkey: Hotkey?, for micro: String) {
+        update { MicroShortcutRules.assign(hotkey, to: micro, in: &$0) }
+    }
+
     /// Saves exactly the retained app selected in launcha, never a different bundle-ID match.
     func setAppShortcut(for row: LaunchaRow, hotkey: Hotkey?) throws {
         guard case .app(let url) = row.kind else { throw AppShortcutRules.Problem.invalidTarget }
@@ -385,6 +395,14 @@ final class AppModel {
             if case .failed(let reason) = hotkeys.status(.application(index)) { problems[shortcut.id] = reason }
         }
         launcha.chrome.appShortcutProblems = problems
+    }
+
+    private func refreshMicroShortcutProblems() {
+        var problems: [String: String] = [:]
+        for (index, shortcut) in activeMicroShortcuts.enumerated() where problems[shortcut.micro] == nil {
+            if case .failed(let reason) = hotkeys.status(.micro(index)) { problems[shortcut.micro] = reason }
+        }
+        if microHotkeyProblems != problems { microHotkeyProblems = problems }
     }
 
     /// Turns all hotkeys off until `owner` ends recording. A new recording cancels the
@@ -535,6 +553,7 @@ final class AppModel {
     private func applyHotkey() {
         let active = isPaused || isRecordingHotkey ? nil : assignments
         activeAppShortcuts = active?.applications ?? []
+        activeMicroShortcuts = active?.micros ?? []
         hotkeys.apply(active)
         if active == nil {
             leader.close()
@@ -542,6 +561,7 @@ final class AppModel {
             if isPaused || launcha.chrome.shortcutEditor == nil { launcha.close() }
         }
         refreshAppShortcutProblems()
+        refreshMicroShortcutProblems()
         hotkeyStatus = hotkeys.status(.leader)
         alternateLeaderStatus = hotkeys.status(.alternateLeader)
         launchaHotkeyStatus = hotkeys.status(.launcha)
@@ -556,7 +576,7 @@ final class AppModel {
         case .launcha: launchaKey.release()
         case .clipbawd: clipbawdKey.release()
         case .chatta: chattaKey.release()
-        case .application: break
+        case .application, .micro: break
         }
     }
 
@@ -580,6 +600,13 @@ final class AppModel {
                 let outcome = await runner.openApp(at: URL(fileURLWithPath: shortcut.path), name: shortcut.name)
                 await launchaModel.record(outcome, id: shortcut.id)
             }
+        case .micro(let index):
+            guard !isPaused, !isRecordingHotkey, activeMicroShortcuts.indices.contains(index) else { return }
+            leader.close()
+            launcha.close()
+            clipbawdPanel.close()
+            // The app in front keeps the keyboard, so `context` and `output.to: [app]` work as from the leader.
+            microFlow.start(id: activeMicroShortcuts[index].micro)
         case .launcha:
             guard launchaKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
             if leader.isOpen { leader.close() }

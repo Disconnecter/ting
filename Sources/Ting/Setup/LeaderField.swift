@@ -7,15 +7,25 @@ import BobukSystem
 @MainActor
 @Observable
 final class HotkeyRecording: HotkeyRecordingOwner {
+    /// What the recorded key is for: a Ting key or the hotkey of a micro-app id.
+    enum Target: Equatable {
+        case launcher(LauncherHotkey)
+        case micro(String)
+    }
+
     private(set) var isRecording = false
     private(set) var preview = ""
     private(set) var warning: String?
     @ObservationIgnored private let monitor = KeyMonitor()
     @ObservationIgnored private var model: AppModel?
     @ObservationIgnored private var resignObserver: NSObjectProtocol?
-    @ObservationIgnored private var target = LauncherHotkey.leader
+    @ObservationIgnored private var target = Target.launcher(.leader)
 
     func start(model: AppModel, target: LauncherHotkey = .leader) {
+        start(model: model, for: .launcher(target))
+    }
+
+    func start(model: AppModel, for target: Target) {
         // Starting again first stops this recording's monitor and observer.
         stopListening()
         self.model = model
@@ -59,11 +69,10 @@ final class HotkeyRecording: HotkeyRecordingOwner {
             return nil
         case .keyDown:
             let hotkey = Hotkey.combo(keyCode: event.keyCode, modifiers: modifiers)
-            let config = model?.config
             if KeyCodes.name(for: event.keyCode) == nil || !hotkey.isValid {
-                warning = "A modifier alone cannot \(target.role). Press any other key."
-            } else if let config, let owner = LauncherHotkey.owner(of: hotkey, in: config, excluding: target) {
-                warning = owner.conflict(for: hotkey) + " Press another key."
+                warning = "A modifier alone cannot \(role). Press any other key."
+            } else if let conflict = conflict(for: hotkey) {
+                warning = conflict + " Press another key."
             } else {
                 finish(hotkey)
             }
@@ -73,15 +82,33 @@ final class HotkeyRecording: HotkeyRecordingOwner {
         }
     }
 
+    private var role: String {
+        switch target {
+        case .launcher(let launcher): launcher.role
+        case .micro: "start a micro-app"
+        }
+    }
+
+    private func conflict(for hotkey: Hotkey) -> String? {
+        guard let config = model?.config else { return nil }
+        switch target {
+        case .launcher(let launcher):
+            return LauncherHotkey.owner(of: hotkey, in: config, excluding: launcher)?.conflict(for: hotkey)
+        case .micro(let micro):
+            return MicroShortcutRules.problem(for: hotkey, micro: micro, in: config)
+        }
+    }
+
     private func finish(_ hotkey: Hotkey) {
         warning = nil
         cancel()
         switch target {
-        case .leader: model?.setLeader(hotkey)
-        case .alternateLeader: model?.update { $0.alternateLeader = hotkey }
-        case .launcha: model?.setLaunchaHotkey(hotkey)
-        case .clipbawd: model?.setClipbawdHotkey(hotkey)
-        case .chatta: model?.setChattaHotkey(hotkey)
+        case .launcher(.leader): model?.setLeader(hotkey)
+        case .launcher(.alternateLeader): model?.update { $0.alternateLeader = hotkey }
+        case .launcher(.launcha): model?.setLaunchaHotkey(hotkey)
+        case .launcher(.clipbawd): model?.setClipbawdHotkey(hotkey)
+        case .launcher(.chatta): model?.setChattaHotkey(hotkey)
+        case .micro(let micro): model?.setMicroHotkey(hotkey, for: micro)
         }
     }
 }
