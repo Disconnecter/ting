@@ -49,19 +49,33 @@ enum WindowCoordinates {
 /// Moves the focused window through the public macOS Accessibility API.
 ///
 /// Only the permission check, the frontmost app and the display layout are read on the main
-/// thread. Every Accessibility call runs in `WindowAccessibilityWorker`, off the main thread and
-/// one command at a time, so an app that does not answer can never freeze Ting's panels.
+/// thread. The Accessibility calls for another app's window run off the main thread, so an app
+/// that does not answer can never freeze Ting's panels. A window of Ting itself (Settings is in
+/// front while you record a window hotkey) is the exception: macOS answers those calls inside
+/// Ting by calling AppKit directly, which must happen on the main thread.
 @MainActor
 final class WindowManager: WindowManaging {
     private let worker = WindowAccessibilityWorker()
+
+    /// Ting's own windows are AppKit windows of this process: move them on the main thread.
+    nonisolated static func runsOnMainThread(pid: pid_t) -> Bool {
+        pid == ProcessInfo.processInfo.processIdentifier
+    }
 
     func run(_ command: WindowCommand, gap: Double) async throws {
         guard AXIsProcessTrusted() else { throw WindowManagementError.accessibility }
         guard let app = NSWorkspace.shared.frontmostApplication else {
             throw WindowManagementError.noFocusedApplication
         }
+        let pid = app.processIdentifier
         let displays = NSScreen.screens.map { WindowDisplay(frame: $0.frame, visibleFrame: $0.visibleFrame) }
-        try await worker.run(command, gap: gap, pid: app.processIdentifier, displays: displays)
+        if Self.runsOnMainThread(pid: pid) {
+            try worker.run(command, gap: gap, pid: pid, displays: displays)
+            return
+        }
+        try await Task.detached(priority: .userInitiated) { [worker] in
+            try worker.run(command, gap: gap, pid: pid, displays: displays)
+        }.value
     }
 }
 
@@ -71,9 +85,10 @@ struct WindowDisplay: Sendable {
     var visibleFrame: CGRect
 }
 
-/// Runs the Accessibility calls of window commands off the main thread, one at a time, and keeps
-/// the frames that `restore` returns to.
-actor WindowAccessibilityWorker {
+/// Runs the Accessibility calls of window commands on the thread it is called from, and keeps the
+/// frames that `restore` returns to. Safe to call from any thread: only the saved frames are shared,
+/// under a lock.
+final class WindowAccessibilityWorker: @unchecked Sendable {
     private struct WindowIdentity: Hashable {
         var pid: pid_t
         var elementHash: Int
@@ -84,6 +99,7 @@ actor WindowAccessibilityWorker {
     /// Saved frames kept for `restore`; beyond this the oldest are forgotten.
     static let restoreLimit = 64
 
+    private let lock = NSLock()
     private var restoreFrames: [WindowIdentity: CGRect] = [:]
     private var restoreOrder: [WindowIdentity] = []
 
@@ -108,14 +124,13 @@ actor WindowAccessibilityWorker {
         let screen = displays[screenIndex]
 
         if command == .restore {
-            guard let original = restoreFrames[identity] else { throw WindowManagementError.noRestoreFrame }
+            guard let original = savedFrame(for: identity) else { throw WindowManagementError.noRestoreFrame }
             try setFrame(original, of: window, primaryTop: primaryTop)
             forget(identity)
             return
         }
 
-        let hadRestoreFrame = restoreFrames[identity] != nil
-        if !hadRestoreFrame { remember(current, for: identity) }
+        let hadRestoreFrame = !remember(current, for: identity)
         do {
             let destination: CGRect
             switch command {
@@ -150,17 +165,28 @@ actor WindowAccessibilityWorker {
         }
     }
 
-    private func remember(_ frame: CGRect, for identity: WindowIdentity) {
-        restoreFrames[identity] = frame
-        restoreOrder.append(identity)
-        while restoreOrder.count > Self.restoreLimit {
-            restoreFrames[restoreOrder.removeFirst()] = nil
+    private func savedFrame(for identity: WindowIdentity) -> CGRect? {
+        lock.withLock { restoreFrames[identity] }
+    }
+
+    /// Saves the frame before Ting first moves the window. Returns false when one was already saved.
+    private func remember(_ frame: CGRect, for identity: WindowIdentity) -> Bool {
+        lock.withLock {
+            guard restoreFrames[identity] == nil else { return false }
+            restoreFrames[identity] = frame
+            restoreOrder.append(identity)
+            while restoreOrder.count > Self.restoreLimit {
+                restoreFrames[restoreOrder.removeFirst()] = nil
+            }
+            return true
         }
     }
 
     private func forget(_ identity: WindowIdentity) {
-        restoreFrames[identity] = nil
-        restoreOrder.removeAll { $0 == identity }
+        lock.withLock {
+            restoreFrames[identity] = nil
+            restoreOrder.removeAll { $0 == identity }
+        }
     }
 
     private func frame(of window: AXUIElement) throws -> CGRect {

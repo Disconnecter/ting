@@ -33,6 +33,13 @@ final class WindowManagerTests: XCTestCase {
         XCTAssertEqual(WindowCoordinates.accessibilityRect(from: appKit, primaryTop: 1080), accessibility)
     }
 
+    /// macOS answers Accessibility calls for Ting's own windows inside Ting by calling AppKit, so
+    /// they must run on the main thread; other apps' windows run off it.
+    func testTingsOwnWindowsAreMovedOnTheMainThread() {
+        XCTAssertTrue(WindowManager.runsOnMainThread(pid: ProcessInfo.processInfo.processIdentifier))
+        XCTAssertFalse(WindowManager.runsOnMainThread(pid: 1))
+    }
+
     func testModelRunsACommandWithConfiguredGapAndHandlesPermission() async throws {
         let manager = FakeWindowManager()
         let model = try model(windowManager: manager)
