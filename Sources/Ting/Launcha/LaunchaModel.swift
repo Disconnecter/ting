@@ -404,7 +404,7 @@ final class LaunchaModel {
 
     // MARK: Protected folders
 
-    /// The user read the explanation and allowed Desktop, Documents and Downloads.
+    /// The user read the explanation and allowed Desktop, Documents, Downloads and iCloud Drive.
     func allowProtectedFolders() {
         setProtectedFolders(.allowed)
     }
@@ -591,6 +591,12 @@ final class LaunchaModel {
         let folder = url.deletingLastPathComponent().path
         let base = home.standardizedFileURL.path
         let real = LaunchaPathPolicy.realURL(home)?.path ?? base
+        for prefix in [real, base] {
+            let iCloud = prefix + "/" + LaunchaPathPolicy.iCloudDrivePath
+            if folder == iCloud || folder.hasPrefix(iCloud + "/") {
+                return "iCloud Drive" + folder.dropFirst(iCloud.count)
+            }
+        }
         for prefix in [real, base] where folder == prefix || folder.hasPrefix(prefix + "/") {
             return "~" + folder.dropFirst(prefix.count)
         }

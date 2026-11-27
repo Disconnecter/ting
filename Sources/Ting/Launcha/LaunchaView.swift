@@ -147,7 +147,7 @@ private struct LaunchaCard: View {
         } else if model.showsConsentNotice {
             HStack(spacing: 6) {
                 Image(systemName: "lock").font(.system(size: 10))
-                Text("Desktop, Documents and Downloads were not searched.")
+                Text("Desktop, Documents, Downloads and iCloud Drive were not searched.")
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 6)
                 Button("Search Them…") { model.isExplainingConsent = true }
@@ -177,7 +177,7 @@ private struct ConsentExplanation: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Search Desktop, Documents and Downloads?")
+            Text("Search Desktop, Documents, Downloads and iCloud Drive?")
                 .font(.system(size: 12, weight: .semibold))
             Text("launcha will also list apps on your Desktop and find files in these folders. macOS may ask you to allow Ting to access each folder; launcha closes while macOS asks. You can turn this off in Settings.")
                 .font(.system(size: 11))

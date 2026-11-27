@@ -384,7 +384,7 @@ private struct LaunchaSettingsSection: View {
             }
             .disabled(!launcha.appSwitching)
             .help("Where launcha lists apps that are already open, among equally good matches.")
-            SettingsToggle("Search Desktop, Documents and Downloads", detail: "Off by default. macOS may ask for folder access.", isOn: Binding(
+            SettingsToggle("Search Desktop, Documents, Downloads and iCloud Drive", detail: "Off by default. macOS may ask for folder access.", isOn: Binding(
                 get: { model.protectedFoldersAllowed },
                 set: { allowed in
                     if allowed { confirmingFolders = true } else { model.setProtectedFoldersAllowed(false) }
@@ -394,7 +394,7 @@ private struct LaunchaSettingsSection: View {
                 Text(error).font(.caption).foregroundStyle(Color.tingAmber)
             }
         } header: { SettingsSectionTitle("launcha") }
-        .alert("Search Desktop, Documents and Downloads?", isPresented: $confirmingFolders) {
+        .alert("Search Desktop, Documents, Downloads and iCloud Drive?", isPresented: $confirmingFolders) {
             Button("Allow Access") { model.setProtectedFoldersAllowed(true) }
             Button("Cancel", role: .cancel) {}
         } message: {

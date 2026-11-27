@@ -332,6 +332,31 @@ final class LaunchaModelTests: XCTestCase {
         model.close()
     }
 
+    func testICloudDriveFilesNeedConsentAndShowAsICloudDrive() async throws {
+        let folder = root.appendingPathComponent(LaunchaPathPolicy.iCloudDrivePath + "/Downloads")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // As in a real home, Finder hides ~/Library.
+        var hidden = URLResourceValues()
+        hidden.isHidden = true
+        var library = root.appendingPathComponent("Library")
+        try library.setResourceValues(hidden)
+        let manual = folder.appendingPathComponent("manual.pdf")
+        try Data().write(to: manual)
+        let fixture = try makeModel(files: [manual])
+        let model = fixture.model
+        model.open()
+        try await wait("index") { model.hasIndex }
+        model.query = "manual"
+        try await wait("gated search") { model.spotlight.status == .empty }
+        XCTAssertTrue(model.rows.isEmpty, "iCloud Drive needs consent first")
+
+        model.allowProtectedFolders()
+        model.query = ""
+        model.query = "manual"
+        try await wait("iCloud file") { model.rows.first?.url?.path == manual.path }
+        XCTAssertEqual(model.rows.first?.detail, "iCloud Drive/Downloads")
+    }
+
     func testConsentRecreatesServicesAndPersistsSeparately() async throws {
         let desktop = root.appendingPathComponent("Desktop")
         try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true)

@@ -43,7 +43,10 @@ struct LaunchaPathPolicy: Sendable {
         self.realHomeComponents = resolved.pathComponents
     }
 
-    var protectedURLs: [URL] { ["Desktop", "Documents", "Downloads"].map { home.appendingPathComponent($0) } }
+    /// The iCloud Drive folder, the only place under `~/Library` that may be searched.
+    static let iCloudDrivePath = "Library/Mobile Documents/com~apple~CloudDocs"
+    var iCloudDrive: URL { home.appendingPathComponent(Self.iCloudDrivePath, isDirectory: true) }
+    var protectedURLs: [URL] { ["Desktop", "Documents", "Downloads"].map { home.appendingPathComponent($0) } + [iCloudDrive] }
     func contains(_ url: URL, in root: URL) -> Bool {
         let path = url.standardizedFileURL.path
         let base = root.standardizedFileURL.path
@@ -56,9 +59,15 @@ struct LaunchaPathPolicy: Sendable {
         guard containsPath(standardizedURL.path, in: homePath) else { return nil }
         return standardizedURL.pathComponents.dropFirst(homeComponentCount).first?.lowercased()
     }
+    private func inICloudDrive(_ standardizedPath: String, homePath: String) -> Bool {
+        containsPath(standardizedPath, in: homePath + "/" + Self.iCloudDrivePath)
+    }
     func needsConsent(_ url: URL) -> Bool {
         guard protectedFolders == .needsConsent else { return false }
         let standardized = url.standardizedFileURL
+        if inICloudDrive(standardized.path, homePath: standardizedHome.path) || inICloudDrive(standardized.path, homePath: realHome.path) {
+            return true
+        }
         if let first = firstHomeComponent(standardized, homePath: standardizedHome.path, homeComponentCount: standardizedHomeComponents.count),
            ["desktop", "documents", "downloads"].contains(first) {
             return true
@@ -79,7 +88,8 @@ struct LaunchaPathPolicy: Sendable {
     }
     private func valid(_ standardizedPath: URL, homePath: String, homeComponentCount: Int) -> Bool {
         containsPath(standardizedPath.path, in: homePath)
-            && firstHomeComponent(standardizedPath, homePath: homePath, homeComponentCount: homeComponentCount) != "library"
+            && (firstHomeComponent(standardizedPath, homePath: homePath, homeComponentCount: homeComponentCount) != "library"
+                || inICloudDrive(standardizedPath.path, homePath: homePath))
             && !standardizedPath.pathComponents.contains { $0.hasPrefix(".") || $0.lowercased().hasSuffix(".app") }
             && !needsConsent(standardizedPath)
     }
