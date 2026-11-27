@@ -115,6 +115,7 @@ struct SettingsRoot: View {
                         case .general: GeneralSettings(activation: false)
                         case .activation: GeneralSettings(activation: true)
                         case .bindings: BindingsSettings()
+                        case .windows: WindowSettingsView()
                         case .clipbawd: ClipbawdSettingsView(searchTarget: target)
                         case .chatta: ChattaSettingsView()
                         case .microApps:
@@ -202,6 +203,7 @@ private extension SettingsPage {
         case .general: "Appearance, sound and startup."
         case .activation: "Leader keys, menu timing and launcha."
         case .bindings: "Choose what each key sequence opens."
+        case .windows: "Move and resize the focused window."
         case .clipbawd: "Choose what to keep and when to forget it."
         case .chatta: "Talk to a local ACP agent or let it configure Ting."
         case .microApps: "Your tools, diagnostics and permissions."
@@ -546,7 +548,7 @@ private struct MicroAppsSection: View {
             }
             .onAppear { access.refresh() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in access.refresh() }
-            Text("Only micro-apps that read the selected text or the front window, press keys or paste need it.")
+            Text("Window commands need it, and micro-apps that read the selected text or the front window, press keys or paste.")
                 .font(.caption).foregroundStyle(.secondary)
             Text("One micro-app per .yaml file. Ting creates the folder when you open it, loads it again when it changes and writes the errors to \(model.microStore.logDisplayPath).")
                 .font(.caption).foregroundStyle(.secondary)

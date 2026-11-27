@@ -24,6 +24,7 @@ final class AppModel {
     private(set) var launchaHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var clipbawdHotkeyStatus: HotkeyService.Status = .inactive
     private(set) var chattaHotkeyStatus: HotkeyService.Status = .inactive
+    private(set) var windowHotkeyStatuses: [WindowCommand: HotkeyService.Status] = [:]
     private(set) var loginItemError: String?
     /// Every file of the micro-apps folder, good and broken, by file name.
     private(set) var microApps: [MicroAppEntry] = []
@@ -52,8 +53,10 @@ final class AppModel {
     @ObservationIgnored private let hotkeys: HotkeyService
     @ObservationIgnored private var activeAppShortcuts: [AppShortcut] = []
     @ObservationIgnored private var activeMicroShortcuts: [MicroShortcut] = []
+    @ObservationIgnored private var activeWindowShortcuts: [WindowShortcut] = []
     @ObservationIgnored let leader: LeaderController
     @ObservationIgnored private let runner: ActionRunner
+    @ObservationIgnored private let windowManager: WindowManaging
     @ObservationIgnored private let toast: ToastController
     @ObservationIgnored private let launchaModel: LaunchaModel
     @ObservationIgnored let launcha: LaunchaController
@@ -78,7 +81,7 @@ final class AppModel {
     /// The one open micro-app flow: approval, working state and result.
     @ObservationIgnored private let microFlow = MicroAppFlowController()
     /// The Accessibility window, and whether Ting may use Accessibility.
-    @ObservationIgnored let accessibility = AccessibilityWindowController()
+    @ObservationIgnored let accessibility: AccessibilityWindowController
     /// Held-key guard for the launcha hotkey: a repeat while held never toggles twice.
     @ObservationIgnored private var launchaKey = LeaderDoubleTap(isEnabled: false)
     @ObservationIgnored private var clipbawdKey = LeaderDoubleTap(isEnabled: false)
@@ -89,8 +92,10 @@ final class AppModel {
 
     /// `presentsWindows` false: the launchers keep their state but show no window (tests).
     init(presentsWindows: Bool = true, store: ConfigStore? = nil, hotkeys: HotkeyService? = nil,
-         clipbawd: ClipbawdHistory? = nil, theme: ThemeStore? = nil) {
+         clipbawd: ClipbawdHistory? = nil, theme: ThemeStore? = nil, windowManager: WindowManaging? = nil) {
         self.presentsWindows = presentsWindows
+        self.windowManager = windowManager ?? WindowManager()
+        self.accessibility = AccessibilityWindowController(presentsWindow: presentsWindows)
         if let theme {
             self.theme = theme
         } else if presentsWindows {
@@ -170,7 +175,15 @@ final class AppModel {
         configError != nil || hotkeyProblem != nil || launchaHotkeyProblem != nil || clipbawdHotkeyProblem != nil
             || chattaHotkeyProblem != nil || !microAppIssues.isEmpty
             || !launcha.chrome.appShortcutProblems.isEmpty || !microHotkeyProblems.isEmpty
-            || issues.contains { $0.kind == .appHotkey || $0.kind == .microHotkey }
+            || windowHotkeyStatuses.values.contains { if case .failed = $0 { true } else { false } }
+            || issues.contains { $0.kind == .appHotkey || $0.kind == .microHotkey || $0.kind == .windowHotkey }
+    }
+
+    /// Why a window command's hotkey does not work: invalid, reserved, duplicate or taken by another app.
+    func windowHotkeyProblem(_ command: WindowCommand) -> String? {
+        if let problem = assignments.windowProblems[command] { return problem }
+        if case .failed(let reason) = windowHotkeyStatuses[command] { return reason }
+        return nil
     }
 
     var launchaHotkeyDisplay: String { config.launcha.hotkey?.display ?? "Not set" }
@@ -221,6 +234,7 @@ final class AppModel {
             case .chatta: self?.chattaHotkeyStatus = status
             case .application: self?.refreshAppShortcutProblems()
             case .micro: self?.refreshMicroShortcutProblems()
+            case .window: self?.refreshWindowShortcutProblems()
             }
         }
         hotkeys.onPress = { [weak self] slot, time in self?.hotkeyPressed(slot, at: time) }
@@ -256,7 +270,7 @@ final class AppModel {
         microFlow.clipboardSnapshot = { [weak self] in self?.clipbawd.microAppSnapshot() }
         microFlow.onToast = { [weak self] message in self?.toast.show(message) }
         microFlow.onAccessibilityNeeded = { [weak self] in self?.accessibility.show() }
-        accessibility.onGranted = { [weak self] in self?.toast.show("Accessibility is on. Start the micro-app again.") }
+        accessibility.onGranted = { [weak self] in self?.toast.show("Accessibility is on. Try the action again.") }
         microFlow.folderDisplay = { [weak self] in self?.microStore.displayPath ?? "the micro-apps folder" }
 
         if !store.fileExists {
@@ -373,6 +387,20 @@ final class AppModel {
         update { MicroShortcutRules.assign(hotkey, to: micro, in: &$0) }
     }
 
+    /// The direct hotkey of a window command; nil removes it. A refused key keeps the old one.
+    func setWindowHotkey(_ command: WindowCommand, hotkey: Hotkey?) throws {
+        var next = config
+        try WindowShortcutRules.assign(command: command, hotkey: hotkey, in: &next)
+        // The recorder suspends Ting's registrations first. OS conflicts fail without a save.
+        if let hotkey, isRecordingHotkey, let error = hotkeys.checkAvailable(hotkey) {
+            throw NSError(domain: "io.bobuk.ting.window-shortcuts", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: error])
+        }
+        try store.write(next)
+        configError = nil
+        apply(next)
+    }
+
     /// Saves exactly the retained app selected in launcha, never a different bundle-ID match.
     func setAppShortcut(for row: LaunchaRow, hotkey: Hotkey?) throws {
         guard case .app(let url) = row.kind else { throw AppShortcutRules.Problem.invalidTarget }
@@ -398,6 +426,14 @@ final class AppModel {
             if case .failed(let reason) = hotkeys.status(.application(index)) { problems[shortcut.id] = reason }
         }
         launcha.chrome.appShortcutProblems = problems
+    }
+
+    private func refreshWindowShortcutProblems() {
+        var statuses: [WindowCommand: HotkeyService.Status] = [:]
+        for (index, shortcut) in activeWindowShortcuts.enumerated() {
+            statuses[shortcut.command] = hotkeys.status(.window(index))
+        }
+        if windowHotkeyStatuses != statuses { windowHotkeyStatuses = statuses }
     }
 
     private func refreshMicroShortcutProblems() {
@@ -562,6 +598,7 @@ final class AppModel {
         let active = isPaused || isRecordingHotkey ? nil : assignments
         activeAppShortcuts = active?.applications ?? []
         activeMicroShortcuts = active?.micros ?? []
+        activeWindowShortcuts = active?.windows ?? []
         hotkeys.apply(active)
         if active == nil {
             leader.close()
@@ -570,6 +607,7 @@ final class AppModel {
         }
         refreshAppShortcutProblems()
         refreshMicroShortcutProblems()
+        refreshWindowShortcutProblems()
         hotkeyStatus = hotkeys.status(.leader)
         alternateLeaderStatus = hotkeys.status(.alternateLeader)
         launchaHotkeyStatus = hotkeys.status(.launcha)
@@ -584,7 +622,7 @@ final class AppModel {
         case .launcha: launchaKey.release()
         case .clipbawd: clipbawdKey.release()
         case .chatta: chattaKey.release()
-        case .application, .micro: break
+        case .application, .micro, .window: break
         }
     }
 
@@ -615,6 +653,13 @@ final class AppModel {
             clipbawdPanel.close()
             // The app in front keeps the keyboard, so `context` and `output.to: [app]` work as from the leader.
             microFlow.start(id: activeMicroShortcuts[index].micro)
+        case .window(let index):
+            guard !isPaused, !isRecordingHotkey, activeWindowShortcuts.indices.contains(index) else { return }
+            let command = activeWindowShortcuts[index].command
+            leader.close()
+            launcha.close()
+            clipbawdPanel.close()
+            DispatchQueue.main.async { [weak self] in self?.runWindowCommand(command) }
         case .launcha:
             guard launchaKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
             if leader.isOpen { leader.close() }
@@ -690,16 +735,36 @@ final class AppModel {
             }
             return
         }
+        if case .window(let command) = item.action {
+            runWindowCommand(command)
+            return
+        }
         let id: String? = switch item.action {
         case .app(let bundleID): LaunchaCandidate.app(bundleID: bundleID, name: "").id
         case .url(let url): LaunchaCandidate.url(url, name: "").id
-        case .group, .micro, .open: nil
+        case .group, .micro, .open, .window: nil
         }
         let activated = runner.activateRunning(item)
         Task {
             let outcome: LaunchOutcome
             if let activated { outcome = activated } else { outcome = await runner.run(item) }
             if let id { await launchaModel.record(outcome, id: id) }
+        }
+    }
+
+    /// Moves or resizes the focused window off the main thread. Without Accessibility, the guide
+    /// window explains it; other failures show a toast. Tests await the returned task.
+    @discardableResult
+    func runWindowCommand(_ command: WindowCommand) -> Task<Void, Never> {
+        let gap = config.windowManagement.gap
+        return Task { [weak self, windowManager] in
+            do {
+                try await windowManager.run(command, gap: gap)
+            } catch WindowManagementError.accessibility {
+                self?.accessibility.show()
+            } catch {
+                self?.toast.show(error.localizedDescription)
+            }
         }
     }
 }

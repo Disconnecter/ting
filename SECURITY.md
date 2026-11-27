@@ -23,8 +23,11 @@ latest published version.
 
 - Ting registers one global hotkey with the standard macOS hotkey API. It never
   requests Input Monitoring permission and does not observe keystrokes outside its
-  own leader menu. It asks for Accessibility and Automation (Apple Events to
-  Finder or a browser) only when an approved micro-app needs them, see below.
+  own leader menu. It asks for Accessibility when you use a window command (to move
+  or resize the focused window of another app) or when an approved micro-app needs
+  it, and for Automation (Apple Events to Finder or a browser) only when an approved
+  micro-app needs it, see below. Window commands only read and set the position and
+  size of the focused window; they never read its contents or send key presses.
 - Bindings and settings are stored in `~/.config/ting/config.json`. Anyone who can
   write that file can make Ting open any app or URL when you press a binding, or
   bind a key to a micro-app id. `config.json` holds no code.
