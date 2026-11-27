@@ -84,6 +84,21 @@ final class LaunchaModelTests: XCTestCase {
         model.close()
     }
 
+    func testScheduleSearchAndOpen() async throws {
+        let fixture = try makeModel()
+        let model = fixture.model
+        var opened = 0
+        model.onOpenSchedule = { opened += 1 }
+        model.scheduleEnabled = true
+        model.open()
+        model.query = "availability"
+        XCTAssertEqual(model.rows.first?.kind, .schedule)
+        XCTAssertEqual(model.rows.first?.name, "My Schedule")
+        _ = await model.activateSelection()
+        XCTAssertEqual(opened, 1)
+        XCTAssertTrue(fixture.opener.opened.isEmpty)
+    }
+
     private var policies: [ProtectedFolderPolicy] = []
     private var folderRequests: [[String]] = []
 

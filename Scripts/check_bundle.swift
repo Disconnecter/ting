@@ -54,6 +54,9 @@ require(!helperArchitectures.isEmpty && helperArchitectures == architectures(app
 
 // Micro-apps read the Finder selection and the browser tab with Apple Events.
 require(!(string("NSAppleEventsUsageDescription") ?? "").isEmpty, "NSAppleEventsUsageDescription is missing")
+// My Schedule reads macOS Calendar through EventKit.
+require(!(string("NSCalendarsFullAccessUsageDescription") ?? "").isEmpty,
+        "NSCalendarsFullAccessUsageDescription is missing")
 func entitlements(_ app: URL) -> String {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")

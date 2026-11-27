@@ -281,6 +281,7 @@ extension TingPanel {
         switch self {
         case .launcha: "magnifyingglass"
         case .clipbawd: "list.clipboard"
+        case .schedule: "calendar"
         case .chatta: "sparkles"
         }
     }

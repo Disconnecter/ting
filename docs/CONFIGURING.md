@@ -57,7 +57,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
 - Each item has `key`, an optional `label` (shown in the menu) and exactly one
   action: `items` (a group), `app` (a bundle identifier), `url` (any URL,
   including schemes such as `raycast://`), `micro` (a micro-app id), `open`
-  (a Ting window: `"launcha"`, `"clipbawd"` or `"chatta"`) or `window`
+  (a Ting window: `"launcha"`, `"clipbawd"`, `"schedule"` or `"chatta"`) or `window`
   (a focused-window command such as `"left-half"`, see [Window management](#window-management)).
 - `key`: a lower-case Latin letter or digit, `space`, `return` or `f1`…`f20`. Keys
   are Latin even when the person types with another layout.
@@ -91,6 +91,8 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   60–86400 seconds and caps the `timeout` a micro-app file may ask for, while each file still defaults
   to 60s and may set any smaller or larger value up to that limit; `resultWidth` is 480–1200 points
   for the result panel card; `resultTextSize` is 11–24 points for result panel body text),
+  `schedule` (`{"calendars": null}`; `null` includes every current and future EventKit calendar,
+  while an array of calendar identifiers is an explicit selection managed in **Settings › My Schedule**),
   `chatta` (`{"hotkey": null, "agent": null, "model": null, "effort": null, "idleTimeoutMinutes": 15, "allowTools": false, "textScale": 1, "sendKey": "commandReturn"}`;
   `hotkey` opens the Chatta agent chat window; `agent` picks a built-in ACP preset id
   (`antigravity`, `codex`, `claude`, `pi`, `kimi`, `gemini`, `opencode`, or `null` to auto-detect);
@@ -105,13 +107,14 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `windowManagement` (`{"gap": 0, "shortcuts": []}`; `gap` is 0–64 points at display edges and
   between adjacent tiles; each shortcut has a `command` and a `hotkey`, see
   [Window management](#window-management)). The Clipbawd and Chatta hotkeys cannot match either
-  leader or another launcher hotkey. Clipbawd (while enabled) and Chatta are also searchable by name in launcha.
+  leader or another launcher hotkey. Clipbawd (while enabled), My Schedule and Chatta are also searchable by name in launcha. My Schedule uses up/down to select events and Return to open a recognized meeting link found in the EventKit URL, location or notes; raw notes and event contents are not stored.
 - Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images, videos and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 
 ### Settings and clipboard storage
 
 Settings has a sidebar and search across all categories. Leader and launcha controls are in **Keys & Launch**,
-window gaps and direct window hotkeys in **Windows**, permissions and micro-app diagnostics in **Micro-apps**, file/import/export actions in **Advanced**.
+window gaps and direct window hotkeys in **Windows**, EventKit access and calendar selection in **My Schedule**,
+permissions and micro-app diagnostics in **Micro-apps**, file/import/export actions in **Advanced**.
 The menu's **Tools** submenu holds config, reload and Copy Agent Prompt; **Ting** holds About and updates.
 
 Persistent clipboard history is a local binary archive in `~/Library/Application Support/Ting/Clipbawd/history.plist`,

@@ -33,6 +33,8 @@ import Testing
         #expect(c.microApps.maxTimeout == 300)
         #expect(c.microApps.resultWidth == 580)
         #expect(c.microApps.resultTextSize == 13)
+        #expect(c.schedule == ScheduleSettings())
+        #expect(c.schedule.calendars == nil)
     }
     @Test func pauseLeaderAlias() throws {
         let c = try decode(#"{"leader":"pause"}"#)
@@ -175,6 +177,15 @@ import Testing
         #expect(high.resultWidth == MicroAppsSettings.resultWidthRange.upperBound)
         #expect(high.resultTextSize == MicroAppsSettings.resultTextSizeRange.upperBound)
     }
+    @Test func scheduleCompatibilityAndSelection() throws {
+        #expect(try decode(#"{"schedule":{}}"#).schedule == ScheduleSettings())
+        #expect(try decode(#"{"schedule":{"calendars":null}}"#).schedule.calendars == nil)
+        let selected = try decode(#"{"schedule":{"calendars":["work","home","work"]}}"#)
+        #expect(selected.schedule.calendars == ["home", "work"])
+        #expect(try ConfigCodec.decode(ConfigCodec.encode(selected)) == selected)
+        let panel = try JSONDecoder().decode(Item.self, from: Data(#"{"key":"s","label":"Schedule","open":"schedule"}"#.utf8))
+        #expect(panel == .open("s", "Schedule", .schedule))
+    }
     @Test func encodingAndRoundTrips() throws {
         var full = Config()
         full.version = Config.currentVersion
@@ -191,13 +202,17 @@ import Testing
         full.launcha.hotkey = .combo(keyCode: 49, modifiers: [.option])
         full.launcha.doubleTap = false
         full.launcha.doubleTapWindow = 0.5
+        full.schedule.calendars = ["work", "home"]
         full.items = [.group("w", "Web", [.url("g", "GitHub", "https://github.com")]), .app("t", "Terminal", "com.apple.Terminal")]
         for c in [Config(), Config.sample, full] {
             let data = ConfigCodec.encode(c)
             #expect(try ConfigCodec.decode(data) == c)
             #expect(ConfigCodec.encode(c) == data)
             let text = String(decoding: data, as: UTF8.self)
-            let rootKeys = ["appearance", "items", "launchAtLogin", "launcha", "leader", "playSound", "showDelay", "showMenuBarIcon", "showPanelHeader", "sound", "soundVolume", "unknownKey", "version"]
+            let rootKeys = [
+                "appearance", "items", "launchAtLogin", "launcha", "leader", "playSound", "schedule", "showDelay",
+                "showMenuBarIcon", "showPanelHeader", "sound", "soundVolume", "unknownKey", "version",
+            ]
             let positions = rootKeys.compactMap { text.range(of: "\"\($0)\"")?.lowerBound }
             #expect(positions == positions.sorted())
             #expect(text.hasSuffix("\n"))

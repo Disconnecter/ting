@@ -64,6 +64,7 @@ final class AppModel {
     /// The clipboard history of this session.
     @ObservationIgnored let clipbawd: ClipbawdHistory
     @ObservationIgnored let clipbawdPanel: ClipbawdController
+    @ObservationIgnored let schedule: ScheduleController
     @ObservationIgnored private(set) lazy var chatta = ChattaController(
         theme: theme,
         configURL: store.url,
@@ -92,7 +93,8 @@ final class AppModel {
 
     /// `presentsWindows` false: the launchers keep their state but show no window (tests).
     init(presentsWindows: Bool = true, store: ConfigStore? = nil, hotkeys: HotkeyService? = nil,
-         clipbawd: ClipbawdHistory? = nil, theme: ThemeStore? = nil, windowManager: WindowManaging? = nil) {
+         clipbawd: ClipbawdHistory? = nil, theme: ThemeStore? = nil, windowManager: WindowManaging? = nil,
+         scheduleService: (any ScheduleServing)? = nil) {
         self.presentsWindows = presentsWindows
         self.windowManager = windowManager ?? WindowManager()
         self.accessibility = AccessibilityWindowController(presentsWindow: presentsWindows)
@@ -114,6 +116,8 @@ final class AppModel {
             : NSPasteboard(name: NSPasteboard.Name("io.bobuk.ting.tests." + UUID().uuidString)),
             directory: presentsWindows ? ClipHistoryDisk.defaultDirectory(environment: environment) : nil)
         clipbawdPanel = ClipbawdController(history: self.clipbawd, presentsWindow: presentsWindows)
+        let resolvedScheduleService = scheduleService ?? (presentsWindows ? EventKitScheduleService() : ScheduleUnavailableService())
+        schedule = ScheduleController(model: ScheduleModel(service: resolvedScheduleService), presentsWindow: presentsWindows)
         self.hotkeys = hotkeys ?? HotkeyService()
         leader = LeaderController(presentsWindow: presentsWindows)
         let runner = ActionRunner()
@@ -247,6 +251,7 @@ final class AppModel {
         leader.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
         launcha.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
         clipbawdPanel.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
+        schedule.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher(page: .schedule) }
         launchaModel.onCopyValue = { [weak self] value in self?.copyValue(value) }
         launchaModel.onStartMicro = { [weak self] start in
             switch start {
@@ -266,6 +271,7 @@ final class AppModel {
             self?.toast.show("clipbawd will never keep copies from \(source.name).")
         }
         launchaModel.onOpenClipbawd = { [weak self] in self?.openClipbawd() }
+        launchaModel.onOpenSchedule = { [weak self] in self?.openSchedule() }
         launchaModel.onOpenChatta = { [weak self] in self?.openChatta() }
         microFlow.clipboardSnapshot = { [weak self] in self?.clipbawd.microAppSnapshot() }
         microFlow.onToast = { [weak self] message in self?.toast.show(message) }
@@ -467,6 +473,7 @@ final class AppModel {
         guard !isPaused, !isRecordingHotkey else { return }
         leader.close()
         clipbawdPanel.close()
+        schedule.close()
         launcha.open()
     }
 
@@ -478,7 +485,16 @@ final class AppModel {
         }
         leader.close()
         launcha.close()
+        schedule.close()
         clipbawdPanel.open()
+    }
+
+    func openSchedule() {
+        guard !isPaused, !isRecordingHotkey else { return }
+        leader.close()
+        launcha.close()
+        clipbawdPanel.close()
+        schedule.open()
     }
 
     func openChatta(mode: ChattaMode? = nil) {
@@ -486,6 +502,7 @@ final class AppModel {
         leader.close()
         launcha.close()
         clipbawdPanel.close()
+        schedule.close()
         chatta.open(mode: mode)
     }
 
@@ -494,6 +511,7 @@ final class AppModel {
         leader.close()
         launcha.close()
         clipbawdPanel.close()
+        schedule.close()
         if let page {
             settingsPageOpener(page)
         } else {
@@ -509,6 +527,26 @@ final class AppModel {
     /// Call only after the user read that macOS may ask about iCloud Drive.
     func setICloudDriveAllowed(_ allowed: Bool) {
         launchaModel.setICloudDrive(allowed)
+    }
+
+    func setScheduleCalendar(_ id: String, included: Bool) {
+        let available = schedule.model.calendars.map(\.id)
+        update { config in
+            var selected = Set(config.schedule.calendars ?? available)
+            if included { selected.insert(id) } else { selected.remove(id) }
+            config.schedule.calendars = selected.sorted()
+        }
+        schedule.refresh()
+    }
+
+    func selectAllScheduleCalendars() {
+        update { $0.schedule.calendars = nil }
+        schedule.refresh()
+    }
+
+    func selectNoScheduleCalendars() {
+        update { $0.schedule.calendars = [] }
+        schedule.refresh()
     }
 
     func replaceConfig(_ imported: Config) {
@@ -571,8 +609,10 @@ final class AppModel {
         leader.configure(next)
         launcha.configure(next)
         launchaModel.clipbawdEnabled = next.clipbawd.enabled
+        launchaModel.scheduleEnabled = true
         launchaModel.chattaEnabled = true
         clipbawd.configure(next.clipbawd)
+        schedule.configure(next)
         clipbawdPanel.configure(next)
         chatta.configure(next.chatta)
         microStore.maxTimeLimit = next.microApps.maxTimeout
@@ -603,6 +643,7 @@ final class AppModel {
         if active == nil {
             leader.close()
             clipbawdPanel.close()
+            schedule.close()
             if isPaused || launcha.chrome.shortcutEditor == nil { launcha.close() }
         }
         refreshAppShortcutProblems()
@@ -632,9 +673,10 @@ final class AppModel {
         case .leader, .alternateLeader:
             // The leader switches from launcha back to selecta. A repeat of a held leader
             // is ignored and leaves launcha open.
-            leader.leaderPressed(at: time, source: slot == .leader ? .leader : .alternateLeader) { [launcha, clipbawdPanel] in
+            leader.leaderPressed(at: time, source: slot == .leader ? .leader : .alternateLeader) { [launcha, clipbawdPanel, schedule] in
                 if launcha.isOpen { launcha.close() }
                 clipbawdPanel.close()
+                schedule.close()
             }
         case .application(let index):
             guard !isPaused, !isRecordingHotkey, activeAppShortcuts.indices.contains(index) else { return }
@@ -642,6 +684,7 @@ final class AppModel {
             leader.close()
             launcha.close()
             clipbawdPanel.close()
+            schedule.close()
             Task { [runner, launchaModel] in
                 let outcome = await runner.openApp(at: URL(fileURLWithPath: shortcut.path), name: shortcut.name)
                 await launchaModel.record(outcome, id: shortcut.id)
@@ -651,6 +694,7 @@ final class AppModel {
             leader.close()
             launcha.close()
             clipbawdPanel.close()
+            schedule.close()
             // The app in front keeps the keyboard, so `context` and `output.to: [app]` work as from the leader.
             microFlow.start(id: activeMicroShortcuts[index].micro)
         case .window(let index):
@@ -659,17 +703,20 @@ final class AppModel {
             leader.close()
             launcha.close()
             clipbawdPanel.close()
+            schedule.close()
             DispatchQueue.main.async { [weak self] in self?.runWindowCommand(command) }
         case .launcha:
             guard launchaKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
             if leader.isOpen { leader.close() }
             clipbawdPanel.close()
+            schedule.close()
             launcha.toggle()
         case .clipbawd:
             guard !isPaused, !isRecordingHotkey, config.clipbawd.enabled,
                   clipbawdKey.press(at: time, menuOpen: false, menuOpenAtRoot: false) != .ignored else { return }
             if leader.isOpen { leader.close() }
             if launcha.isOpen { launcha.close() }
+            schedule.close()
             clipbawdPanel.toggle()
         case .chatta:
             guard !isPaused, !isRecordingHotkey,
@@ -677,6 +724,7 @@ final class AppModel {
             if leader.isOpen { leader.close() }
             if launcha.isOpen { launcha.close() }
             clipbawdPanel.close()
+            schedule.close()
             chatta.toggle()
         }
     }
@@ -686,6 +734,7 @@ final class AppModel {
         leader.suspendKeys()
         launcha.suspendKeys()
         clipbawdPanel.suspendKeys()
+        schedule.suspendKeys()
     }
 
     /// The menu ended. A launcher takes keys again unless a chosen item opened another window.
@@ -694,6 +743,7 @@ final class AppModel {
         leader.resumeKeys()
         launcha.resumeKeys()
         clipbawdPanel.resumeKeys()
+        schedule.resumeKeys()
     }
 
     /// The "ting" for an opened app, link or file: `config.sound` at `config.soundVolume`.
@@ -730,6 +780,7 @@ final class AppModel {
                 switch panel {
                 case .launcha: self?.openLauncha()
                 case .clipbawd: self?.openClipbawd()
+                case .schedule: self?.openSchedule()
                 case .chatta: self?.openChatta()
                 }
             }

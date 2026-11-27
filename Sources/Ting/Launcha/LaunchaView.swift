@@ -254,6 +254,8 @@ private struct ResultRow: View {
             HStack(spacing: PickerMetrics.columnSpacing) {
                 if case .clipbawd = row.kind {
                     Image(systemName: "list.clipboard").font(.system(size: 22)).frame(width: 32, height: 32)
+                } else if case .schedule = row.kind {
+                    Image(systemName: "calendar").font(.system(size: 20)).foregroundStyle(Color.tingAmber).frame(width: 32, height: 32)
                 } else if case .chatta = row.kind {
                     Image(systemName: "sparkles").font(.system(size: 20)).foregroundStyle(Color.tingAmber).frame(width: 32, height: 32)
                 } else if row.isLowkeySite {
@@ -320,6 +322,7 @@ private struct ResultRow: View {
         if row.isCalculation { return row.name }
         if row.isLowkeySite { return "\(row.name): \(row.detail)" }
         if case .clipbawd = row.kind { return "Open Clipbawd clipboard history" }
+        if case .schedule = row.kind { return "Open My Schedule calendar" }
         if case .chatta = row.kind { return "Open Chatta agent chat" }
         return row.isApp ? row.name : row.url?.path ?? row.name
     }
@@ -332,6 +335,7 @@ private struct ResultRow: View {
             isWorking ? "\(row.name), micro-app" : "\(row.name), micro-app, not working. \(row.detail)"
         case .calculation: "Result \(row.name)"
         case .clipbawd: "Clipbawd, clipboard history"
+        case .schedule: "My Schedule, calendar events and availability"
         case .chatta: "Chatta, AI agent chat"
         case .lowkeySite: "\(row.name), lowkey site. \(row.detail)"
         }
@@ -344,6 +348,7 @@ private struct ResultRow: View {
         case .micro(_, _, let isWorking): isWorking ? "Starts the micro-app" : "Shows the error of the file"
         case .calculation: "Copies the result"
         case .clipbawd: "Opens clipboard history"
+        case .schedule: "Opens upcoming calendar events and availability"
         case .chatta: "Opens Chatta agent chat"
         case .lowkeySite: "Opens the site in its lowkey profile"
         }
