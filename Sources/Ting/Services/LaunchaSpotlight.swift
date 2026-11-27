@@ -76,12 +76,30 @@ final class LaunchaSpotlight {
         }
     }
 
+    /// Visible top-level folders of home that the policy allows. Spotlight then never
+    /// spends the inspection limit on `~/Library`, hidden folders or protected folders.
+    /// Loose files directly in home are not searched.
+    nonisolated static func searchScopes(_ policy: LaunchaPathPolicy) -> [URL] {
+        let children = (try? FileManager.default.contentsOfDirectory(
+            at: policy.home, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+        return children.filter { url in
+            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true && policy.searchable(url)
+        }.sorted { $0.path < $1.path }
+    }
+
     private func startQuery(_ text: String, token: UUID) {
+        let scopes = Self.searchScopes(policy)
+        // An empty scope list would search the whole Mac.
+        guard !scopes.isEmpty else {
+            work = Task { [weak self] in await self?.complete([], token: token) }
+            return
+        }
         let query = NSMetadataQuery()
         // Wildcards in the user's input are literal, not Spotlight pattern operators.
         query.predicate = NSPredicate(format: "%K CONTAINS[cd] %@", NSMetadataItemFSNameKey, text)
-        query.searchScopes = [policy.home.path]
-        query.sortDescriptors = [NSSortDescriptor(key: NSMetadataItemFSNameKey, ascending: true)]
+        query.searchScopes = scopes
+        // Recently changed files first, so the inspection limit drops old files, not late names.
+        query.sortDescriptors = [NSSortDescriptor(key: NSMetadataItemFSContentChangeDateKey, ascending: false)]
         self.query = query
         observers.append(NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidFinishGathering,
                                                                 object: query, queue: .main) { [weak self] _ in

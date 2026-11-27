@@ -36,6 +36,7 @@ struct LaunchaRow: Identifiable, Equatable {
         case .clipbawd, .chatta, .calculation: nil
         }
     }
+    var isFile: Bool { if case .file = kind { true } else { false } }
     /// Secondary text: the folder of a file, with `~` for the home folder, or the
     /// description of a micro-app, or why a micro-app file does not work.
     var detail: String
@@ -218,6 +219,11 @@ final class LaunchaModel {
     @ObservationIgnored private let loadLowkeySites: () -> [LowkeySite]
     @ObservationIgnored private var history = LaunchHistory()
     @ObservationIgnored private var spotlightQuery: String?
+    /// The user put the selection on a file (⌘↓, arrows): it stays on files while the query changes.
+    @ObservationIgnored private var followsFiles = false
+    /// The last finished file results, shown narrowed to the current query until Spotlight
+    /// answers it, so file rows do not vanish on every keystroke.
+    @ObservationIgnored private var pendingFiles: [LaunchaFileResult] = []
     @ObservationIgnored private var scanSerial = 0
     @ObservationIgnored private var appliedScan = 0
     @ObservationIgnored private var historySerial = 0
@@ -268,6 +274,7 @@ final class LaunchaModel {
         isOpen = true
         generation += 1
         isExplainingConsent = false
+        followsFiles = false
         query = ""
         selection = 0
         lowkeySites = loadLowkeySites()
@@ -296,6 +303,7 @@ final class LaunchaModel {
         refreshLoop = nil
         stopSpotlight()
         isExplainingConsent = false
+        followsFiles = false
         query = ""
         if !rows.isEmpty {
             rows = []
@@ -319,10 +327,32 @@ final class LaunchaModel {
     func moveSelection(by delta: Int) {
         guard !rows.isEmpty else { return }
         selection = PickerSelection.move(selection, by: delta, count: rows.count) ?? 0
+        followsFiles = selectedRow?.isFile == true
+    }
+
+    private var firstFileIndex: Int? { rows.firstIndex(where: \.isFile) }
+
+    /// ⌘↓ can do something: there is a query, and the first row is not already a file.
+    var canJumpToFiles: Bool {
+        !rows.isEmpty && firstFileIndex != 0 && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// ⌘↓: select the first file and keep the selection on files while typing. Without files
+    /// yet, it starts the file search; the selection moves to the first file when it arrives.
+    func selectFirstFile() {
+        guard isOpen, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        followsFiles = true
+        if let index = firstFileIndex {
+            selection = index
+        } else {
+            recompute(keepSelection: true)
+        }
     }
 
     func select(_ id: LaunchaRow.ID) {
-        if let index = rows.firstIndex(where: { $0.id == id }) { selection = index }
+        guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
+        selection = index
+        followsFiles = rows[index].isFile
     }
 
     /// Opens the selected row, or reveals it in Finder. The panel closes first.
@@ -474,10 +504,11 @@ final class LaunchaModel {
         spotlightQuery = nil
         services.spotlight.cancel()
         spotlight = LaunchaSpotlight.State()
+        pendingFiles = []
     }
 
-    /// Rebuilds the rows for the current query. Starts Spotlight only when a non-empty
-    /// query matches no app, and cancels it as soon as an app matches.
+    /// Rebuilds the rows for the current query: apps first, then files from Spotlight
+    /// (see `wantsFiles`). Cancels Spotlight as soon as the query no longer wants files.
     private func recompute(keepSelection: Bool) {
         guard isOpen else { return }
         let previous = keepSelection ? selectedRow?.id : nil
@@ -492,23 +523,26 @@ final class LaunchaModel {
                                      running: running, runningOrder: appSwitching ? runningApps : .any)
         let matches = LaunchaSearch.ranked(for: trimmed, in: entries, ranking: ranking, now: Date(), candidate: \.candidate)
         let appRows = matches.map { $0.row(microFolder: microFolder ?? home) }
-        // A query without letters or digits lists every app, so it never reaches Spotlight
-        // unless the index is empty.
-        let wantsFiles = !trimmed.isEmpty && hasIndex && appRows.isEmpty
-        var nextRows: [LaunchaRow]
-        if wantsFiles {
+        if trimmed.isEmpty { followsFiles = false }
+        var nextRows = appRows
+        if wantsFiles(trimmed, appsMatch: !appRows.isEmpty) {
             if spotlightQuery != trimmed {
+                // Finished results become the base; while a search is still running, keep the older base.
+                if spotlight.status != .searching && spotlight.status != .idle { pendingFiles = spotlight.files }
                 spotlightQuery = trimmed
                 spotlight = LaunchaSpotlight.State()
                 services.spotlight.search(trimmed)
             }
-            nextRows = spotlight.files.map { file in
+            let files = spotlight.status == .searching || spotlight.status == .idle
+                ? pendingFiles.filter { Self.fileName($0.url, contains: trimmed) }
+                : spotlight.files
+            // Files go below apps, so the best app stays selected while they arrive.
+            nextRows += files.map { file in
                 LaunchaRow(id: "file:" + file.url.path, kind: .file(file.url), name: file.name,
                            detail: displayFolder(of: file.url))
             }
-        } else {
-            if spotlightQuery != nil { stopSpotlight() }
-            nextRows = appRows
+        } else if spotlightQuery != nil {
+            stopSpotlight()
         }
         // A calculation or a conversion comes first, above the apps or files that match the same text.
         if calculator, let value = Calculator.evaluate(trimmed) {
@@ -523,12 +557,33 @@ final class LaunchaModel {
             rowsVersion += 1
         }
         let nextSelection: Int
-        if let previous, let index = rows.firstIndex(where: { $0.id == previous }) {
+        if let previous, let index = rows.firstIndex(where: { $0.id == previous }), !followsFiles || rows[index].isFile {
             nextSelection = index
+        } else if followsFiles, let firstFile = firstFileIndex {
+            nextSelection = firstFile
         } else {
             nextSelection = 0
         }
         if selection != nextSelection { selection = nextSelection }
+    }
+
+    /// Minimum query length that searches files while apps also match; shorter queries
+    /// match too much of the home folder to be worth a Spotlight query per keystroke.
+    static let filesBesideAppsMinLength = 3
+
+    /// Files are searched when no app matches, while the selection follows files, or below
+    /// the apps for a longer query. A query without letters or digits lists every app, so it
+    /// never searches files on its own.
+    private func wantsFiles(_ trimmed: String, appsMatch: Bool) -> Bool {
+        guard !trimmed.isEmpty, hasIndex else { return false }
+        guard appsMatch, !followsFiles else { return true }
+        return trimmed.count >= Self.filesBesideAppsMinLength
+            && trimmed.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
+    }
+
+    /// The local counterpart of the Spotlight predicate (`FSName CONTAINS[cd]`).
+    static func fileName(_ url: URL, contains text: String) -> Bool {
+        url.lastPathComponent.range(of: text, options: [.caseInsensitive, .diacriticInsensitive]) != nil
     }
 
     private func displayFolder(of url: URL) -> String {

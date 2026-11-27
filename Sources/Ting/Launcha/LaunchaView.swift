@@ -61,8 +61,9 @@ private struct LaunchaCard: View {
             }
             notices
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 10)
-            ShortcutFooter([.init("↩", "open"), .init("⌘↩", "reveal"),
-                            .init("⌘⇧K", "shortcut"), .init("esc", "pull up")],
+            ShortcutFooter([.init("↩", "open"), .init("⌘↩", "reveal")]
+                            + (model.canJumpToFiles ? [.init("⌘↓", "files")] : [])
+                            + [.init("⌘⇧K", "shortcut"), .init("esc", "pull up")],
                            palette: TingPickerStyle.palette,
                            settingsHelp: "Settings · ⌘,",
                            onSettings: onOpenSettings)

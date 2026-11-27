@@ -12,12 +12,14 @@ extension Notification.Name {
 }
 
 /// A `BobukPanel`: it closes on focus loss, Esc and ⌘W, sends ⌘C/⌘V/⌘X/⌘A/⌘Z to the field by
-/// the Latin layout and swallows other ⌘ shortcuts (⌘Q). launcha adds ⇧⌘K and ⌘↩.
+/// the Latin layout and swallows other ⌘ shortcuts (⌘Q). launcha adds ⇧⌘K, ⌘↩ and ⌘↓.
 final class LaunchaPanel: BobukPanel {
     /// ⌘↩: show the selected result in Finder.
     var onReveal: (() -> Void)?
     /// List navigation must keep working when Tab moves focus away from the search field.
     var onMove: ((Int) -> Void)?
+    /// ⌘↓: select the first file below the apps.
+    var onJumpToFiles: (() -> Void)?
     var onEditShortcut: (() -> Void)?
     /// ⌘,: open Settings.
     var onOpenSettings: (() -> Void)?
@@ -42,8 +44,19 @@ final class LaunchaPanel: BobukPanel {
         }
     }
 
+    /// ⌘↓ jumps to the first file. In the one-line search field it would only move the caret to the end.
+    static func isJumpToFiles(keyCode: UInt16, flags: NSEvent.ModifierFlags, composing: Bool) -> Bool {
+        !composing && keyCode == VirtualKey.down && flags.intersection([.command, .shift, .option, .control]) == [.command]
+    }
+
     override func sendEvent(_ event: NSEvent) {
         if (event.type == .keyDown || event.type == .flagsChanged), onRecordShortcut?(event) == true { return }
+        if event.type == .keyDown, let onJumpToFiles,
+           Self.isJumpToFiles(keyCode: event.keyCode, flags: event.modifierFlags,
+                              composing: KeyEquivalent.isComposing(in: self)) {
+            onJumpToFiles()
+            return
+        }
         if event.type == .keyDown, let onMove,
            let delta = Self.navigationDelta(keyCode: event.keyCode, flags: event.modifierFlags,
                                            composing: KeyEquivalent.isComposing(in: self)) {
@@ -250,6 +263,7 @@ final class LaunchaController: NSObject {
         }
         panel.onReveal = { [weak self] in self?.activate(reveal: true) }
         panel.onMove = { [weak self] delta in self?.model.moveSelection(by: delta) }
+        panel.onJumpToFiles = { [weak self] in self?.model.selectFirstFile() }
         panel.onEditShortcut = { [weak self] in self?.editShortcut() }
         panel.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
         observers.append(NotificationCenter.default.addObserver(

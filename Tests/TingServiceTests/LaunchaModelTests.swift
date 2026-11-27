@@ -123,7 +123,7 @@ final class LaunchaModelTests: XCTestCase {
         }
     }
 
-    func testEmptyQueryRanksAppsAndSpotlightOnlyWithoutAppMatches() async throws {
+    func testEmptyQueryRanksAppsAndFilesFollowApps() async throws {
         let apps = root.appendingPathComponent("Applications")
         try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
         let alpha = try app("Alpha", id: "io.bobuk.Alpha", in: apps)
@@ -142,14 +142,33 @@ final class LaunchaModelTests: XCTestCase {
         XCTAssertEqual(model.rows.last?.url?.path, alpha.path)
         XCTAssertTrue(fixture.calls.all.isEmpty)
 
-        model.query = "alp"
+        model.query = "al"
         XCTAssertEqual(model.rows.map(\.name), ["Alpha"])
-        XCTAssertTrue(fixture.calls.all.isEmpty, "Spotlight must not run while an app matches")
+        XCTAssertTrue(fixture.calls.all.isEmpty, "a short query that matches an app does not search files")
 
+        // A longer query also searches files; they go below the app, which stays selected.
+        model.query = "alp"
+        try await wait("files below apps") { model.rows.count == 2 }
+        XCTAssertEqual(fixture.calls.all, ["alp"])
+        XCTAssertEqual(model.rows.map(\.name), ["Alpha", "zeta-note.txt"])
+        XCTAssertEqual(model.rows.last?.kind, .file(note))
+        XCTAssertEqual(model.selectedRow?.name, "Alpha")
+        // ⌘↓ jumps past the apps to the first file.
+        XCTAssertTrue(model.canJumpToFiles)
+        model.selectFirstFile()
+        XCTAssertEqual(model.selectedRow?.kind, .file(note))
+
+        model.moveSelection(by: -1)
+        XCTAssertEqual(model.selectedRow?.name, "Alpha")
+
+        // The last results, narrowed to the new query, stay until Spotlight answers it.
         model.query = "zeta"
-        XCTAssertTrue(model.rows.isEmpty)
-        try await wait("files") { model.rows.first?.kind == .file(note) }
-        XCTAssertEqual(fixture.calls.all, ["zeta"])
+        XCTAssertEqual(model.rows.map(\.kind), [.file(note)])
+        XCTAssertEqual(model.spotlight.status, .searching)
+        try await wait("files") { model.spotlight.status == .results }
+        XCTAssertEqual(model.rows.map(\.kind), [.file(note)])
+        XCTAssertFalse(model.canJumpToFiles, "files alone need no jump")
+        XCTAssertEqual(fixture.calls.all, ["alp", "zeta"])
         XCTAssertEqual(model.rows.compactMap { $0.url?.path }, [note.path])
         XCTAssertEqual(model.rows.first?.detail, "~/Projects")
         XCTAssertTrue(model.showsConsentNotice, "Protected folders were skipped; the search is not complete")
@@ -158,6 +177,61 @@ final class LaunchaModelTests: XCTestCase {
         model.query = "be"
         XCTAssertEqual(model.rows.map(\.name), ["Beta"])
         XCTAssertEqual(model.spotlight.status, .idle)
+        model.close()
+    }
+
+    func testSelectionStaysOnFilesWhileTypingAfterCommandDown() async throws {
+        let apps = root.appendingPathComponent("Applications")
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        _ = try app("Alpha", id: "io.bobuk.Alpha", in: apps)
+        let report = root.appendingPathComponent("Projects/alpha-report.txt")
+        try FileManager.default.createDirectory(at: report.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: report)
+        let fixture = try makeModel(files: [report])
+        let model = fixture.model
+        model.open()
+        try await wait("index") { model.hasIndex }
+
+        model.query = "alp"
+        try await wait("files below apps") { model.rows.count == 2 }
+        XCTAssertEqual(model.selectedRow?.name, "Alpha")
+        model.selectFirstFile()
+        XCTAssertEqual(model.selectedRow?.kind, .file(report))
+
+        // Typing more keeps the selection on files, with no keystroke where an app is selected.
+        model.query = "alph"
+        XCTAssertEqual(model.selectedRow?.kind, .file(report))
+        try await wait("new results") { model.spotlight.status == .results }
+        XCTAssertEqual(model.selectedRow?.kind, .file(report))
+
+        // Files are searched below apps even for a short query while the selection follows them.
+        model.query = "al"
+        XCTAssertEqual(model.selectedRow?.kind, .file(report))
+        try await wait("short query results") { model.spotlight.status == .results }
+        XCTAssertEqual(fixture.calls.all, ["alp", "alph", "al"])
+
+        // Moving onto an app ends it: the next query selects the best app again.
+        model.moveSelection(by: -1)
+        model.query = "alp"
+        XCTAssertEqual(model.selectedRow?.name, "Alpha")
+        try await wait("results") { model.spotlight.status == .results }
+        XCTAssertEqual(model.selectedRow?.name, "Alpha")
+
+        // ⌘↓ on a short query that only lists apps starts the file search and selects the first file.
+        model.query = "a"
+        XCTAssertEqual(model.selectedRow?.name, "Alpha")
+        XCTAssertTrue(model.canJumpToFiles)
+        XCTAssertFalse(model.rows.contains(where: \.isFile), "a short query alone does not search files")
+        model.selectFirstFile()
+        try await wait("file search on ⌘↓") { model.selectedRow?.kind == .file(report) }
+        XCTAssertEqual(fixture.calls.all.last, "a")
+
+        // A new session starts on apps.
+        model.selectFirstFile()
+        model.close()
+        model.open()
+        model.query = "alp"
+        XCTAssertEqual(model.selectedRow?.name, "Alpha")
         model.close()
     }
 
@@ -387,7 +461,6 @@ final class LaunchaModelTests: XCTestCase {
 
         model.query = "json"
         XCTAssertEqual(model.rows.map(\.name), ["broken-json", "Format JSON"])
-        XCTAssertTrue(fixture.calls.all.isEmpty, "a micro-app match keeps Spotlight off")
         XCTAssertFalse(model.rows.first?.isWorking ?? true)
         XCTAssertTrue(model.rows.first?.detail.hasPrefix("Not working: line ") ?? false)
         XCTAssertEqual(model.rows.last?.detail, "Pretty-print JSON.")
