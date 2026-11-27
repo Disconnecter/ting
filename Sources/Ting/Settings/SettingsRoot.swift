@@ -116,6 +116,7 @@ struct SettingsRoot: View {
                         case .activation: GeneralSettings(activation: true)
                         case .bindings: BindingsSettings()
                         case .windows: WindowSettingsView()
+                        case .schedule: ScheduleSettingsView()
                         case .clipbawd: ClipbawdSettingsView(searchTarget: target)
                         case .chatta: ChattaSettingsView()
                         case .microApps:
@@ -204,6 +205,7 @@ private extension SettingsPage {
         case .activation: "Leader keys, menu timing and launcha."
         case .bindings: "Choose what each key sequence opens."
         case .windows: "Move and resize the focused window."
+        case .schedule: "Upcoming events, availability and calendar selection."
         case .clipbawd: "Choose what to keep and when to forget it."
         case .chatta: "Talk to a local ACP agent or let it configure Ting."
         case .microApps: "Your tools, diagnostics and permissions."

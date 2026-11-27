@@ -2,7 +2,7 @@ import Foundation
 
 /// A Ting window a binding can open.
 public enum TingPanel: String, Equatable, Sendable, Codable, CaseIterable {
-    case launcha, clipbawd, chatta
+    case launcha, clipbawd, schedule, chatta
 }
 
 /// One binding: a key and what it does.
@@ -15,7 +15,7 @@ public struct Item: Equatable, Sendable, Codable {
         case url(String)
         /// A micro-app id, e.g. "format-json". The micro-app does not have to be loaded.
         case micro(String)
-        /// A Ting window: launcha, clipbawd or chatta.
+        /// A Ting window: launcha, clipbawd, schedule or chatta.
         case open(TingPanel)
         /// Move or resize the focused macOS window.
         case window(WindowCommand)
@@ -311,12 +311,48 @@ public struct ChattaSettings: Equatable, Sendable, Codable {
     }
 }
 
+/// Schedule settings: nil means every current and future calendar; an array is an explicit selection.
+/// JSON: {"calendars": [EventKit calendar identifiers] or null}.
+public struct ScheduleSettings: Equatable, Sendable, Codable {
+    private var calendarIDs: [String]?
+    public var calendars: [String]? {
+        get { calendarIDs }
+        set { calendarIDs = newValue.map(Self.normalized) }
+    }
+
+    public init(calendars: [String]? = nil) {
+        calendarIDs = calendars.map(Self.normalized)
+    }
+
+    private enum CodingKeys: String, CodingKey { case calendars }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.calendars), !(try container.decodeNil(forKey: .calendars)) {
+            calendarIDs = Self.normalized(try container.decode([String].self, forKey: .calendars))
+        } else {
+            calendarIDs = nil
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let calendarIDs {
+            try container.encode(calendarIDs, forKey: .calendars)
+        } else {
+            try container.encodeNil(forKey: .calendars)
+        }
+    }
+
+    private static func normalized(_ ids: [String]) -> [String] { Array(Set(ids)).sorted() }
+}
+
 /// The whole config file (`~/.config/ting/config.json`).
 /// JSON keys: "version", "leader" and "alternateLeader" (Hotkey strings or null), "showDelay", "unknownKey",
 /// "appearance", "launchAtLogin", "showMenuBarIcon", "showPanelHeader", "playSound",
 /// "sound", "soundVolume", "launcha" (`LaunchaSettings`), "clipbawd" (`ClipbawdSettings`),
-/// "microApps" (`MicroAppsSettings`), "chatta" (`ChattaSettings`), "windowManagement" (`WindowManagementSettings`),
-/// "appHotkeys", "microHotkeys", "items".
+/// "microApps" (`MicroAppsSettings`), "schedule" (`ScheduleSettings`), "chatta" (`ChattaSettings`),
+/// "windowManagement" (`WindowManagementSettings`), "appHotkeys", "microHotkeys", "items".
 /// Every key is optional when decoding; a missing key takes the default below.
 public struct Config: Equatable, Sendable, Codable {
     public static let currentVersion = 1
@@ -355,6 +391,8 @@ public struct Config: Equatable, Sendable, Codable {
     public var clipbawd: ClipbawdSettings = ClipbawdSettings()
     /// Micro-apps settings. Older files without "microApps" get the defaults.
     public var microApps: MicroAppsSettings = MicroAppsSettings()
+    /// My Schedule calendar selection. Older files without "schedule" show every calendar.
+    public var schedule: ScheduleSettings = ScheduleSettings()
     /// Chatta settings. Older files without "chatta" get the defaults.
     public var chatta: ChattaSettings = ChattaSettings()
     /// Focused-window commands, gaps and direct hotkeys. Older files get the defaults.
@@ -385,7 +423,10 @@ public struct Config: Equatable, Sendable, Codable {
     }
 
     private enum ConfigCodingKeys: String, CodingKey {
-        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme, launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume, launcha, clipbawd, microApps, chatta, windowManagement, appHotkeys, microHotkeys, items
+        case version, leader, alternateLeader, showDelay, unknownKey, appearance, theme
+        case launchAtLogin, showMenuBarIcon, showPanelHeader, playSound, sound, soundVolume
+        case launcha, clipbawd, microApps, schedule, chatta, windowManagement
+        case appHotkeys, microHotkeys, items
     }
 
     public init(from decoder: Decoder) throws {
@@ -409,6 +450,7 @@ public struct Config: Equatable, Sendable, Codable {
         launcha = try container.decodeIfPresent(LaunchaSettings.self, forKey: .launcha) ?? defaults.launcha
         clipbawd = try container.decodeIfPresent(ClipbawdSettings.self, forKey: .clipbawd) ?? defaults.clipbawd
         microApps = try container.decodeIfPresent(MicroAppsSettings.self, forKey: .microApps) ?? defaults.microApps
+        schedule = try container.decodeIfPresent(ScheduleSettings.self, forKey: .schedule) ?? defaults.schedule
         chatta = try container.decodeIfPresent(ChattaSettings.self, forKey: .chatta) ?? defaults.chatta
         windowManagement = try container.decodeIfPresent(WindowManagementSettings.self, forKey: .windowManagement)
             ?? defaults.windowManagement
@@ -439,6 +481,7 @@ public struct Config: Equatable, Sendable, Codable {
         try container.encode(launcha, forKey: .launcha)
         try container.encode(clipbawd, forKey: .clipbawd)
         try container.encode(microApps, forKey: .microApps)
+        try container.encode(schedule, forKey: .schedule)
         try container.encode(chatta, forKey: .chatta)
         try container.encode(windowManagement, forKey: .windowManagement)
         try container.encode(appHotkeys, forKey: .appHotkeys)

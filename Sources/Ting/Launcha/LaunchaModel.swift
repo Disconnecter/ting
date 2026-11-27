@@ -15,6 +15,7 @@ struct LaunchaRow: Identifiable, Equatable {
         case app(URL)
         case file(URL)
         case clipbawd
+        case schedule
         case chatta
         case lowkeySite(URL)
         /// A micro-app or a broken micro-app file. A start goes to the micro-app flow.
@@ -33,7 +34,7 @@ struct LaunchaRow: Identifiable, Equatable {
     var url: URL? {
         switch kind {
         case .app(let url), .file(let url), .lowkeySite(let url), .micro(let url, _, _): url
-        case .clipbawd, .chatta, .calculation: nil
+        case .clipbawd, .schedule, .chatta, .calculation: nil
         }
     }
     var isFile: Bool { if case .file = kind { true } else { false } }
@@ -74,6 +75,7 @@ private enum LaunchaEntry {
     case micro(LaunchaMicroCandidate)
     case site(LowkeySite)
     case clipbawd
+    case schedule
     case chatta
 
     var candidate: LaunchaCandidate {
@@ -82,6 +84,8 @@ private enum LaunchaEntry {
         case .micro(let micro): micro.candidate
         case .site(let site): site.candidate
         case .clipbawd: LaunchaCandidate(id: "ting:clipbawd", name: "Clipbawd", target: .url("ting:clipbawd"))
+        case .schedule: LaunchaCandidate(id: "ting:schedule", name: "My Schedule", target: .url("ting:schedule"),
+                                         searchNames: ["calendar", "events", "agenda", "availability", "daily plan", "today"])
         case .chatta: LaunchaCandidate(id: "ting:chatta", name: "Chatta", target: .url("ting:chatta"),
                                        searchNames: ["chat", "agent", "ai"])
         }
@@ -103,6 +107,9 @@ private enum LaunchaEntry {
         case .clipbawd:
             kind = .clipbawd
             detail = "Clipboard history"
+        case .schedule:
+            kind = .schedule
+            detail = "Upcoming events and availability"
         case .chatta:
             kind = .chatta
             detail = "AI agent chat"
@@ -163,9 +170,13 @@ final class LaunchaModel {
     /// Copies the value of a calculation, after the panel closed.
     @ObservationIgnored var onCopyValue: ((String) -> Void)?
     @ObservationIgnored var onOpenClipbawd: (() -> Void)?
+    @ObservationIgnored var onOpenSchedule: (() -> Void)?
     @ObservationIgnored var onOpenChatta: (() -> Void)?
     var clipbawdEnabled = false {
         didSet { if clipbawdEnabled != oldValue, isOpen { recompute(keepSelection: true) } }
+    }
+    var scheduleEnabled = false {
+        didSet { if scheduleEnabled != oldValue, isOpen { recompute(keepSelection: true) } }
     }
     var chattaEnabled = false {
         didSet { if chattaEnabled != oldValue, isOpen { recompute(keepSelection: true) } }
@@ -375,6 +386,9 @@ final class LaunchaModel {
         case .clipbawd:
             if !reveal { onOpenClipbawd?() }
             return nil
+        case .schedule:
+            if !reveal { onOpenSchedule?() }
+            return nil
         case .chatta:
             if !reveal { onOpenChatta?() }
             return nil
@@ -541,6 +555,7 @@ final class LaunchaModel {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var entries: [LaunchaEntry] = []
         if clipbawdEnabled { entries.append(.clipbawd) }
+        if scheduleEnabled { entries.append(.schedule) }
         if chattaEnabled { entries.append(.chatta) }
         entries.append(contentsOf: microApps.map(LaunchaEntry.micro))
         entries.append(contentsOf: lowkeySites.map(LaunchaEntry.site))

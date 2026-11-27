@@ -121,6 +121,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 problems.addItem(note(problem, symbol: "exclamationmark.triangle"))
             }
         }
+        let schedule = item("Open My Schedule", #selector(openSchedule))
+        if model.isPaused { schedule.action = nil }
+        menu.addItem(schedule)
         let chatta = item("Open Chatta", #selector(openChatta))
         if let hotkey = model.config.chatta.hotkey, model.chattaHotkeyProblem == nil {
             chatta.title = "Open Chatta (\(hotkey.display))"
@@ -193,6 +196,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
     @objc private func openClipbawd() {
         DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openClipbawd() } }
+    }
+    @objc private func openSchedule() {
+        DispatchQueue.main.async { MainActor.assumeIsolated { self.model.openSchedule() } }
     }
     @objc private func openChatta() { model.openChatta() }
     @objc private func configureWithChatta() { model.openChatta(mode: .configure) }

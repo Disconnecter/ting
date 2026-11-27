@@ -60,6 +60,7 @@ struct BindingsSettings: View {
                     Button("Application…", action: addApplication)
                     Button("URL", action: addURL)
                     Button("Clipbawd") { add(.open("", "Clipboard history", .clipbawd)) }
+                    Button("My Schedule") { add(.open("", "My Schedule", .schedule)) }
                     Button("Chatta") { add(.open("", "Chatta", .chatta)) }
                     Button("launcha") { add(.open("", "Search", .launcha)) }
                     Menu("Window") {
