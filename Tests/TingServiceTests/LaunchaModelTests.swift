@@ -208,7 +208,8 @@ final class LaunchaModelTests: XCTestCase {
         model.query = "al"
         XCTAssertEqual(model.selectedRow?.kind, .file(report))
         try await wait("short query results") { model.spotlight.status == .results }
-        XCTAssertEqual(fixture.calls.all, ["alp", "alph", "al"])
+        // `alph` is answered from the complete `alp` result; the broader `al` asks Spotlight.
+        XCTAssertEqual(fixture.calls.all, ["alp", "al"])
 
         // Moving onto an app ends it: the next query selects the best app again.
         model.moveSelection(by: -1)
