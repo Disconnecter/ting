@@ -4,7 +4,7 @@ import TingCore
 
 @MainActor
 protocol WindowManaging: AnyObject {
-    func run(_ command: WindowCommand, gap: Double) throws
+    func run(_ command: WindowCommand, gap: Double) async throws
 }
 
 enum WindowManagementError: LocalizedError, Equatable {
@@ -47,63 +47,93 @@ enum WindowCoordinates {
 }
 
 /// Moves the focused window through the public macOS Accessibility API.
+///
+/// Only the permission check, the frontmost app and the display layout are read on the main
+/// thread. Every Accessibility call runs in `WindowAccessibilityWorker`, off the main thread and
+/// one command at a time, so an app that does not answer can never freeze Ting's panels.
 @MainActor
 final class WindowManager: WindowManaging {
+    private let worker = WindowAccessibilityWorker()
+
+    func run(_ command: WindowCommand, gap: Double) async throws {
+        guard AXIsProcessTrusted() else { throw WindowManagementError.accessibility }
+        guard let app = NSWorkspace.shared.frontmostApplication else {
+            throw WindowManagementError.noFocusedApplication
+        }
+        let displays = NSScreen.screens.map { WindowDisplay(frame: $0.frame, visibleFrame: $0.visibleFrame) }
+        try await worker.run(command, gap: gap, pid: app.processIdentifier, displays: displays)
+    }
+}
+
+/// A display as AppKit reports it, copied on the main thread.
+struct WindowDisplay: Sendable {
+    var frame: CGRect
+    var visibleFrame: CGRect
+}
+
+/// Runs the Accessibility calls of window commands off the main thread, one at a time, and keeps
+/// the frames that `restore` returns to.
+actor WindowAccessibilityWorker {
     private struct WindowIdentity: Hashable {
         var pid: pid_t
         var elementHash: Int
     }
 
-    private var restoreFrames: [WindowIdentity: CGRect] = [:]
+    /// Seconds an unresponsive app may take to answer one Accessibility call.
+    static let messagingTimeout: Float = 1
+    /// Saved frames kept for `restore`; beyond this the oldest are forgotten.
+    static let restoreLimit = 64
 
-    func run(_ command: WindowCommand, gap: Double) throws {
-        guard AXIsProcessTrusted() else { throw WindowManagementError.accessibility }
-        guard let app = NSWorkspace.shared.frontmostApplication else {
-            throw WindowManagementError.noFocusedApplication
-        }
-        let application = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(application, 1)
+    private var restoreFrames: [WindowIdentity: CGRect] = [:]
+    private var restoreOrder: [WindowIdentity] = []
+
+    func run(_ command: WindowCommand, gap: Double, pid: pid_t, displays: [WindowDisplay]) throws {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, Self.messagingTimeout)
         guard let window = element(application, kAXFocusedWindowAttribute)
                 ?? element(application, kAXMainWindowAttribute) else {
             throw WindowManagementError.noFocusedWindow
         }
-        let identity = WindowIdentity(pid: app.processIdentifier, elementHash: Int(CFHash(window)))
+        AXUIElementSetMessagingTimeout(window, Self.messagingTimeout)
+        let identity = WindowIdentity(pid: pid, elementHash: Int(CFHash(window)))
         let accessibilityFrame = try frame(of: window)
-        let screens = NSScreen.screens
-        guard let primary = screens.first(where: { $0.frame.origin == .zero }) ?? screens.first else {
+        guard let primary = displays.first(where: { $0.frame.origin == .zero }) ?? displays.first else {
             throw WindowManagementError.operationFailed
         }
-        let current = WindowCoordinates.appKitRect(from: accessibilityFrame, primaryTop: primary.frame.maxY)
-        guard let screen = screen(containing: current, among: screens) else {
+        let primaryTop = primary.frame.maxY
+        let current = WindowCoordinates.appKitRect(from: accessibilityFrame, primaryTop: primaryTop)
+        guard let screenIndex = displayIndex(containing: current, among: displays) else {
             throw WindowManagementError.operationFailed
         }
+        let screen = displays[screenIndex]
 
         if command == .restore {
             guard let original = restoreFrames[identity] else { throw WindowManagementError.noRestoreFrame }
-            try setFrame(original, of: window, primaryTop: primary.frame.maxY)
-            restoreFrames[identity] = nil
+            try setFrame(original, of: window, primaryTop: primaryTop)
+            forget(identity)
             return
         }
 
         let hadRestoreFrame = restoreFrames[identity] != nil
-        if !hadRestoreFrame { restoreFrames[identity] = current }
+        if !hadRestoreFrame { remember(current, for: identity) }
         do {
             let destination: CGRect
             switch command {
             case .previousDisplay, .nextDisplay:
-                guard screens.count > 1 else { throw WindowManagementError.noOtherDisplay }
-                let ordered = screens.sorted {
-                    if $0.frame.minX != $1.frame.minX { return $0.frame.minX < $1.frame.minX }
-                    return $0.frame.maxY > $1.frame.maxY
+                guard displays.count > 1 else { throw WindowManagementError.noOtherDisplay }
+                let ordered = displays.indices.sorted {
+                    let lhs = displays[$0].frame, rhs = displays[$1].frame
+                    if lhs.minX != rhs.minX { return lhs.minX < rhs.minX }
+                    return lhs.maxY > rhs.maxY
                 }
-                guard let index = ordered.firstIndex(where: { $0 === screen }) else {
+                guard let index = ordered.firstIndex(of: screenIndex) else {
                     throw WindowManagementError.operationFailed
                 }
                 let offset = command == .previousDisplay ? -1 : 1
-                let nextIndex = (index + offset + ordered.count) % ordered.count
+                let next = displays[ordered[(index + offset + ordered.count) % ordered.count]]
                 destination = cgRect(WindowGeometry.movedFrame(
                     windowRect(current), from: windowRect(screen.visibleFrame),
-                    to: windowRect(ordered[nextIndex].visibleFrame), gap: gap))
+                    to: windowRect(next.visibleFrame), gap: gap))
             case .restore:
                 throw WindowManagementError.noRestoreFrame
             default:
@@ -113,11 +143,24 @@ final class WindowManager: WindowManaging {
                 }
                 destination = cgRect(calculated)
             }
-            try setFrame(destination, of: window, primaryTop: primary.frame.maxY)
+            try setFrame(destination, of: window, primaryTop: primaryTop)
         } catch {
-            if !hadRestoreFrame { restoreFrames[identity] = nil }
+            if !hadRestoreFrame { forget(identity) }
             throw error
         }
+    }
+
+    private func remember(_ frame: CGRect, for identity: WindowIdentity) {
+        restoreFrames[identity] = frame
+        restoreOrder.append(identity)
+        while restoreOrder.count > Self.restoreLimit {
+            restoreFrames[restoreOrder.removeFirst()] = nil
+        }
+    }
+
+    private func forget(_ identity: WindowIdentity) {
+        restoreFrames[identity] = nil
+        restoreOrder.removeAll { $0 == identity }
     }
 
     private func frame(of window: AXUIElement) throws -> CGRect {
@@ -172,8 +215,8 @@ final class WindowManager: WindowManaging {
         return unsafeDowncast(value, to: AXUIElement.self)
     }
 
-    private func screen(containing window: CGRect, among screens: [NSScreen]) -> NSScreen? {
-        screens.max { intersectionArea(window, $0.frame) < intersectionArea(window, $1.frame) }
+    private func displayIndex(containing window: CGRect, among displays: [WindowDisplay]) -> Int? {
+        displays.indices.max { intersectionArea(window, displays[$0].frame) < intersectionArea(window, displays[$1].frame) }
     }
 
     private func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {

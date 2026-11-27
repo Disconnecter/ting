@@ -752,14 +752,19 @@ final class AppModel {
         }
     }
 
-    /// Moves or resizes the focused window. Without Accessibility, the guide window explains it.
-    func runWindowCommand(_ command: WindowCommand) {
-        do {
-            try windowManager.run(command, gap: config.windowManagement.gap)
-        } catch WindowManagementError.accessibility {
-            accessibility.show()
-        } catch {
-            toast.show(error.localizedDescription)
+    /// Moves or resizes the focused window off the main thread. Without Accessibility, the guide
+    /// window explains it; other failures show a toast. Tests await the returned task.
+    @discardableResult
+    func runWindowCommand(_ command: WindowCommand) -> Task<Void, Never> {
+        let gap = config.windowManagement.gap
+        return Task { [weak self, windowManager] in
+            do {
+                try await windowManager.run(command, gap: gap)
+            } catch WindowManagementError.accessibility {
+                self?.accessibility.show()
+            } catch {
+                self?.toast.show(error.localizedDescription)
+            }
         }
     }
 }

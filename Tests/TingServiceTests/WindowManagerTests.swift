@@ -9,7 +9,7 @@ final class WindowManagerTests: XCTestCase {
         var calls: [(WindowCommand, Double)] = []
         var error: Error?
 
-        func run(_ command: WindowCommand, gap: Double) throws {
+        func run(_ command: WindowCommand, gap: Double) async throws {
             if let error { throw error }
             calls.append((command, gap))
         }
@@ -33,16 +33,16 @@ final class WindowManagerTests: XCTestCase {
         XCTAssertEqual(WindowCoordinates.accessibilityRect(from: appKit, primaryTop: 1080), accessibility)
     }
 
-    func testModelRunsACommandWithConfiguredGapAndHandlesPermission() throws {
+    func testModelRunsACommandWithConfiguredGapAndHandlesPermission() async throws {
         let manager = FakeWindowManager()
         let model = try model(windowManager: manager)
         model.update { $0.windowManagement.gap = 13 }
-        model.runWindowCommand(.topRightQuarter)
+        await model.runWindowCommand(.topRightQuarter).value
         XCTAssertEqual(manager.calls.map { $0.0 }, [.topRightQuarter])
         XCTAssertEqual(manager.calls.first?.1, 13)
 
         manager.error = WindowManagementError.accessibility
-        model.runWindowCommand(.leftHalf)
+        await model.runWindowCommand(.leftHalf).value
         XCTAssertEqual(manager.calls.map { $0.0 }, [.topRightQuarter])
     }
 
@@ -59,6 +59,8 @@ final class WindowManagerTests: XCTestCase {
         service.onRelease = { [weak model] in model?.hotkeyReleased($0) }
 
         XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.windowBase), .window(0))
+        XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.microBase), .micro(0), "Window ids stay below micro-app ids")
+        XCTAssertEqual(HotkeyService.Slot(rawValue: HotkeyService.Slot.windowBase - 1), .application(Int(HotkeyService.Slot.windowBase) - 4))
         XCTAssertEqual(service.hotkey(.window(0)), key("cmd+f12"))
         service.receive(.window(0), pressed: true)
         service.receive(.window(0), pressed: true)
