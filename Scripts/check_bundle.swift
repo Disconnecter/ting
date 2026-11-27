@@ -69,7 +69,11 @@ func entitlements(_ app: URL) -> String {
     process.waitUntilExit()
     return String(decoding: data, as: UTF8.self)
 }
-require(entitlements(appURL).contains("com.apple.security.automation.apple-events"), "the Apple Events entitlement is missing")
+let signedEntitlements = entitlements(appURL)
+require(signedEntitlements.contains("com.apple.security.automation.apple-events"), "the Apple Events entitlement is missing")
+// Without it the hardened runtime refuses Calendar access silently and macOS never asks.
+require(signedEntitlements.contains("com.apple.security.personal-information.calendars"),
+        "the Calendars entitlement is missing")
 
 // App icon.
 require(string("CFBundleIconFile") == "Icon", "unexpected app icon reference")

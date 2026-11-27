@@ -4,5 +4,8 @@
 <dict>
     <!-- Apple Events: the Finder and browser context of micro-apps (the hardened runtime needs it). -->
     <key>com.apple.security.automation.apple-events</key><true/>
+    <!-- Calendars: My Schedule reads events through EventKit. Without it the hardened runtime
+         refuses the access request silently, and macOS never shows its prompt. -->
+    <key>com.apple.security.personal-information.calendars</key><true/>
 </dict>
 </plist>

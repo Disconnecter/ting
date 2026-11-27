@@ -28,6 +28,12 @@ latest published version.
   it, and for Automation (Apple Events to Finder or a browser) only when an approved
   micro-app needs it, see below. Window commands only read and set the position and
   size of the focused window; they never read its contents or send key presses.
+- My Schedule asks for Calendar access (full access, the only kind that can read
+  events) when you click Allow Calendar Access. It only reads: it never creates,
+  changes or deletes events. It reads the calendars you select while its panel or
+  Settings loads them, keeps nothing on disk, and looks at event notes only to find
+  a known meeting link (Google Meet, Zoom, Teams and others). It opens such a link
+  only when you choose the event; other links in an event are never opened.
 - Bindings and settings are stored in `~/.config/ting/config.json`. Anyone who can
   write that file can make Ting open any app or URL when you press a binding, or
   bind a key to a micro-app id. `config.json` holds no code.
