@@ -107,7 +107,7 @@ nothing needs a restart. **Never** write the approvals and remembered values in
   `windowManagement` (`{"gap": 0, "shortcuts": []}`; `gap` is 0–64 points at display edges and
   between adjacent tiles; each shortcut has a `command` and a `hotkey`, see
   [Window management](#window-management)). The Clipbawd and Chatta hotkeys cannot match either
-  leader or another launcher hotkey. Clipbawd (while enabled), My Schedule and Chatta are also searchable by name in launcha.
+  leader or another launcher hotkey. Clipbawd (while enabled), My Schedule and Chatta are also searchable by name in launcha. My Schedule uses up/down to select events and Return to open a recognized meeting link found in the EventKit URL, location or notes; raw notes and event contents are not stored.
 - Approved micro-app templates can read `${clipboard[-1]}` (newest history entry), `${clipboard[-2]}`, etc. The snapshot is fixed at run start. Pass history to shell through `env:`; never interpolate it into code. Disabled/unavailable history, images, videos and missing entries fail explicitly. Files yield newline-separated paths. The headless runner has no session history.
 
 ### Settings and clipboard storage

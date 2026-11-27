@@ -18,7 +18,7 @@ struct ScheduleSettingsView: View {
                 case .fullAccess:
                     Button("Refresh Calendars") { model.schedule.refresh() }
                 }
-                Text("Ting reads event times, titles, locations and availability. It never changes events or stores their contents.")
+                Text("Ting reads event times, titles, locations and availability. Notes are inspected only to detect known meeting links. Ting never changes events or stores their contents.")
                     .font(.caption).foregroundStyle(.secondary)
                 if let error = model.schedule.model.error {
                     Text(error).font(.caption).foregroundStyle(Color.tingAmber)

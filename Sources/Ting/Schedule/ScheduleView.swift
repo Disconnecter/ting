@@ -7,11 +7,14 @@ struct ScheduleView: View {
     let onRefresh: () -> Void
     let onRequestAccess: () -> Void
     let onOpenPrivacy: () -> Void
+    let onSelect: (String) -> Void
+    let onJoin: (String) -> Void
     let onOpenSettings: () -> Void
 
     var body: some View {
         ScheduleCard(model: model, onRefresh: onRefresh, onRequestAccess: onRequestAccess,
-                     onOpenPrivacy: onOpenPrivacy, onOpenSettings: onOpenSettings)
+                     onOpenPrivacy: onOpenPrivacy, onSelect: onSelect, onJoin: onJoin,
+                     onOpenSettings: onOpenSettings)
             .padding(.top, 8)
     }
 }
@@ -21,6 +24,8 @@ private struct ScheduleCard: View {
     let onRefresh: () -> Void
     let onRequestAccess: () -> Void
     let onOpenPrivacy: () -> Void
+    let onSelect: (String) -> Void
+    let onJoin: (String) -> Void
     let onOpenSettings: () -> Void
 
     var body: some View {
@@ -42,7 +47,9 @@ private struct ScheduleCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             Rectangle().fill(Color.tingAmber.opacity(0.3)).frame(height: 1).padding(.top, 12)
             HStack(spacing: 10) {
-                ShortcutFooter([.init("⌘R", "refresh"), .init("esc", "close")], palette: TingPickerStyle.palette)
+                ShortcutFooter([.init("↑↓", "navigate"), .init("↩", "join"),
+                                .init("⌘R", "refresh"), .init("esc", "close")],
+                               palette: TingPickerStyle.palette)
                 Spacer(minLength: 0)
                 GlyphButton(.settings, label: "Schedule settings", help: "Schedule settings · ⌘,",
                             palette: TingPickerStyle.palette, width: 22, height: 22, glyphSize: 13,
@@ -81,7 +88,9 @@ private struct ScheduleCard: View {
                                 button: "Open Calendar Privacy", action: onOpenPrivacy)
             case .fullAccess:
                 ScheduleContent(plan: model.plan, now: model.now, hasCalendars: !model.calendars.isEmpty,
-                                hasSelection: model.selectedCalendarIDs?.isEmpty != true)
+                                hasSelection: model.selectedCalendarIDs?.isEmpty != true,
+                                selectedEventID: model.selectedEventID, message: model.message,
+                                onSelect: onSelect, onJoin: onJoin)
             }
         }
     }
@@ -113,6 +122,10 @@ private struct ScheduleContent: View {
     let now: Date
     let hasCalendars: Bool
     let hasSelection: Bool
+    let selectedEventID: String?
+    let message: String?
+    let onSelect: (String) -> Void
+    let onJoin: (String) -> Void
 
     private var shownDays: [ScheduleDay] {
         let nonempty = plan.days.filter { !$0.events.isEmpty || !$0.freeSlots.isEmpty }
@@ -122,6 +135,12 @@ private struct ScheduleContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             AvailabilityCard(availability: plan.availability, now: now)
+            if let message {
+                Label(message, systemImage: "exclamationmark.circle")
+                    .font(.system(size: 11.5)).foregroundStyle(Color.tingAmber)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
             if !hasCalendars {
                 Text("No calendars are available in macOS Calendar.")
                     .font(.system(size: 12)).foregroundStyle(Color.tingMuted)
@@ -131,15 +150,21 @@ private struct ScheduleContent: View {
                     .font(.system(size: 12)).foregroundStyle(Color.tingMuted)
                     .frame(maxWidth: .infinity, minHeight: 160, alignment: .center)
             } else {
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        ForEach(shownDays) { day in
-                            ScheduleDayView(day: day, now: now)
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) {
+                        LazyVStack(alignment: .leading, spacing: 16) {
+                            ForEach(shownDays) { day in
+                                ScheduleDayView(day: day, now: now, selectedEventID: selectedEventID,
+                                                onSelect: onSelect, onJoin: onJoin)
+                            }
                         }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
+                    .scrollIndicators(.automatic)
+                    .onChange(of: selectedEventID) {
+                        if let selectedEventID { proxy.scrollTo("event-\(selectedEventID)", anchor: .center) }
+                    }
                 }
-                .scrollIndicators(.automatic)
                 .frame(minHeight: 260, maxHeight: 460)
                 .accessibilityLabel("Upcoming calendar events")
             }
@@ -193,6 +218,9 @@ private struct AvailabilityCard: View {
 private struct ScheduleDayView: View {
     let day: ScheduleDay
     let now: Date
+    let selectedEventID: String?
+    let onSelect: (String) -> Void
+    let onJoin: (String) -> Void
 
     private enum Row: Identifiable {
         case event(ScheduleEvent)
@@ -231,7 +259,10 @@ private struct ScheduleDayView: View {
             } else {
                 ForEach(rows) { row in
                     switch row {
-                    case .event(let event): ScheduleEventRow(event: event, now: now)
+                    case .event(let event):
+                        ScheduleEventRow(event: event, now: now, selected: event.id == selectedEventID,
+                                         onSelect: onSelect, onJoin: onJoin)
+                            .id("event-\(event.id)")
                     case .free(let slot): ScheduleFreeRow(slot: slot)
                     }
                 }
@@ -243,38 +274,64 @@ private struct ScheduleDayView: View {
 private struct ScheduleEventRow: View {
     let event: ScheduleEvent
     let now: Date
+    let selected: Bool
+    let onSelect: (String) -> Void
+    let onJoin: (String) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(event.isAllDay ? "all day" : ScheduleFormat.range(event.start, event.end))
-                .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Color.tingMuted)
-                .frame(width: 84, alignment: .trailing)
-            RoundedRectangle(cornerRadius: 2).fill(ScheduleFormat.color(event.calendarColorHex)).frame(width: 4, height: 30)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(event.title).font(.system(size: 12.5, weight: isCurrent ? .semibold : .medium)).lineLimit(2)
-                    if !event.isBusy {
-                        Text("free").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.tingMuted)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Capsule().fill(Color.tingInk.opacity(0.06)))
+        Button { onSelect(event.id) } label: {
+            PickerRow(selected: selected, palette: TingPickerStyle.palette) {
+                HStack(alignment: .top, spacing: 10) {
+                    Text(event.isAllDay ? "all day" : ScheduleFormat.range(event.start, event.end))
+                        .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Color.tingMuted)
+                        .frame(width: 84, alignment: .trailing)
+                    RoundedRectangle(cornerRadius: 2).fill(ScheduleFormat.color(event.calendarColorHex))
+                        .frame(width: 4, height: 30).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(event.title).font(.system(size: 12.5, weight: isCurrent ? .semibold : .medium)).lineLimit(2)
+                            if !event.isBusy {
+                                Text("free").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.tingMuted)
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(Capsule().fill(Color.tingInk.opacity(0.06)))
+                            }
+                        }
+                        Text([event.calendarTitle, event.location].compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(size: 10.5)).foregroundStyle(Color.tingMuted).lineLimit(1)
+                    }
+                    Spacer(minLength: 6)
+                    if let meeting = event.meeting {
+                        HStack(spacing: 4) {
+                            Image(systemName: "video.fill").accessibilityHidden(true)
+                            Text(meeting.platform.title)
+                        }
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(Color.tingAmber)
+                        .lineLimit(1)
+                    }
+                    if selected {
+                        Image(systemName: event.meeting == nil ? "checkmark" : "arrow.up.right")
+                            .font(.system(size: 10, weight: .semibold)).foregroundStyle(Color.tingAmber)
+                            .accessibilityHidden(true)
                     }
                 }
-                Text([event.calendarTitle, event.location].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 10.5)).foregroundStyle(Color.tingMuted).lineLimit(1)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onJoin(event.id) })
+        .help(event.meeting.map { "Join \($0.platform.title)" } ?? "No meeting link")
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint(event.meeting == nil ? "Selects the event. Return reports that no meeting link was found."
+                           : "Return or double-click joins the meeting.")
     }
 
     private var isCurrent: Bool { event.start <= now && event.end > now }
 
     private var accessibilityLabel: String {
         let time = event.isAllDay ? "All day" : ScheduleFormat.range(event.start, event.end)
-        return [time, event.title, event.calendarTitle, event.location].compactMap { $0 }.joined(separator: ", ")
+        return [time, event.title, event.calendarTitle, event.location, event.meeting?.platform.title]
+            .compactMap { $0 }.joined(separator: ", ")
     }
 }
 

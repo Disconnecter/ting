@@ -23,7 +23,8 @@ public struct ScheduleCalendarInfo: Identifiable, Equatable, Sendable {
     }
 }
 
-/// A value copy of an EventKit event. EventKit objects never cross the service boundary.
+/// A privacy-minimized value copy of an EventKit event. Notes never cross the service boundary;
+/// only a recognized meeting link detected from EventKit fields may be retained in memory.
 public struct ScheduleEvent: Identifiable, Equatable, Sendable {
     public var id: String
     public var calendarID: String
@@ -31,6 +32,7 @@ public struct ScheduleEvent: Identifiable, Equatable, Sendable {
     public var calendarColorHex: String
     public var title: String
     public var location: String?
+    public var meeting: ScheduleMeetingLink?
     public var start: Date
     public var end: Date
     public var isAllDay: Bool
@@ -38,14 +40,15 @@ public struct ScheduleEvent: Identifiable, Equatable, Sendable {
     public var isBusy: Bool
 
     public init(id: String, calendarID: String, calendarTitle: String, calendarColorHex: String = "888888",
-                title: String, location: String? = nil, start: Date, end: Date,
-                isAllDay: Bool = false, isBusy: Bool = true) {
+                title: String, location: String? = nil, meeting: ScheduleMeetingLink? = nil,
+                start: Date, end: Date, isAllDay: Bool = false, isBusy: Bool = true) {
         self.id = id
         self.calendarID = calendarID
         self.calendarTitle = calendarTitle
         self.calendarColorHex = calendarColorHex
         self.title = title
         self.location = location
+        self.meeting = meeting
         self.start = start
         self.end = end
         self.isAllDay = isAllDay

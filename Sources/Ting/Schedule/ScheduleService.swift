@@ -59,12 +59,13 @@ actor EventKitScheduleService: ScheduleServing {
         let baseID = event.eventIdentifier ?? event.calendarItemIdentifier
         let occurrence = Int(event.startDate.timeIntervalSinceReferenceDate)
         let location = event.location?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let meeting = ScheduleMeetingDetector.find(eventURL: event.url, location: location, notes: event.notes)
         return ScheduleEvent(
             id: "\(baseID)-\(occurrence)", calendarID: calendar?.calendarIdentifier ?? "",
             calendarTitle: calendar?.title ?? "Calendar",
             calendarColorHex: calendar.map { colorHex($0.cgColor) } ?? "888888",
             title: event.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Untitled event",
-            location: location?.nilIfEmpty, start: event.startDate, end: event.endDate,
+            location: location?.nilIfEmpty, meeting: meeting, start: event.startDate, end: event.endDate,
             isAllDay: event.isAllDay, isBusy: event.availability != .free)
     }
 
@@ -98,6 +99,8 @@ final class ScheduleModel {
     private(set) var error: String?
     private(set) var now = Date()
     private(set) var isOpen = false
+    private(set) var selectedEventID: String?
+    private(set) var message: String?
     var showHeader = true
     var selectedCalendarIDs: [String]?
 
@@ -110,12 +113,44 @@ final class ScheduleModel {
 
     var plan: SchedulePlan { SchedulePlanner.plan(events: events, now: now) }
 
+    var navigableEvents: [ScheduleEvent] {
+        var seen: Set<String> = []
+        return plan.days.flatMap(\.events).filter { seen.insert($0.id).inserted }
+    }
+
+    var selectedEvent: ScheduleEvent? {
+        guard let selectedEventID else { return nil }
+        return navigableEvents.first { $0.id == selectedEventID }
+    }
+
     func configure(_ config: Config) {
         showHeader = config.showPanelHeader
         selectedCalendarIDs = config.schedule.calendars
     }
 
-    func setOpen(_ open: Bool) { isOpen = open }
+    func setOpen(_ open: Bool) {
+        isOpen = open
+        if open {
+            message = nil
+            reconcileSelection()
+        }
+    }
+
+    func select(_ id: String) {
+        guard navigableEvents.contains(where: { $0.id == id }) else { return }
+        selectedEventID = id
+        message = nil
+    }
+
+    func moveSelection(by delta: Int) {
+        let events = navigableEvents
+        guard !events.isEmpty else { return }
+        let current = events.firstIndex { $0.id == selectedEventID } ?? 0
+        selectedEventID = events[min(max(current + delta, 0), events.count - 1)].id
+        message = nil
+    }
+
+    func showMessage(_ text: String) { message = text }
 
     func refresh(at date: Date = Date()) async {
         refreshSerial += 1
@@ -132,6 +167,8 @@ final class ScheduleModel {
             access = data.access
             calendars = data.calendars
             events = data.events
+            reconcileSelection()
+            message = nil
             error = nil
         } catch {
             guard serial == refreshSerial else { return }
@@ -154,5 +191,15 @@ final class ScheduleModel {
 
     func calendarIsSelected(_ id: String) -> Bool {
         selectedCalendarIDs.map { Set($0).contains(id) } ?? true
+    }
+
+    private func reconcileSelection() {
+        let events = navigableEvents
+        guard !events.isEmpty else {
+            selectedEventID = nil
+            return
+        }
+        if let selectedEventID, events.contains(where: { $0.id == selectedEventID }) { return }
+        selectedEventID = events.first(where: { $0.end > now })?.id ?? events.first?.id
     }
 }
