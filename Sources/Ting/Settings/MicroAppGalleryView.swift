@@ -1,3 +1,4 @@
+import BobukUI
 import SwiftUI
 import TingCore
 
@@ -5,6 +6,7 @@ struct MicroAppGalleryView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var gallery: MicroAppGallery?
+    @State private var query = ""
     @State private var catalogError: String?
     @State private var refresh = 0
     @State private var installing: MicroAppGallery.Listing?
@@ -58,18 +60,9 @@ struct MicroAppGalleryView: View {
             if gallery.listings.isEmpty {
                 Text("No micro-apps in the gallery yet.").foregroundStyle(.secondary)
             } else {
-                let localIDs = Set(model.microApps.map(\.bindingID))
-                let localFiles = Set(model.microApps.map(\.file))
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(gallery.listings) { listing in
-                            listingRow(listing, local: localIDs.contains(listing.id) || localFiles.contains(listing.fileName))
-                            if listing.id != gallery.listings.last?.id { Divider() }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(height: 320)
+                PickerSearchField(text: $query, placeholder: "Search micro-apps",
+                                  accessibilityLabel: "Search the Micro-app Gallery", palette: TingPickerStyle.palette)
+                galleryResults(gallery.matching(query))
             }
             if let installError {
                 Label(installError, systemImage: "exclamationmark.triangle")
@@ -80,6 +73,30 @@ struct MicroAppGalleryView: View {
         } else {
             ProgressView("Loading gallery…")
         }
+    }
+
+    private func galleryResults(_ listings: [MicroAppGallery.Listing]) -> some View {
+        let localIDs = Set(model.microApps.map(\.bindingID))
+        let localFiles = Set(model.microApps.map(\.file))
+        return Group {
+            if listings.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(listings) { listing in
+                            VStack(alignment: .leading, spacing: 12) {
+                                listingRow(listing, local: localIDs.contains(listing.id) || localFiles.contains(listing.fileName))
+                                if listing.id != listings.last?.id { Divider() }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .id(query)
+            }
+        }
+        .frame(height: 320)
     }
 
     private func listingRow(_ listing: MicroAppGallery.Listing, local: Bool) -> some View {

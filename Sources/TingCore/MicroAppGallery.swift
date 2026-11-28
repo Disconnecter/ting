@@ -72,6 +72,16 @@ public struct MicroAppGallery: Decodable, Sendable {
         }
     }
 
+    /// Search listing metadata locally. Every word must match somewhere in the listing.
+    public func matching(_ query: String) -> [Listing] {
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !terms.isEmpty else { return listings }
+        return listings.filter { listing in
+            let fields = [listing.id, listing.title, listing.description, listing.dataAccess, listing.requirements]
+            return terms.allSatisfy { term in fields.contains { $0.localizedStandardContains(term) } }
+        }
+    }
+
     public static func decode(_ data: Data) throws -> Self {
         guard data.count <= maxIndexSize else { throw Problem.tooLarge }
         do { return try JSONDecoder().decode(Self.self, from: data) }

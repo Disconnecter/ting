@@ -69,6 +69,16 @@ final class MicroAppGalleryTests: XCTestCase {
         }
     }
 
+    func testSearchMatchesWordsAcrossListingFields() throws {
+        let gallery = try index()
+        XCTAssertEqual(gallery.matching(" \n ").map(\.id), gallery.listings.map(\.id))
+        XCTAssertEqual(gallery.matching("  jSOn ").map(\.id), ["format-json"])
+        XCTAssertEqual(gallery.matching("markdown Automation").map(\.id), ["copy-page-link"])
+        XCTAssertEqual(gallery.matching("bundle Accessibility").map(\.id), ["app-info"])
+        XCTAssertEqual(gallery.matching("change-case").map(\.id), ["change-case"])
+        XCTAssertTrue(gallery.matching("json zzz-not-a-listing").isEmpty)
+    }
+
     func testRefusesInvalidIndexAndComparesVersionsNumerically() throws {
         let listing = try fixture().0
         XCTAssertTrue(listing.supports(tingVersion: listing.minimumTingVersion))

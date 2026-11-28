@@ -45,6 +45,24 @@
       "requirements": "Automation permission for Finder, readable files, and macOS shasum.",
       "minimumTingVersion": "0.7.28",
       "sha256": "35c81246086659de067c8fb3b6e8448d15e9e59a0c0acbd73f624510af7137bf"
+    },
+    {
+      "id": "change-case",
+      "title": "Change Case",
+      "description": "Convert text to uppercase, lowercase, or title case.",
+      "dataAccess": "Reads clipboard text, shows the result, and replaces the clipboard. No network requests.",
+      "requirements": "python3 (Xcode Command Line Tools).",
+      "minimumTingVersion": "0.7.28",
+      "sha256": "090db79c35e7edee72c61c06e0c4e9d97b7a4822bb66bf2f9c73714c06733e68"
+    },
+    {
+      "id": "app-info",
+      "title": "About the Active App",
+      "description": "Show the name, bundle ID, and path of the active app, plus its front window details.",
+      "dataAccess": "Reads app and window metadata, which may include a document path or URL. Shows it in Ting; no network requests.",
+      "requirements": "Accessibility permission for window details. No additional tools.",
+      "minimumTingVersion": "0.7.28",
+      "sha256": "564ef957cddbedd06b8d6048331b4aa6bbde75f7c19612845b462fa56ed7ea03"
     }
   ]
 }

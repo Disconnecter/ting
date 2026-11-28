@@ -1,8 +1,9 @@
 # Ting Micro-app Gallery
 
-Browse in **Settings → Micro-apps → Browse Gallery**. Install a tool, then record
-an optional hotkey or find it in launcha. Ting does not run it or grant approval on
-install. On first run of new code, review the file before approving it.
+Open **Settings → Micro-apps → Browse Gallery** to browse or search these starter
+apps. Install one, then record an optional hotkey or find it in launcha. Ting does
+not run it or grant approval on install. On first run of new code, review the file
+before approving it.
 
 | Micro-app | What it does |
 | --- | --- |
@@ -11,6 +12,8 @@ install. On first run of new code, review the file before approving it.
 | [Sort Selected Lines](sort-selection.yaml) | Sort text in place in the front app. |
 | [Copy Page Link](copy-page-link.yaml) | Copy the front browser tab as a Markdown link. |
 | [Finder Checksum](finder-checksum.yaml) | Show SHA-256 checksums for files selected in Finder. |
+| [Change Case](change-case.yaml) | Convert clipboard text to upper, lower, or title case. |
+| [About the Active App](app-info.yaml) | Show the active app and its front window details. |
 
 See [`catalog.json`](catalog.json) for what each tool reads or writes, any network
 use, and what permissions or tools it needs. Curated by Ting means reviewed for
